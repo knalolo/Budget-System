@@ -1,11 +1,14 @@
 # ============================================================
 # Procurement System — Production Dockerfile
+# Multi-stage build: builder installs deps, runtime is lean.
 # Base image: Python 3.11 slim (Debian Bookworm)
 # ============================================================
 
-FROM python:3.11-slim AS base
+# ------------------------------------------------------------
+# Stage 1: builder — install Python dependencies
+# ------------------------------------------------------------
+FROM python:3.11-slim AS builder
 
-# Prevent .pyc files and enable unbuffered stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -13,41 +16,51 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Install system dependencies required by psycopg2 and general tooling
+# Install build-time system dependencies required by psycopg2
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
+        gcc \
         libpq-dev \
-        curl \
     && rm -rf /var/lib/apt/lists/*
 
-# ============================================================
-# Install Python dependencies
-# ============================================================
-
+# Copy only the package manifest first to leverage layer caching
 COPY pyproject.toml .
 
-# Install the project and its dependencies without the optional dev extras
+# Install the project and all its runtime dependencies
 RUN pip install --upgrade pip && pip install .
 
-# ============================================================
-# Copy application source
-# ============================================================
+# ------------------------------------------------------------
+# Stage 2: runtime — lean production image
+# ------------------------------------------------------------
+FROM python:3.11-slim AS runtime
 
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Install runtime-only system library required by psycopg2 (no gcc needed)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed Python packages from builder stage
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application source code
 COPY . .
 
-# Collect static files at build time so the image is self-contained.
-# SECRET_KEY is a dummy value used only for this build step.
-RUN SECRET_KEY=collectstatic-dummy-key \
-    DJANGO_SETTINGS_MODULE=config.settings.production \
-    DB_NAME=dummy DB_USER=dummy DB_PASSWORD=dummy \
-    python manage.py collectstatic --noinput
+# Create a non-root user for security
+RUN groupadd --system appgroup && \
+    useradd --system --gid appgroup --no-create-home appuser && \
+    chown -R appuser:appgroup /app && \
+    chmod +x /app/docker/entrypoint.sh
 
-# ============================================================
-# Runtime configuration
-# ============================================================
+# Create directories for static and media files with correct ownership
+RUN mkdir -p /app/staticfiles /app/media && \
+    chown -R appuser:appgroup /app/staticfiles /app/media
 
-# Ensure the entrypoint script is executable
-RUN chmod +x /app/docker/entrypoint.sh
+USER appuser
 
 EXPOSE 8000
 

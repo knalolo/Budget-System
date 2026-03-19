@@ -1,7 +1,7 @@
 version: "3.9"
 
 # ============================================================
-# Procurement System — Docker Compose
+# Procurement System — Docker Compose (production)
 # Services: web (Django/Gunicorn), db (PostgreSQL 16), nginx
 # ============================================================
 
@@ -14,9 +14,11 @@ services:
     image: postgres:16-alpine
     restart: always
     environment:
+      # These env vars are consumed by the official postgres image to
+      # initialise the database.  They mirror the DB_* vars in .env.
       POSTGRES_DB: ${DB_NAME:-procurement_db}
       POSTGRES_USER: ${DB_USER:-procurement_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
@@ -35,8 +37,11 @@ services:
     restart: always
     env_file: .env
     environment:
+      # Override / supplement values from .env at runtime
       DJANGO_SETTINGS_MODULE: config.settings.production
       DB_HOST: db
+      # Nginx terminates HTTP; Django sits behind it on plain HTTP
+      SECURE_SSL_REDIRECT: "False"
     volumes:
       - media_data:/app/media
       - static_data:/app/staticfiles
@@ -50,7 +55,7 @@ services:
   # Nginx reverse proxy
   # ------------------------------------------------------------------
   nginx:
-    image: nginx:1.25-alpine
+    image: nginx:alpine
     restart: always
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
@@ -61,6 +66,9 @@ services:
     depends_on:
       - web
 
+# ------------------------------------------------------------------
+# Named volumes for data persistence
+# ------------------------------------------------------------------
 volumes:
   postgres_data:
   media_data:

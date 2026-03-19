@@ -291,6 +291,6 @@ class FileAttachmentViewSet(viewsets.GenericViewSet):
 def _get_role(user) -> str | None:
     """Return the user's role string, or None if the profile is absent."""
     try:
-        return user.userprofile.role
+        return user.profile.role
     except AttributeError:
         return None

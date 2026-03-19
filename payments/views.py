@@ -302,7 +302,7 @@ def list_table_partial(request: HttpRequest) -> HttpResponse:
 
 def _get_role(user) -> str:
     try:
-        return user.userprofile.role
+        return user.profile.role
     except AttributeError:
         return "requester"
 

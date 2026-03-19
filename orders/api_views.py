@@ -39,7 +39,7 @@ _APPROVER_ROLES = {"pcm_approver", "final_approver", "admin"}
 
 def _get_role(user) -> str | None:
     try:
-        return user.userprofile.role
+        return user.profile.role
     except AttributeError:
         return None
 

@@ -354,6 +354,6 @@ def _get_user_role(user) -> str:
     'requester' if no profile exists or the role is unset.
     """
     try:
-        return user.userprofile.role  # type: ignore[attr-defined]
+        return user.profile.role  # type: ignore[attr-defined]
     except AttributeError:
         return "requester"
