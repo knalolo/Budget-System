@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% load procurement_tags %}
+
+{% block title %}System Configuration - Admin Panel{% endblock %}
+{% block page_title %}System Configuration{% endblock %}
+
+{% block content %}
+<div class="space-y-6" x-data="{ saved: false }">
+
+    {# Sub-navigation #}
+    {% include "admin_panel/_subnav.html" with active="config" %}
+
+    {# HTMX save-success toast #}
+    <div
+        id="config-save-toast"
+        class="hidden rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 flex items-center gap-2"
+        hx-on::after-request="document.getElementById('config-save-toast').classList.remove('hidden'); setTimeout(() => document.getElementById('config-save-toast').classList.add('hidden'), 3000);"
+    >
+        <svg class="w-4 h-4 text-green-500 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        Configuration saved successfully.
+    </div>
+
+    {# One card per section #}
+    {% for section in sections %}
+    <form
+        method="post"
+        action="{% url 'admin-panel:admin-update-config' %}"
+        hx-post="{% url 'admin-panel:admin-update-config' %}"
+        hx-trigger="submit"
+        hx-swap="none"
+        hx-on::after-request="document.getElementById('config-save-toast').classList.remove('hidden'); setTimeout(() => document.getElementById('config-save-toast').classList.add('hidden'), 3000);"
+        class="rounded-lg border border-gray-200 bg-white shadow-sm p-6"
+    >
+        {% csrf_token %}
+
+        {# Section header #}
+        <div class="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-gray-100">
+            <div>
+                <h3 class="text-sm font-semibold text-gray-900">{{ section.title }}</h3>
+                {% if section.description %}
+                <p class="mt-1 text-xs text-gray-500">{{ section.description }}</p>
+                {% endif %}
+            </div>
+            <button
+                type="submit"
+                class="flex-shrink-0 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 transition-colors"
+            >
+                Save
+            </button>
+        </div>
+
+        {# Fields #}
+        <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {% for field in section.fields %}
+            <div>
+                <label for="{{ field.key }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    {{ field.label }}
+                </label>
+                <input
+                    type="{{ field.input_type }}"
+                    id="{{ field.key }}"
+                    name="{{ field.key }}"
+                    value="{{ config_values|get_item:field.key|default:'' }}"
+                    placeholder="{{ field.placeholder }}"
+                    class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                    {% if field.input_type == "number" %}step="any" min="0"{% endif %}
+                />
+            </div>
+            {% endfor %}
+        </div>
+
+    </form>
+    {% endfor %}
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Show toast when HTMX fires the configSaved trigger
+    document.body.addEventListener("configSaved", function () {
+        const toast = document.getElementById("config-save-toast");
+        if (toast) {
+            toast.classList.remove("hidden");
+            setTimeout(() => toast.classList.add("hidden"), 3000);
+        }
+    });
+</script>
+{% endblock %}

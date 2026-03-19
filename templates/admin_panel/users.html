@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}User Management - Admin Panel{% endblock %}
+{% block page_title %}User Management{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+    {# Sub-navigation #}
+    {% include "admin_panel/_subnav.html" with active="users" %}
+
+    {# Search bar #}
+    <form method="get" class="flex items-center gap-3">
+        <div class="relative flex-1 max-w-sm">
+            <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <svg class="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+            </div>
+            <input
+                type="text"
+                name="q"
+                value="{{ search }}"
+                placeholder="Search by username, email, or name..."
+                class="block w-full rounded-md border border-gray-300 pl-9 pr-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
+            />
+        </div>
+        <button
+            type="submit"
+            class="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 transition-colors"
+        >
+            Search
+        </button>
+        {% if search %}
+        <a href="{% url 'admin-panel:admin-users' %}" class="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-700 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors">
+            Clear
+        </a>
+        {% endif %}
+    </form>
+
+    {# Results summary #}
+    <p class="text-sm text-gray-500">
+        {% if search %}
+            Search results for "<span class="font-medium text-gray-700">{{ search }}</span>" &mdash;
+        {% endif %}
+        <span class="font-medium text-gray-700">{{ paginator.count }}</span> user{{ paginator.count|pluralize }}
+    </p>
+
+    {# User table #}
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div id="role-update-feedback" class="hidden px-4 py-2 text-sm text-green-700 bg-green-50 border-b border-green-200"></div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="py-3 pl-6 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">User</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Display Name</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Role</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Last Login</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Change Role</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 bg-white">
+                    {% for u in users %}
+                    <tr class="hover:bg-gray-50 transition-colors" id="user-row-{{ u.pk }}">
+
+                        {# User identity #}
+                        <td class="py-3 pl-6 pr-3">
+                            <div class="flex items-center gap-3">
+                                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white font-medium text-xs">
+                                    {{ u.username|slice:":2"|upper }}
+                                </div>
+                                <div>
+                                    <p class="text-sm font-medium text-gray-900">{{ u.username }}</p>
+                                    <p class="text-xs text-gray-400">{{ u.email|default:"—" }}</p>
+                                </div>
+                            </div>
+                        </td>
+
+                        {# Display name #}
+                        <td class="px-3 py-3 text-sm text-gray-700">
+                            {{ u.get_full_name|default:"—" }}
+                        </td>
+
+                        {# Current role badge #}
+                        <td class="px-3 py-3">
+                            {% with role=u.profile.role %}
+                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                                {% if role == 'admin' %}bg-red-100 text-red-800
+                                {% elif role == 'final_approver' %}bg-purple-100 text-purple-800
+                                {% elif role == 'pcm_approver' %}bg-blue-100 text-blue-800
+                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {{ u.profile.get_role_display|default:"—" }}
+                            </span>
+                            {% endwith %}
+                        </td>
+
+                        {# Active / Inactive status #}
+                        <td class="px-3 py-3">
+                            {% if u.is_active %}
+                            <span class="inline-flex items-center gap-1 text-xs font-medium text-green-700">
+                                <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                                Active
+                            </span>
+                            {% else %}
+                            <span class="inline-flex items-center gap-1 text-xs font-medium text-red-600">
+                                <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
+                                Inactive
+                            </span>
+                            {% endif %}
+                        </td>
+
+                        {# Last login #}
+                        <td class="px-3 py-3 text-sm text-gray-500">
+                            {{ u.last_login|date:"d M Y, H:i"|default:"Never" }}
+                        </td>
+
+                        {# Role change dropdown (HTMX) #}
+                        <td class="px-3 py-3">
+                            <div class="flex items-center gap-2">
+                                <select
+                                    id="role-select-{{ u.pk }}"
+                                    name="role"
+                                    class="rounded-md border border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500 px-2 py-1.5 bg-white"
+                                    hx-post="{% url 'admin-panel:admin-update-role' u.pk %}"
+                                    hx-trigger="change"
+                                    hx-target="#role-feedback-{{ u.pk }}"
+                                    hx-swap="innerHTML"
+                                    hx-include="#role-select-{{ u.pk }}"
+                                >
+                                    {% for value, label in role_choices %}
+                                    <option value="{{ value }}" {% if u.profile.role == value %}selected{% endif %}>
+                                        {{ label }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <span id="role-feedback-{{ u.pk }}" class="text-xs text-gray-400"></span>
+                            </div>
+                        </td>
+
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-10 text-center text-sm text-gray-400">
+                            No users found{% if search %} matching "{{ search }}"{% endif %}.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Pagination #}
+    {% include "components/pagination.html" %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+{% load procurement_tags %}
+
+{% block title %}Dashboard — Procurement System{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Greeting                                                            -->
+    <!-- ------------------------------------------------------------------ -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-xl font-semibold text-gray-800">
+                Welcome{% if user.first_name %}, {{ user.first_name }}{% endif %}
+            </h2>
+            <p class="text-sm text-gray-500 mt-0.5">Here is an overview of your procurement activity.</p>
+        </div>
+
+        <!-- Quick actions -->
+        <div class="flex items-center gap-2">
+            <a href="{% url 'orders:purchase-request-create' %}"
+               class="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors shadow-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                New PR
+            </a>
+            <a href="{% url 'payments:create' %}"
+               class="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                New Payment
+            </a>
+            <a href="{% url 'deliveries:create' %}"
+               class="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                New DO/SO
+            </a>
+        </div>
+    </div>
+
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Summary cards (4-column grid)                                      -->
+    <!-- ------------------------------------------------------------------ -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+
+        <!-- Total Requests -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Requests</p>
+                    <p class="mt-1 text-3xl font-bold text-gray-900">{{ stats.total_prs }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Purchase requests submitted</p>
+                </div>
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Pending Approvals -->
+        <div class="bg-white rounded-xl shadow-sm border {% if pending_approvals_count > 0 %}border-yellow-200{% else %}border-gray-100{% endif %} p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        {% if is_approver %}Pending My Approval{% else %}Pending Approval{% endif %}
+                    </p>
+                    <p class="mt-1 text-3xl font-bold {% if pending_approvals_count > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}">
+                        {{ pending_approvals_count }}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-400">
+                        {% if is_approver %}Items awaiting your review{% else %}Your items in review{% endif %}
+                    </p>
+                </div>
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if pending_approvals_count > 0 %}bg-yellow-50{% else %}bg-gray-50{% endif %} flex items-center justify-center">
+                    <svg class="w-5 h-5 {% if pending_approvals_count > 0 %}text-yellow-500{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Approved This Month -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Approved This Month</p>
+                    <p class="mt-1 text-3xl font-bold text-green-600">{{ stats.approved_this_month }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Purchase requests approved</p>
+                </div>
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total Spend This Month -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Spend This Month</p>
+                    <p class="mt-1 text-lg font-bold text-gray-900 leading-tight">{{ stats.total_spend_display }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Approved PR value</p>
+                </div>
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
+                    <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ------------------------------------------------------------------ -->
+    <!-- Pending approvals table (approvers only)                           -->
+    <!-- ------------------------------------------------------------------ -->
+    {% if is_approver %}
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div class="flex items-center gap-2">
+                <h3 class="text-sm font-semibold text-gray-800">Pending My Approval</h3>
+                {% if pending_approvals_count > 0 %}
+                <span class="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-medium text-yellow-800">
+                    {{ pending_approvals_count }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if pr_pending_approvals or payment_pending_approvals %}
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-100">
+                <thead>
+                    <tr class="bg-gray-50">
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Request #</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Requester</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
+                        <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Submitted</th>
+                        <th class="px-4 py-3"></th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-50">
+                    {% for pr in pr_pending_approvals %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">PR</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ pr.request_number }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ pr.requester.get_full_name|default:pr.requester.username }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-800">{{ pr.vendor }}</td>
+                        <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                            {{ pr.currency|currency_symbol }} {{ pr.total_price|floatformat:2 }}
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                bg-{{ pr.status|status_color }}-100 text-{{ pr.status|status_color }}-800">
+                                {{ pr.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ pr.created_at|date:"M d, Y" }}</td>
+                        <td class="px-4 py-3 text-right">
+                            <a href="{% url 'orders:purchase-request-detail' pr.pk %}"
+                               class="text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">
+                                Review &rarr;
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+
+                    {% for payment in payment_pending_approvals %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center rounded-md bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700 ring-1 ring-inset ring-purple-700/10">Payment</span>
+                        </td>
+                        <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ payment.request_number }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-600">{{ payment.requester.get_full_name|default:payment.requester.username }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-800">{{ payment.vendor }}</td>
+                        <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                            {{ payment.currency|currency_symbol }} {{ payment.total_price|floatformat:2 }}
+                        </td>
+                        <td class="px-4 py-3">
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                bg-{{ payment.status|status_color }}-100 text-{{ payment.status|status_color }}-800">
+                                {{ payment.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm text-gray-500">{{ payment.created_at|date:"M d, Y" }}</td>
+                        <td class="px-4 py-3 text-right">
+                            <a href="{% url 'payments:detail' payment.pk %}"
+                               class="text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">
+                                Review &rarr;
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-5 py-10 text-center">
+            <svg class="mx-auto w-10 h-10 text-gray-300" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p class="mt-2 text-sm text-gray-400">No pending approvals — all caught up!</p>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- ------------------------------------------------------------------ -->
+    <!-- My recent activity (3-column tabs/grid)                            -->
+    <!-- ------------------------------------------------------------------ -->
+    <div x-data="{ activeTab: 'prs' }">
+
+        <!-- Tab bar -->
+        <div class="flex items-center gap-1 border-b border-gray-200 mb-0">
+            <button
+                @click="activeTab = 'prs'"
+                :class="activeTab === 'prs' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
+            >
+                Purchase Requests
+                {% if stats.total_prs %}
+                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.total_prs }}</span>
+                {% endif %}
+            </button>
+            <button
+                @click="activeTab = 'payments'"
+                :class="activeTab === 'payments' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
+            >
+                Payment Releases
+                {% if stats.total_payments %}
+                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.total_payments }}</span>
+                {% endif %}
+            </button>
+            <button
+                @click="activeTab = 'deliveries'"
+                :class="activeTab === 'deliveries' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
+            >
+                Deliveries
+                {% if stats.total_deliveries %}
+                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.total_deliveries }}</span>
+                {% endif %}
+            </button>
+        </div>
+
+        <!-- Purchase Requests panel -->
+        <div x-show="activeTab === 'prs'" class="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-t-0 border-gray-100">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
+                <p class="text-xs text-gray-500">Showing your last {{ my_purchase_requests|length }} purchase requests</p>
+                <a href="{% url 'orders:purchase-request-list' %}" class="text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">View All &rarr;</a>
+            </div>
+
+            {% if my_purchase_requests %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-50">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Request #</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Project</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
+                            <th class="px-4 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
+                        {% for pr in my_purchase_requests %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ pr.request_number }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-800">{{ pr.vendor }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-500">{{ pr.project.mc_number }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                                {{ pr.currency|currency_symbol }} {{ pr.total_price|floatformat:2 }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                    bg-{{ pr.status|status_color }}-100 text-{{ pr.status|status_color }}-800">
+                                    {{ pr.get_status_display }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-500">{{ pr.created_at|date:"M d, Y" }}</td>
+                            <td class="px-4 py-3 text-right">
+                                <a href="{% url 'orders:purchase-request-detail' pr.pk %}"
+                                   class="text-xs text-brand-600 hover:text-brand-800 transition-colors">View</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-5 py-10 text-center">
+                <p class="text-sm text-gray-400">No purchase requests yet.</p>
+                <a href="{% url 'orders:purchase-request-create' %}" class="mt-2 inline-block text-sm text-brand-600 hover:underline">Create your first one &rarr;</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Payment Releases panel -->
+        <div x-show="activeTab === 'payments'" x-cloak class="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-t-0 border-gray-100">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
+                <p class="text-xs text-gray-500">Showing your last {{ my_payment_releases|length }} payment releases</p>
+                <a href="{% url 'payments:list' %}" class="text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">View All &rarr;</a>
+            </div>
+
+            {% if my_payment_releases %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-50">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Request #</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Project</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
+                            <th class="px-4 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
+                        {% for payment in my_payment_releases %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ payment.request_number }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-800">{{ payment.vendor }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-500">{{ payment.project.mc_number }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                                {{ payment.currency|currency_symbol }} {{ payment.total_price|floatformat:2 }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                    bg-{{ payment.status|status_color }}-100 text-{{ payment.status|status_color }}-800">
+                                    {{ payment.get_status_display }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-500">{{ payment.created_at|date:"M d, Y" }}</td>
+                            <td class="px-4 py-3 text-right">
+                                <a href="{% url 'payments:detail' payment.pk %}"
+                                   class="text-xs text-brand-600 hover:text-brand-800 transition-colors">View</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-5 py-10 text-center">
+                <p class="text-sm text-gray-400">No payment releases yet.</p>
+                <a href="{% url 'payments:create' %}" class="mt-2 inline-block text-sm text-brand-600 hover:underline">Create your first one &rarr;</a>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Deliveries panel -->
+        <div x-show="activeTab === 'deliveries'" x-cloak class="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-t-0 border-gray-100">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
+                <p class="text-xs text-gray-500">Showing your last {{ my_delivery_submissions|length }} delivery submissions</p>
+                <a href="{% url 'deliveries:list' %}" class="text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">View All &rarr;</a>
+            </div>
+
+            {% if my_delivery_submissions %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-50">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Request #</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
+                            <th class="px-4 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
+                        {% for delivery in my_delivery_submissions %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ delivery.request_number }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-800">{{ delivery.vendor }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">
+                                {{ delivery.currency|currency_symbol }} {{ delivery.total_price|floatformat:2 }}
+                            </td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                    bg-{{ delivery.status|status_color }}-100 text-{{ delivery.status|status_color }}-800">
+                                    {{ delivery.get_status_display }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-500">{{ delivery.created_at|date:"M d, Y" }}</td>
+                            <td class="px-4 py-3 text-right">
+                                <a href="{% url 'deliveries:detail' delivery.pk %}"
+                                   class="text-xs text-brand-600 hover:text-brand-800 transition-colors">View</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-5 py-10 text-center">
+                <p class="text-sm text-gray-400">No delivery submissions yet.</p>
+                <a href="{% url 'deliveries:create' %}" class="mt-2 inline-block text-sm text-brand-600 hover:underline">Create your first one &rarr;</a>
+            </div>
+            {% endif %}
+        </div>
+
+    </div><!-- /x-data tabs -->
+
+</div><!-- /space-y-6 -->
+{% endblock %}

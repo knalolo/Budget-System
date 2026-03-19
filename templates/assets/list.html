@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Asset Registrations - Procurement System{% endblock %}
+{% block page_title %}Asset Registrations{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+    {# Header row #}
+    <div class="flex items-center justify-between">
+        <div></div>
+        <a
+            href="{% url 'assets:create' %}"
+            class="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 transition-colors"
+        >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            New Registration
+        </a>
+    </div>
+
+    {# Table #}
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="py-3 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pl-6">#</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Requester</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Purchase Request</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Items</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Date</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 bg-white">
+                    {% for reg in registrations %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="py-3 pl-4 pr-3 text-sm font-medium text-gray-900 sm:pl-6">{{ reg.pk }}</td>
+                        <td class="px-3 py-3 text-sm text-gray-700">
+                            {{ reg.requester.get_full_name|default:reg.requester.username }}
+                        </td>
+                        <td class="px-3 py-3 text-sm text-gray-700">
+                            {% if reg.purchase_request %}
+                                <a href="{% url 'orders:purchase-request-detail' reg.purchase_request.pk %}" class="text-brand-600 hover:underline">
+                                    {{ reg.purchase_request.request_number }}
+                                </a>
+                            {% else %}
+                                <span class="text-gray-400">—</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-3 text-sm text-right text-gray-700">{{ reg.item_count }}</td>
+                        <td class="px-3 py-3 text-sm">
+                            {% if reg.status == 'draft' %}
+                                <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">Draft</span>
+                            {% elif reg.status == 'pending_export' %}
+                                <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">Pending Export</span>
+                            {% elif reg.status == 'exported' %}
+                                <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">Exported</span>
+                            {% elif reg.status == 'imported' %}
+                                <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Imported</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-3 text-sm text-gray-500">{{ reg.created_at|date:"d M Y" }}</td>
+                        <td class="px-3 py-3 text-sm text-right">
+                            <div class="flex items-center justify-end gap-2">
+                                <a
+                                    href="{% url 'assets:detail' reg.pk %}"
+                                    class="rounded-md bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+                                >
+                                    View
+                                </a>
+                                {% if reg.status != 'imported' %}
+                                <form method="post" action="{% url 'assets:detail' reg.pk %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="action" value="export_csv" />
+                                    <button
+                                        type="submit"
+                                        class="rounded-md bg-brand-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-brand-500 transition-colors"
+                                    >
+                                        Export
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="py-10 text-center text-sm text-gray-500">
+                            No asset registrations yet.
+                            <a href="{% url 'assets:create' %}" class="text-brand-600 hover:underline ml-1">Create one now.</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Pagination #}
+    {% include "components/pagination.html" %}
+
+</div>
+{% endblock %}

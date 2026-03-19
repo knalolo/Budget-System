@@ -33,14 +33,18 @@ class TokenView(APIView):
 
     Intended for CLI tooling that needs a persistent token rather than
     session-cookie authentication.
+
+    POST /api/v1/auth/token/
+    Returns: { token: "xxxx", user: { id, username, email, first_name, last_name, profile } }
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request: Request) -> Response:
-        token, created = Token.objects.get_or_create(user=request.user)
+        token, _ = Token.objects.get_or_create(user=request.user)
+        user_data = MeSerializer(request.user, context={"request": request}).data
         return Response(
-            {"token": token.key, "created": created},
+            {"token": token.key, "user": user_data},
             status=status.HTTP_200_OK,
         )
 

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Asset Registration #{{ registration.pk }} - Procurement System{% endblock %}
+{% block page_title %}Asset Registration #{{ registration.pk }}{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto space-y-6">
+
+    {# Header card #}
+    <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+        <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+
+            <div class="space-y-2">
+                <div class="flex items-center gap-3">
+                    <h2 class="text-lg font-semibold text-gray-900">Registration #{{ registration.pk }}</h2>
+
+                    {# Status badge #}
+                    {% if registration.status == 'draft' %}
+                        <span class="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-700">Draft</span>
+                    {% elif registration.status == 'pending_export' %}
+                        <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">Pending Export</span>
+                    {% elif registration.status == 'exported' %}
+                        <span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">Exported</span>
+                    {% elif registration.status == 'imported' %}
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">Imported</span>
+                    {% endif %}
+                </div>
+
+                <dl class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+                    <dt class="text-gray-500">Requester</dt>
+                    <dd class="text-gray-900 font-medium">{{ registration.requester.get_full_name|default:registration.requester.username }}</dd>
+
+                    <dt class="text-gray-500">Purchase Request</dt>
+                    <dd class="text-gray-900">
+                        {% if registration.purchase_request %}
+                            <a href="{% url 'orders:purchase-request-detail' registration.purchase_request.pk %}" class="text-brand-600 hover:underline">
+                                {{ registration.purchase_request.request_number }}
+                            </a>
+                        {% else %}
+                            <span class="text-gray-400">None</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="text-gray-500">Items</dt>
+                    <dd class="text-gray-900 font-medium">{{ registration.item_count }}</dd>
+
+                    <dt class="text-gray-500">Created</dt>
+                    <dd class="text-gray-900">{{ registration.created_at|date:"d M Y H:i" }}</dd>
+
+                    <dt class="text-gray-500">Updated</dt>
+                    <dd class="text-gray-900">{{ registration.updated_at|date:"d M Y H:i" }}</dd>
+
+                    {% if registration.notes %}
+                    <dt class="text-gray-500">Notes</dt>
+                    <dd class="text-gray-900 col-span-1">{{ registration.notes }}</dd>
+                    {% endif %}
+                </dl>
+            </div>
+
+            {# Action buttons #}
+            <div class="flex flex-col gap-2 sm:items-end">
+
+                {# Export CSV button (not shown when already imported) #}
+                {% if registration.status != 'imported' %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="export_csv" />
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 transition-colors"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Export CSV
+                    </button>
+                </form>
+                {% endif %}
+
+                {# Mark as Imported button (only when exported) #}
+                {% if registration.status == 'exported' %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="mark_imported" />
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-2 rounded-md bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 transition-colors"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Mark as Imported
+                    </button>
+                </form>
+                {% endif %}
+
+                <a
+                    href="{% url 'assets:list' %}"
+                    class="inline-flex items-center rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+                >
+                    Back to List
+                </a>
+            </div>
+
+        </div>
+    </div>
+
+    {# Items table #}
+    <div class="rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-sm font-semibold text-gray-900">Asset Items ({{ registration.item_count }})</h3>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="py-3 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pl-6">Asset Name</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Asset Tag</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Category</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Serial Number</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Purchase Date</th>
+                        <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Cost</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Supplier</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Location</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Department</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Assigned To</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Notes</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 bg-white">
+                    {% for item in items %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="py-3 pl-4 pr-3 font-medium text-gray-900 sm:pl-6">{{ item.asset_name }}</td>
+                        <td class="px-3 py-3 text-gray-700">{{ item.asset_tag|default:"—" }}</td>
+                        <td class="px-3 py-3 text-gray-700">{{ item.category|default:"—" }}</td>
+                        <td class="px-3 py-3 text-gray-700 font-mono text-xs">{{ item.serial_number|default:"—" }}</td>
+                        <td class="px-3 py-3 text-gray-700">
+                            {% if item.purchase_date %}{{ item.purchase_date|date:"d M Y" }}{% else %}—{% endif %}
+                        </td>
+                        <td class="px-3 py-3 text-right text-gray-700">
+                            {% if item.purchase_cost is not None %}{{ item.purchase_cost }}{% else %}—{% endif %}
+                        </td>
+                        <td class="px-3 py-3 text-gray-700">{{ item.supplier|default:"—" }}</td>
+                        <td class="px-3 py-3 text-gray-700">{{ item.location|default:"—" }}</td>
+                        <td class="px-3 py-3 text-gray-700">{{ item.department|default:"—" }}</td>
+                        <td class="px-3 py-3 text-gray-700">{{ item.assigned_to|default:"—" }}</td>
+                        <td class="px-3 py-3 text-gray-500 text-xs max-w-xs truncate">{{ item.notes|default:"—" }}</td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="11" class="py-8 text-center text-sm text-gray-500">
+                            No items in this registration.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
