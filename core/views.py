@@ -22,7 +22,7 @@ _ALL_APPROVER_ROLES = _PCM_APPROVER_ROLES | _FINAL_APPROVER_ROLES
 def _get_user_role(user) -> str:
     """Return the role string for *user*, defaulting to 'requester'."""
     try:
-        return user.userprofile.role
+        return user.profile.role
     except AttributeError:
         return "requester"
 

@@ -7,6 +7,7 @@ Extends base settings with production-specific overrides:
 - ALLOWED_HOSTS from environment
 - SMTP email backend
 - Security hardening
+- Structured logging
 """
 import os
 
@@ -42,10 +43,23 @@ DATABASES = {
 }
 
 # ---------------------------------------------------------------------------
+# Static and media files — Docker volume paths
+# ---------------------------------------------------------------------------
+
+STATIC_ROOT = "/app/staticfiles"
+MEDIA_ROOT = "/app/media"
+
+# ---------------------------------------------------------------------------
 # Email — SMTP
 # ---------------------------------------------------------------------------
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.office365.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 
 # ---------------------------------------------------------------------------
 # Security hardening
@@ -61,8 +75,50 @@ SECURE_HSTS_SECONDS = 31_536_000
 SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
+# Comma-separated list of trusted origins for CSRF checks (required for
+# non-standard ports or when sitting behind a reverse proxy).
+_raw_csrf_origins = os.environ.get("CSRF_TRUSTED_ORIGINS", "")
+CSRF_TRUSTED_ORIGINS = [o.strip() for o in _raw_csrf_origins.split(",") if o.strip()]
+
 # ---------------------------------------------------------------------------
 # CORS — explicit origins only
 # ---------------------------------------------------------------------------
 
 CORS_ALLOW_ALL_ORIGINS = False
+
+# ---------------------------------------------------------------------------
+# Logging — structured output suitable for Docker log drivers
+# ---------------------------------------------------------------------------
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{levelname} {asctime} {module} {process:d} {thread:d} {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": "WARNING",
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": os.environ.get("DJANGO_LOG_LEVEL", "WARNING"),
+            "propagate": False,
+        },
+        "django.request": {
+            "handlers": ["console"],
+            "level": "ERROR",
+            "propagate": False,
+        },
+    },
+}
