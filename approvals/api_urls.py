@@ -1,4 +1,9 @@
-"""Stub API URL configuration for approval log endpoints."""
-from django.urls import path
+"""API URL configuration for approval log endpoints."""
+from rest_framework.routers import DefaultRouter
 
-urlpatterns: list = []
+from .api_views import ApprovalLogViewSet
+
+router = DefaultRouter()
+router.register(r"", ApprovalLogViewSet, basename="approval-log")
+
+urlpatterns = router.urls

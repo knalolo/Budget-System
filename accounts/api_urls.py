@@ -1,4 +1,9 @@
-"""Stub API URL configuration for accounts authentication endpoints."""
+"""API URL configuration for accounts authentication endpoints."""
 from django.urls import path
 
-urlpatterns: list = []
+from accounts.api_views import MeView, TokenView
+
+urlpatterns = [
+    path("me/", MeView.as_view(), name="auth-me"),
+    path("token/", TokenView.as_view(), name="auth-token"),
+]

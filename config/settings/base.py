@@ -219,24 +219,87 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 # ---------------------------------------------------------------------------
 
 CURRENCY_CHOICES = [
-    ("MYR", "Malaysian Ringgit (MYR)"),
-    ("USD", "US Dollar (USD)"),
-    ("EUR", "Euro (EUR)"),
-    ("SGD", "Singapore Dollar (SGD)"),
+    ("SGD", "SG$"),
+    ("USD", "US$"),
+    ("EUR", "EUR"),
 ]
 
-DEFAULT_CURRENCY = "MYR"
+DEFAULT_CURRENCY = "SGD"
 
-STATUS_PENDING = "pending"
-STATUS_APPROVED = "approved"
-STATUS_REJECTED = "rejected"
-STATUS_CANCELLED = "cancelled"
-STATUS_COMPLETED = "completed"
+# Purchase Request statuses
+PR_STATUS_DRAFT = "draft"
+PR_STATUS_PENDING_PCM = "pending_pcm"
+PR_STATUS_PENDING_FINAL = "pending_final"
+PR_STATUS_APPROVED = "approved"
+PR_STATUS_REJECTED = "rejected"
+PR_STATUS_PO_SENT = "po_sent"
+PR_STATUS_ORDERED = "ordered"
+PR_STATUS_COMPLETED = "completed"
 
-APPROVAL_STATUS_CHOICES = [
-    (STATUS_PENDING, "Pending"),
-    (STATUS_APPROVED, "Approved"),
-    (STATUS_REJECTED, "Rejected"),
-    (STATUS_CANCELLED, "Cancelled"),
-    (STATUS_COMPLETED, "Completed"),
+PR_STATUS_CHOICES = [
+    (PR_STATUS_DRAFT, "Draft"),
+    (PR_STATUS_PENDING_PCM, "Pending PCM Review"),
+    (PR_STATUS_PENDING_FINAL, "Pending Final Review"),
+    (PR_STATUS_APPROVED, "Approved"),
+    (PR_STATUS_REJECTED, "Rejected"),
+    (PR_STATUS_PO_SENT, "PO Sent"),
+    (PR_STATUS_ORDERED, "Ordered"),
+    (PR_STATUS_COMPLETED, "Completed"),
 ]
+
+# Payment Release statuses
+PAYMENT_STATUS_CHOICES = [
+    ("draft", "Draft"),
+    ("pending_pcm", "Pending PCM Review"),
+    ("pending_final", "Pending Final Review"),
+    ("approved", "Approved"),
+    ("rejected", "Rejected"),
+]
+
+# Delivery Submission statuses
+DELIVERY_STATUS_CHOICES = [
+    ("submitted", "Submitted"),
+    ("saved", "Saved"),
+]
+
+# Approval decision choices
+DECISION_CHOICES = [
+    ("pending", "Pending"),
+    ("approved", "Approved"),
+    ("rejected", "Rejected"),
+]
+
+# User roles
+ROLE_REQUESTER = "requester"
+ROLE_PCM_APPROVER = "pcm_approver"
+ROLE_FINAL_APPROVER = "final_approver"
+ROLE_ADMIN = "admin"
+
+ROLE_CHOICES = [
+    (ROLE_REQUESTER, "Requester"),
+    (ROLE_PCM_APPROVER, "PCM Approver"),
+    (ROLE_FINAL_APPROVER, "Final Approver"),
+    (ROLE_ADMIN, "Admin"),
+]
+
+# File type choices
+FILE_TYPE_CHOICES = [
+    ("quotation", "Quotation"),
+    ("new_order_list", "New Order List"),
+    ("invoice", "Invoice"),
+    ("proforma_invoice", "Proforma Invoice"),
+    ("delivery_order", "Delivery Order"),
+    ("sales_order", "Sales Order"),
+    ("po_document", "PO Document"),
+    ("other", "Other"),
+]
+
+# Allowed file extensions
+ALLOWED_FILE_EXTENSIONS = [
+    ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".pdf", ".jpg", ".jpeg", ".png", ".gif", ".bmp",
+    ".mp4", ".avi", ".mov", ".mp3", ".wav",
+]
+
+MAX_FILES_PER_REQUEST = 10
+MAX_FILE_SIZE_BYTES = 1_073_741_824  # 1 GB
