@@ -1,0 +1,57 @@
+/*
+ * Application-level CSS overrides and utilities.
+ * Tailwind CSS is loaded via CDN Play script; this file handles
+ * custom styles that cannot be expressed with utility classes alone.
+ */
+
+/* -----------------------------------------------------------------------
+ * HTMX loading indicator
+ * ----------------------------------------------------------------------- */
+
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
+/* -----------------------------------------------------------------------
+ * Form focus ring
+ * ----------------------------------------------------------------------- */
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: 2px solid #2563eb;
+    outline-offset: 0;
+}
+
+/* -----------------------------------------------------------------------
+ * Table utilities
+ * ----------------------------------------------------------------------- */
+
+.table-auto th,
+.table-auto td {
+    padding: 0.625rem 0.75rem;
+    vertical-align: middle;
+}
+
+/* -----------------------------------------------------------------------
+ * Status badge colours (used by Alpine + class binding)
+ * ----------------------------------------------------------------------- */
+
+.badge-pending  { background-color: #fef9c3; color: #854d0e; }
+.badge-approved { background-color: #dcfce7; color: #166534; }
+.badge-rejected { background-color: #fee2e2; color: #991b1b; }
+.badge-cancelled { background-color: #f3f4f6; color: #374151; }
+.badge-completed { background-color: #dbeafe; color: #1e40af; }
+
+/* -----------------------------------------------------------------------
+ * Sidebar transition helpers
+ * ----------------------------------------------------------------------- */
+
+aside {
+    min-width: 4rem; /* matches w-16 = 64px */
+}

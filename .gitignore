@@ -1,5 +1,7 @@
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 
 # Virtual environments
 .venv/
@@ -10,12 +12,35 @@ env/
 db.sqlite3
 *.sqlite3
 
+# Django collected assets and uploads
+staticfiles/
+media/
+
 # Django / local settings
 .env
 .env.*
+!.env.example
+
+# Compiled / distribution
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
 
 # Editor and OS files
 .vscode/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Docker
+docker/nginx/*.pid
+
+# Logs
+*.log
