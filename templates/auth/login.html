@@ -1,0 +1,131 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign In - Procurement System</title>
+
+    <!-- Tailwind CSS (Play CDN - no build step required) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50:  '#eff6ff',
+                            100: '#dbeafe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                            800: '#1e40af',
+                            900: '#1e3a8a',
+                        },
+                    },
+                },
+            },
+        };
+    </script>
+</head>
+<body class="min-h-screen bg-gray-100 flex items-center justify-center px-4">
+
+<div class="w-full max-w-md">
+
+    <!-- Card -->
+    <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+
+        <!-- Header band -->
+        <div class="bg-brand-800 px-8 py-6 text-center">
+            <div class="inline-flex items-center justify-center w-12 h-12 bg-brand-600 rounded-xl mb-3">
+                <span class="text-white font-bold text-lg">PS</span>
+            </div>
+            <h1 class="text-xl font-semibold text-white">Procurement System</h1>
+            <p class="text-brand-200 text-sm mt-1">Internal procurement &amp; approval platform</p>
+        </div>
+
+        <!-- Body -->
+        <div class="px-8 py-8 space-y-6">
+
+            <!-- Flash messages -->
+            {% if messages %}
+            <div class="space-y-2">
+                {% for message in messages %}
+                <div class="rounded-lg border px-4 py-3 text-sm
+                    {% if message.tags == 'error' %}bg-red-50 border-red-200 text-red-800
+                    {% elif message.tags == 'warning' %}bg-yellow-50 border-yellow-200 text-yellow-800
+                    {% elif message.tags == 'success' %}bg-green-50 border-green-200 text-green-800
+                    {% else %}bg-blue-50 border-blue-200 text-blue-800{% endif %}">
+                    {{ message }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Sign in with Microsoft button -->
+            <form method="post" action="{% url 'accounts:login' %}">
+                {% csrf_token %}
+                <button
+                    type="submit"
+                    class="w-full flex items-center justify-center gap-3 bg-white border border-gray-300 rounded-lg px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-colors shadow-sm"
+                >
+                    <!-- Microsoft logo SVG -->
+                    <svg class="w-5 h-5 flex-shrink-0" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+                        <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+                        <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+                        <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+                    </svg>
+                    Sign in with Microsoft 365
+                </button>
+            </form>
+
+            {% if dev_users %}
+            <!-- -------------------------------------------------------- -->
+            <!-- DEV LOGIN PANEL  (only rendered when DEBUG=True)          -->
+            <!-- -------------------------------------------------------- -->
+            <div class="border-t border-gray-200 pt-6">
+                <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+                    Developer Login
+                </p>
+                <form method="post" action="{% url 'accounts:dev-login' %}" class="space-y-3">
+                    {% csrf_token %}
+                    <div>
+                        <label for="user_id" class="block text-sm font-medium text-gray-700 mb-1">
+                            Log in as user
+                        </label>
+                        <select
+                            id="user_id"
+                            name="user_id"
+                            class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                            <option value="">-- select a user --</option>
+                            {% for u in dev_users %}
+                            <option value="{{ u.pk }}">
+                                {{ u.username }}
+                                {% if u.get_full_name %} ({{ u.get_full_name }}){% endif %}
+                                {% if u.profile %} [{{ u.profile.get_role_display }}]{% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button
+                        type="submit"
+                        class="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                    >
+                        Log in (dev)
+                    </button>
+                </form>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+
+    <p class="text-center text-xs text-gray-400 mt-6">
+        Internal use only &mdash; unauthorised access is prohibited.
+    </p>
+</div>
+
+</body>
+</html>
