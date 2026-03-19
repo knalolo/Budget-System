@@ -1,9 +1,7 @@
-from django.db import models
-
-# Create your models here.
 from decimal import Decimal
-from django.db import models
+
 from django.core.exceptions import ValidationError
+from django.db import models, transaction
 
 
 class TimeStampedModel(models.Model):
@@ -113,7 +111,6 @@ class ProjectBudget(TimeStampedModel):
         )
 
     def save(self, *args, **kwargs):
-        # 如果 approved_budget 还没填，就用 internal_cost + external_cost 自动带出
         if self.approved_budget in (None, Decimal("0"), Decimal("0.00")):
             self.approved_budget = (self.internal_cost or Decimal("0.00")) + (
                 self.external_cost or Decimal("0.00")
@@ -140,72 +137,36 @@ class UserProfile(TimeStampedModel):
 
 class PORequest(TimeStampedModel):
     request_no = models.CharField(max_length=50, unique=True)
-
     project = models.ForeignKey(
         Project,
         on_delete=models.PROTECT,
         related_name="po_requests",
     )
-
     cost_item = models.ForeignKey(
         CostItem,
         on_delete=models.PROTECT,
         related_name="po_requests",
     )
-
     requester_name = models.CharField(max_length=255)
     requester_email = models.EmailField(blank=True)
-
     supplier_name = models.CharField(max_length=255)
     description = models.TextField()
-
     quantity = models.DecimalField(max_digits=12, decimal_places=2, default=1)
     unit_price = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
-
     currency = models.CharField(max_length=10, default="EUR")
     needed_date = models.DateField(null=True, blank=True)
     request_date = models.DateField(auto_now_add=True)
-
     status = models.CharField(
         max_length=20,
         choices=PORequestStatus.choices,
         default=PORequestStatus.DRAFT,
     )
-
     approver_name = models.CharField(max_length=255, blank=True)
     approval_date = models.DateTimeField(null=True, blank=True)
     approval_comment = models.TextField(blank=True)
-
     over_budget_flag = models.BooleanField(default=False)
     attachment_path = models.CharField(max_length=500, blank=True)
-
-    def save(self, *args, **kwargs):
-        print("🔥 SAVE FUNCTION CALLED")
-
-        super().save(*args, **kwargs)
-
-        print("Status =", self.status)
-
-        # 注意：这里用枚举值
-        if self.status == PORequestStatus.APPROVED:
-            print("✅ APPROVED detected")
-
-            try:
-                budget = ProjectBudget.objects.get(
-                    project=self.project,
-                    cost_item=self.cost_item
-                )
-
-                print("🎯 Budget FOUND:", budget)
-
-                budget.actual_spent += self.amount
-                budget.save()
-
-                print("💰 Budget UPDATED")
-
-            except ProjectBudget.DoesNotExist:
-                print("❌ Budget NOT FOUND")
 
     class Meta:
         ordering = ["-created_at"]
@@ -219,7 +180,6 @@ class PORequest(TimeStampedModel):
                 self.unit_price or Decimal("0.00")
             )
             if self.amount and self.amount != calculated_amount:
-                # V1 简化：允许 amount 手填，但要保证不为负
                 if self.amount < 0:
                     raise ValidationError("Amount cannot be negative.")
             elif not self.amount or self.amount == Decimal("0.00"):
@@ -229,12 +189,23 @@ class PORequest(TimeStampedModel):
             raise ValidationError("Amount cannot be negative.")
 
     def save(self, *args, **kwargs):
-        if (not self.amount or self.amount == Decimal("0.00")) and self.quantity is not None and self.unit_price is not None:
+        previous_status = None
+        if self.pk:
+            previous_status = (
+                PORequest.objects.filter(pk=self.pk)
+                .values_list("status", flat=True)
+                .first()
+            )
+
+        if (
+            (not self.amount or self.amount == Decimal("0.00"))
+            and self.quantity is not None
+            and self.unit_price is not None
+        ):
             self.amount = (self.quantity or Decimal("0.00")) * (
                 self.unit_price or Decimal("0.00")
             )
 
-        # 自动检查是否超预算
         budget = ProjectBudget.objects.filter(
             project=self.project,
             cost_item=self.cost_item,
@@ -247,30 +218,40 @@ class PORequest(TimeStampedModel):
 
         super().save(*args, **kwargs)
 
+        status_just_approved = (
+            self.status == PORequestStatus.APPROVED
+            and previous_status != PORequestStatus.APPROVED
+        )
+        if status_just_approved:
+            self.apply_approval_to_budget()
+
     def apply_approval_to_budget(self):
-        """
-        当 PO 审批通过后，直接记入 actual_spent
-        """
         if self.status != PORequestStatus.APPROVED:
             return
 
-        budget = ProjectBudget.objects.filter(
-            project=self.project,
-            cost_item=self.cost_item,
-        ).first()
+        with transaction.atomic():
+            budget = (
+                ProjectBudget.objects.select_for_update()
+                .filter(
+                    project=self.project,
+                    cost_item=self.cost_item,
+                )
+                .first()
+            )
 
-        if not budget:
-            raise ValidationError("No matching project budget found.")
+            if not budget:
+                raise ValidationError("No matching project budget found.")
 
-        # 防止重复累计：只有首次批准才加
-        if not ApprovalLog.objects.filter(
-            po_request=self,
-            action="ApproveApplied"
-        ).exists():
+            if ApprovalLog.objects.filter(
+                po_request=self,
+                action="ApproveApplied",
+            ).exists():
+                return
+
             budget.actual_spent = (budget.actual_spent or Decimal("0.00")) + (
                 self.amount or Decimal("0.00")
             )
-            budget.save()
+            budget.save(update_fields=["actual_spent", "updated_at"])
 
             ApprovalLog.objects.create(
                 po_request=self,
