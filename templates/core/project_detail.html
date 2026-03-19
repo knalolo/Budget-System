@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Detail</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 24px;
+            background-color: #f7f9fc;
+            color: #222;
+        }
+
+        .back-link {
+            text-decoration: none;
+            color: #1f6feb;
+            margin-bottom: 16px;
+            display: inline-block;
+        }
+
+        .project-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+
+        th, td {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 10px 8px;
+            text-align: left;
+        }
+
+        th {
+            background: #f0f4f8;
+        }
+
+        .number {
+            text-align: right;
+        }
+
+        .summary-row {
+            font-weight: bold;
+            background: #fafafa;
+        }
+    </style>
+</head>
+<body>
+    <a class="back-link" href="/">← Back to Dashboard</a>
+
+    <div class="project-card">
+        <h1>{{ project.project_code }} - {{ project.project_name }}</h1>
+        <p>
+            Manager: {{ project.project_manager }} |
+            Owner: {{ project.project_owner }} |
+            Status: {{ project.status }}
+        </p>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Cost Item</th>
+                    <th class="number">Internal Hours</th>
+                    <th class="number">Internal Cost (€)</th>
+                    <th class="number">External Cost (€)</th>
+                    <th class="number">Approved Budget (€)</th>
+                    <th class="number">Actual Spent (€)</th>
+                    <th class="number">Remaining (€)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for budget in budgets %}
+                    <tr>
+                        <td>{{ budget.cost_item.name }}</td>
+                        <td class="number">{{ budget.internal_hours }}</td>
+                        <td class="number">{{ budget.internal_cost }}</td>
+                        <td class="number">{{ budget.external_cost }}</td>
+                        <td class="number">{{ budget.approved_budget }}</td>
+                        <td class="number">{{ budget.actual_spent }}</td>
+                        <td class="number">{{ budget.remaining_budget }}</td>
+                    </tr>
+                {% endfor %}
+                <tr class="summary-row">
+                    <td>Total</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td class="number">{{ project.total_approved_budget }}</td>
+                    <td class="number">{{ project.total_actual_spent }}</td>
+                    <td class="number">{{ project.total_remaining_budget }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
