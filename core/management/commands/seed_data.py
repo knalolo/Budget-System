@@ -138,15 +138,15 @@ class Command(BaseCommand):
             return
 
         created_count = 0
-        for code, name in _DEFAULT_PROJECTS:
+        for mc_number, name in _DEFAULT_PROJECTS:
             _, created = Project.objects.get_or_create(
-                code=code,
+                mc_number=mc_number,
                 defaults={"name": name},
             )
             if created:
                 created_count += 1
-                self.stdout.write(f"  Created Project: {code} - {name}")
+                self.stdout.write(f"  Created Project: {mc_number} - {name}")
             else:
-                self.stdout.write(f"  Skipped (exists): Project '{code}'")
+                self.stdout.write(f"  Skipped (exists): Project '{mc_number}'")
 
         self.stdout.write(f"Project: {created_count} created.")
