@@ -1,0 +1,67 @@
+version: "3.9"
+
+# ============================================================
+# Procurement System — Docker Compose
+# Services: web (Django/Gunicorn), db (PostgreSQL 16), nginx
+# ============================================================
+
+services:
+
+  # ------------------------------------------------------------------
+  # PostgreSQL database
+  # ------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-procurement_db}
+      POSTGRES_USER: ${DB_USER:-procurement_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-procurement_user} -d ${DB_NAME:-procurement_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ------------------------------------------------------------------
+  # Django application (Gunicorn)
+  # ------------------------------------------------------------------
+  web:
+    build: .
+    restart: always
+    env_file: .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DB_HOST: db
+    volumes:
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ------------------------------------------------------------------
+  # Nginx reverse proxy
+  # ------------------------------------------------------------------
+  nginx:
+    image: nginx:1.25-alpine
+    restart: always
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - media_data:/app/media:ro
+      - static_data:/app/staticfiles:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  media_data:
+  static_data:
