@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}{{ payment.request_number }} – Payment Release{% endblock %}
+{% block page_title %}Payment Release Detail{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- Back link -->
+    <a href="{% url 'payments:list' %}" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+        </svg>
+        Back to Payment Releases
+    </a>
+
+    <!-- Header card -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h2 class="text-lg font-semibold text-gray-900 font-mono">{{ payment.request_number }}</h2>
+                <p class="text-sm text-gray-500 mt-0.5">
+                    Submitted by {{ payment.requester.get_full_name|default:payment.requester.username }}
+                    on {{ payment.created_at|date:"d M Y H:i" }}
+                </p>
+            </div>
+
+            <!-- Status + workflow actions -->
+            {% include "payments/_detail_status.html" %}
+        </div>
+
+        <!-- Details grid -->
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 px-6 py-6">
+
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Vendor</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ payment.vendor }}</dd>
+            </div>
+
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Project (MC Number)</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ payment.project }}</dd>
+            </div>
+
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Expense Category</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ payment.expense_category }}</dd>
+            </div>
+
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Total Amount</dt>
+                <dd class="mt-1 text-sm font-semibold text-gray-900">
+                    {{ payment.get_currency_display }} {{ payment.total_price|floatformat:2 }}
+                </dd>
+            </div>
+
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">PO Number</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ payment.po_number }}</dd>
+            </div>
+
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Target Payment</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ payment.target_payment }}</dd>
+            </div>
+
+            {% if payment.purchase_request %}
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Linked Purchase Request</dt>
+                <dd class="mt-1 text-sm text-brand-600">
+                    <a href="{% url 'orders:detail' pk=payment.purchase_request.pk %}" class="hover:underline">
+                        {{ payment.purchase_request.request_number }}
+                    </a>
+                </dd>
+            </div>
+            {% endif %}
+
+            <div class="sm:col-span-2">
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Description</dt>
+                <dd class="mt-1 text-sm text-gray-700 whitespace-pre-line">{{ payment.description }}</dd>
+            </div>
+
+            <div class="sm:col-span-2">
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Justification</dt>
+                <dd class="mt-1 text-sm text-gray-700 whitespace-pre-line">{{ payment.justification }}</dd>
+            </div>
+
+        </dl>
+
+        <!-- Edit button (draft only) -->
+        {% if can_edit %}
+        <div class="px-6 pb-4">
+            <a
+                href="{% url 'payments:update' pk=payment.pk %}"
+                class="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                </svg>
+                Edit
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Approval section -->
+    {% if can_approve %}
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" x-data="{ comment: '' }">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800">Approval Decision</h3>
+            <p class="text-sm text-gray-500 mt-0.5">
+                {% if payment.status == 'pending_pcm' %}PCM level review required.{% else %}Final level review required.{% endif %}
+            </p>
+        </div>
+        <div class="px-6 py-4 space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Comment (optional)</label>
+                <textarea
+                    x-model="comment"
+                    rows="3"
+                    placeholder="Add a comment..."
+                    class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                ></textarea>
+            </div>
+            <div class="flex gap-3">
+                <form method="post" action="{% url 'payments:approve' pk=payment.pk %}"
+                      hx-post="{% url 'payments:approve' pk=payment.pk %}"
+                      hx-target="#detail-status"
+                      hx-swap="outerHTML"
+                      hx-include="[name='comment']">
+                    {% csrf_token %}
+                    <input type="hidden" name="comment" :value="comment" />
+                    <button type="submit"
+                            class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors">
+                        Approve
+                    </button>
+                </form>
+                <form method="post" action="{% url 'payments:reject' pk=payment.pk %}"
+                      hx-post="{% url 'payments:reject' pk=payment.pk %}"
+                      hx-target="#detail-status"
+                      hx-swap="outerHTML"
+                      hx-include="[name='comment']">
+                    {% csrf_token %}
+                    <input type="hidden" name="comment" :value="comment" />
+                    <button type="submit"
+                            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors">
+                        Reject
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- PCM Approval result -->
+    {% if payment.pcm_approver %}
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800">PCM Review</h3>
+        </div>
+        <dl class="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 px-6 py-4 text-sm">
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Reviewer</dt>
+                <dd class="mt-1 text-gray-900">{{ payment.pcm_approver.get_full_name|default:payment.pcm_approver.username }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Decision</dt>
+                <dd class="mt-1">
+                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                        {% if payment.pcm_decision == 'approved' %}bg-green-100 text-green-800
+                        {% elif payment.pcm_decision == 'rejected' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-700{% endif %}">
+                        {{ payment.get_pcm_decision_display }}
+                    </span>
+                </dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Decided At</dt>
+                <dd class="mt-1 text-gray-700">{{ payment.pcm_decided_at|date:"d M Y H:i" }}</dd>
+            </div>
+            {% if payment.pcm_comment %}
+            <div class="sm:col-span-3">
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Comment</dt>
+                <dd class="mt-1 text-gray-700 whitespace-pre-line">{{ payment.pcm_comment }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+    </div>
+    {% endif %}
+
+    <!-- Final Approval result -->
+    {% if payment.final_approver %}
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800">Final Review</h3>
+        </div>
+        <dl class="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 px-6 py-4 text-sm">
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Reviewer</dt>
+                <dd class="mt-1 text-gray-900">{{ payment.final_approver.get_full_name|default:payment.final_approver.username }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Decision</dt>
+                <dd class="mt-1">
+                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                        {% if payment.final_decision == 'approved' %}bg-green-100 text-green-800
+                        {% elif payment.final_decision == 'rejected' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-700{% endif %}">
+                        {{ payment.get_final_decision_display }}
+                    </span>
+                </dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Decided At</dt>
+                <dd class="mt-1 text-gray-700">{{ payment.final_decided_at|date:"d M Y H:i" }}</dd>
+            </div>
+            {% if payment.final_comment %}
+            <div class="sm:col-span-3">
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Comment</dt>
+                <dd class="mt-1 text-gray-700 whitespace-pre-line">{{ payment.final_comment }}</dd>
+            </div>
+            {% endif %}
+        </dl>
+    </div>
+    {% endif %}
+
+    <!-- Attachments -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800">Attachments</h3>
+        </div>
+        <div class="px-6 py-4 space-y-4">
+
+            {% include "payments/_attachments_list.html" with attachments=payment.attachments.all %}
+
+            <!-- Upload form -->
+            <form
+                method="post"
+                action="{% url 'payments:upload' pk=payment.pk %}"
+                enctype="multipart/form-data"
+                hx-post="{% url 'payments:upload' pk=payment.pk %}"
+                hx-target="#attachments-list"
+                hx-swap="outerHTML"
+                hx-encoding="multipart/form-data"
+                class="mt-4 flex flex-wrap items-end gap-3"
+            >
+                {% csrf_token %}
+                <div class="flex-1 min-w-0">
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Upload File</label>
+                    <input
+                        type="file"
+                        name="file"
+                        required
+                        class="block w-full text-sm text-gray-500
+                            file:mr-3 file:py-1.5 file:px-3
+                            file:rounded-lg file:border-0
+                            file:text-sm file:font-medium
+                            file:bg-brand-50 file:text-brand-700
+                            hover:file:bg-brand-100 cursor-pointer"
+                    />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">File Type</label>
+                    <select
+                        name="file_type"
+                        class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                        <option value="invoice">Invoice</option>
+                        <option value="proforma_invoice">Proforma Invoice</option>
+                        <option value="delivery_order">Delivery Order</option>
+                        <option value="sales_order">Sales Order</option>
+                        <option value="po_document">PO Document</option>
+                        <option value="quotation">Quotation</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <button
+                    type="submit"
+                    class="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                >
+                    Upload
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Approval history -->
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800">Approval History</h3>
+        </div>
+        <div class="divide-y divide-gray-100">
+            {% for log in payment.approval_logs.all %}
+            <div class="px-6 py-3 flex items-start gap-3 text-sm">
+                <div class="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center font-semibold text-xs flex-shrink-0">
+                    {{ log.action_by.username|slice:":2"|upper }}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-2">
+                        <span class="font-medium text-gray-800">
+                            {{ log.action_by.get_full_name|default:log.action_by.username }}
+                        </span>
+                        <span class="text-xs text-gray-400 flex-shrink-0">{{ log.created_at|date:"d M Y H:i" }}</span>
+                    </div>
+                    <p class="text-gray-600 mt-0.5">
+                        <span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
+                            {{ log.get_action_display }}
+                        </span>
+                        {% if log.old_status and log.new_status %}
+                        <span class="text-gray-400 mx-1">{{ log.old_status }} &rarr; {{ log.new_status }}</span>
+                        {% endif %}
+                    </p>
+                    {% if log.comment %}
+                    <p class="mt-1 text-gray-500 italic">"{{ log.comment }}"</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% empty %}
+            <p class="px-6 py-4 text-sm text-gray-400">No history yet.</p>
+            {% endfor %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}

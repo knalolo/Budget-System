@@ -1,0 +1,26 @@
+Dear {{ requester_name }},
+
+We regret to inform you that your Payment Release has been REJECTED.
+
+PAYMENT DETAILS
+---------------
+Request Number : {{ request_number }}
+Vendor         : {{ vendor }}
+Amount         : {{ currency }} {{ amount }}
+Description    : {{ description }}
+{% if project %}Project        : {{ project }}
+{% endif %}Rejected At    : {{ rejected_at }}
+
+{% if rejection_comment %}REASON FOR REJECTION
+--------------------
+{{ rejection_comment }}
+
+{% endif %}If you believe this decision is incorrect or wish to resubmit with amendments, please contact
+the PCM team.
+
+{% if detail_url %}View your payment release at:
+{{ detail_url }}
+
+{% endif %}
+---
+This is an automated notification from the KEY Procurement System. Please do not reply to this email.

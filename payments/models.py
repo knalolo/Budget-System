@@ -1,4 +1,4 @@
-"""Models for the orders app: Project, ExpenseCategory, and PurchaseRequest."""
+"""Models for the payments app: PaymentRelease."""
 
 import logging
 
@@ -14,55 +14,31 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
-class Project(models.Model):
-    """An MC-numbered project that purchase requests are charged against."""
-
-    mc_number = models.CharField(max_length=20, unique=True)
-    name = models.CharField(max_length=200)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["mc_number"]
-
-    def __str__(self) -> str:
-        return f"{self.mc_number} - {self.name}"
-
-
-class ExpenseCategory(models.Model):
-    """A category used to classify project expenses (e.g., Prototype, Materials)."""
-
-    name = models.CharField(max_length=100, unique=True)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["name"]
-        verbose_name_plural = "Expense categories"
-
-    def __str__(self) -> str:
-        return self.name
-
-
-class PurchaseRequest(models.Model):
-    """A purchase request submitted by a requester for approval and procurement."""
+class PaymentRelease(models.Model):
+    """A payment release request submitted for vendor invoice payment."""
 
     # --- Identity ---
     request_number = models.CharField(max_length=50, unique=True, blank=True)
 
     # --- Relationships ---
+    purchase_request = models.ForeignKey(
+        "orders.PurchaseRequest",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="payment_releases",
+    )
     requester = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="purchase_requests",
+        related_name="payment_releases",
     )
     expense_category = models.ForeignKey(
-        ExpenseCategory,
+        "orders.ExpenseCategory",
         on_delete=models.PROTECT,
     )
     project = models.ForeignKey(
-        Project,
+        "orders.Project",
         on_delete=models.PROTECT,
     )
 
@@ -75,13 +51,16 @@ class PurchaseRequest(models.Model):
     )
     total_price = models.DecimalField(max_digits=14, decimal_places=2)
     justification = models.TextField()
-    po_required = models.BooleanField(default=False)
+    po_number = models.CharField(
+        max_length=50,
+        help_text='Either "N/A" or a specific PO number.',
+    )
     target_payment = models.CharField(max_length=50)
 
     # --- Workflow status ---
     status = models.CharField(
         max_length=20,
-        choices=settings.PR_STATUS_CHOICES,
+        choices=settings.PAYMENT_STATUS_CHOICES,
         default="draft",
     )
 
@@ -91,7 +70,7 @@ class PurchaseRequest(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="pcm_reviewed_prs",
+        related_name="pcm_reviewed_payments",
     )
     pcm_decision = models.CharField(
         max_length=20,
@@ -107,7 +86,7 @@ class PurchaseRequest(models.Model):
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
-        related_name="final_reviewed_prs",
+        related_name="final_reviewed_payments",
     )
     final_decision = models.CharField(
         max_length=20,
@@ -137,7 +116,7 @@ class PurchaseRequest(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         if not self.request_number:
-            self.request_number = generate_request_number("PR")
+            self.request_number = generate_request_number("RP")
         super().save(*args, **kwargs)
 
     # ------------------------------------------------------------------
@@ -167,37 +146,3 @@ class PurchaseRequest(models.Model):
     @property
     def can_be_deleted(self) -> bool:
         return self.status == "draft"
-
-    @property
-    def requires_po(self) -> bool:
-        """
-        Return True when this PR's total price meets or exceeds the PO
-        threshold configured in SystemConfig for its currency.
-
-        Falls back to the stored po_required flag if no SystemConfig entry
-        is found for the currency.
-        """
-        from core.models import SystemConfig  # local import avoids circular
-
-        currency_key_map = {
-            "SGD": "po_threshold_sgd",
-            "USD": "po_threshold_usd",
-            "EUR": "po_threshold_eur",
-        }
-        config_key = currency_key_map.get(self.currency)
-        if config_key is None:
-            return self.po_required
-
-        threshold = SystemConfig.get_value(config_key)
-        if threshold is None:
-            return self.po_required
-
-        try:
-            return self.total_price >= threshold
-        except TypeError:
-            logger.warning(
-                "PO threshold for %s (%r) is not numeric; falling back to po_required.",
-                self.currency,
-                threshold,
-            )
-            return self.po_required

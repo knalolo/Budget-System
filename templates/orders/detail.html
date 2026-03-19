@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+{% load procurement_tags %}
+
+{% block title %}{{ purchase_request.request_number }} - Procurement System{% endblock %}
+{% block page_title %}{{ purchase_request.request_number }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    {# ------------------------------------------------------------------ #}
+    {# Header card                                                         #}
+    {# ------------------------------------------------------------------ #}
+    <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <h2 class="text-xl font-bold text-gray-900">{{ purchase_request.request_number }}</h2>
+                    {% include "components/status_badge.html" with status=purchase_request.status status_display=purchase_request.get_status_display %}
+                    {% if purchase_request.po_required %}
+                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">PO Required</span>
+                    {% endif %}
+                </div>
+                <p class="mt-1 text-sm text-gray-500">
+                    Submitted by
+                    <span class="font-medium text-gray-700">{{ purchase_request.requester.get_full_name|default:purchase_request.requester.username }}</span>
+                    on {{ purchase_request.created_at|date:"d M Y, H:i" }}
+                </p>
+            </div>
+
+            {# Action buttons – context-dependent #}
+            <div class="flex flex-wrap items-center gap-2">
+                {% if purchase_request.is_draft %}
+                    {# Draft actions #}
+                    <a
+                        href="{% url 'orders:purchase-request-edit' purchase_request.pk %}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125" />
+                        </svg>
+                        Edit
+                    </a>
+                    <form method="post" action="{% url 'orders:purchase-request-submit' purchase_request.pk %}">
+                        {% csrf_token %}
+                        <button
+                            type="submit"
+                            class="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 transition-colors"
+                        >
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                            </svg>
+                            Submit for Approval
+                        </button>
+                    </form>
+
+                {% elif purchase_request.status == "approved" %}
+                    {# Post-approval actions #}
+                    {% if not purchase_request.po_required %}
+                    <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
+                            Mark as Ordered
+                        </button>
+                    </form>
+                    {% else %}
+                    <form method="post" action="{% url 'orders:purchase-request-mark-po-sent' purchase_request.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors">
+                            Mark PO Sent
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
+                            Mark as Ordered
+                        </button>
+                    </form>
+                    {% endif %}
+
+                {% elif purchase_request.status == "po_sent" %}
+                    <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
+                            Mark as Ordered
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+
+        {# Approval actions (approve / reject) for eligible approvers #}
+        {% if can_approve %}
+        <div class="mt-5 pt-5 border-t border-gray-100">
+            {% include "components/approval_actions.html" with purchase_request=purchase_request can_approve=can_approve %}
+        </div>
+        {% endif %}
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# Two-column layout: details + sidebar                                #}
+    {# ------------------------------------------------------------------ #}
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
+        {# Main column #}
+        <div class="lg:col-span-2 space-y-6">
+
+            {# Request Information #}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Request Information</h3>
+                <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 text-sm">
+                    <div>
+                        <dt class="font-medium text-gray-500">Expense Category</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.expense_category }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Project (MC Number)</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.project }}</dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="font-medium text-gray-500">Description</dt>
+                        <dd class="mt-1 text-gray-900 whitespace-pre-wrap">{{ purchase_request.description }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Vendor</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.vendor }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Target Payment</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.target_payment }}</dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt class="font-medium text-gray-500">Justification</dt>
+                        <dd class="mt-1 text-gray-900 whitespace-pre-wrap">{{ purchase_request.justification }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            {# Financial Information #}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Financial Information</h3>
+                <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3 text-sm">
+                    <div>
+                        <dt class="font-medium text-gray-500">Currency</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.get_currency_display }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Total Price</dt>
+                        <dd class="mt-1 text-lg font-bold text-gray-900">
+                            {{ purchase_request.currency|currency_symbol }} {{ purchase_request.total_price|floatformat:2 }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">PO Required</dt>
+                        <dd class="mt-1">
+                            {% if purchase_request.po_required %}
+                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">Yes</span>
+                            {% else %}
+                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600">N/A</span>
+                            {% endif %}
+                        </dd>
+                    </div>
+                </dl>
+            </div>
+
+            {# File Attachments #}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+                    <h3 class="text-sm font-semibold text-gray-900">Attachments</h3>
+                    <span class="text-xs text-gray-400">{{ attachments.count }} file{{ attachments.count|pluralize }}</span>
+                </div>
+
+                {# Upload zone (only for draft) #}
+                {% if purchase_request.is_draft %}
+                <div class="mb-4">
+                    {% url 'orders:purchase-request-upload' purchase_request.pk as upload_url %}
+                    {% include "components/file_upload.html" with upload_url=upload_url %}
+                </div>
+                {% endif %}
+
+                <div id="attachments-container">
+                    {% include "orders/_attachments_list.html" with attachments=attachments purchase_request=purchase_request %}
+                </div>
+            </div>
+
+        </div>
+
+        {# Sidebar column #}
+        <div class="space-y-6">
+
+            {# Approval Status summary #}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Approval Status</h3>
+
+                <div class="space-y-4 text-sm">
+                    {# PCM Level #}
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-medium text-gray-600">PCM Review</span>
+                            {% include "components/status_badge.html" with status=purchase_request.pcm_decision status_display=purchase_request.get_pcm_decision_display %}
+                        </div>
+                        {% if purchase_request.pcm_approver %}
+                        <p class="text-xs text-gray-400">
+                            {{ purchase_request.pcm_approver.get_full_name|default:purchase_request.pcm_approver.username }}
+                            {% if purchase_request.pcm_decided_at %}
+                            &bull; {{ purchase_request.pcm_decided_at|date:"d M Y" }}
+                            {% endif %}
+                        </p>
+                        {% if purchase_request.pcm_comment %}
+                        <p class="mt-1 text-xs text-gray-500 italic">"{{ purchase_request.pcm_comment }}"</p>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+
+                    {# Final Level #}
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="font-medium text-gray-600">Final Review</span>
+                            {% include "components/status_badge.html" with status=purchase_request.final_decision status_display=purchase_request.get_final_decision_display %}
+                        </div>
+                        {% if purchase_request.final_approver %}
+                        <p class="text-xs text-gray-400">
+                            {{ purchase_request.final_approver.get_full_name|default:purchase_request.final_approver.username }}
+                            {% if purchase_request.final_decided_at %}
+                            &bull; {{ purchase_request.final_decided_at|date:"d M Y" }}
+                            {% endif %}
+                        </p>
+                        {% if purchase_request.final_comment %}
+                        <p class="mt-1 text-xs text-gray-500 italic">"{{ purchase_request.final_comment }}"</p>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            {# Metadata #}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Details</h3>
+                <dl class="space-y-3 text-sm">
+                    <div class="flex justify-between">
+                        <dt class="text-gray-500">Created</dt>
+                        <dd class="text-gray-900">{{ purchase_request.created_at|date:"d M Y" }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-gray-500">Last updated</dt>
+                        <dd class="text-gray-900">{{ purchase_request.updated_at|date:"d M Y, H:i" }}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                        <dt class="text-gray-500">Requester</dt>
+                        <dd class="text-gray-900">{{ purchase_request.requester.get_full_name|default:purchase_request.requester.username }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            {# Back link #}
+            <div>
+                <a
+                    href="{% url 'orders:purchase-request-list' %}"
+                    class="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+                    </svg>
+                    Back to list
+                </a>
+            </div>
+
+        </div>
+    </div>
+
+    {# ------------------------------------------------------------------ #}
+    {# Approval Timeline                                                   #}
+    {# ------------------------------------------------------------------ #}
+    <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+        <h3 class="text-sm font-semibold text-gray-900 mb-6 pb-2 border-b border-gray-100">Approval History</h3>
+        {% include "components/timeline.html" with approval_logs=approval_history %}
+    </div>
+
+</div>
+{% endblock %}

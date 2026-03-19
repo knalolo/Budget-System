@@ -1,4 +1,9 @@
-"""Stub API URL configuration for payment release endpoints."""
-from django.urls import path
+"""API URL configuration for PaymentRelease endpoints."""
+from rest_framework.routers import DefaultRouter
 
-urlpatterns: list = []
+from .api_views import PaymentReleaseViewSet
+
+router = DefaultRouter()
+router.register(r"", PaymentReleaseViewSet, basename="payment-release")
+
+urlpatterns = router.urls

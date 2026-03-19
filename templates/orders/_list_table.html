@@ -1,0 +1,42 @@
+{% load procurement_tags %}
+{# Partial: table body rows, swapped via HTMX on filter/tab changes #}
+{% if purchase_requests %}
+<tbody class="divide-y divide-gray-100 bg-white">
+    {% for pr in purchase_requests %}
+    <tr
+        class="hover:bg-gray-50 cursor-pointer transition-colors"
+        onclick="window.location='{% url 'orders:purchase-request-detail' pr.pk %}'"
+    >
+        <td class="whitespace-nowrap py-3 pl-4 pr-3 text-sm font-medium text-brand-600 sm:pl-6">
+            {{ pr.request_number }}
+        </td>
+        <td class="whitespace-nowrap px-3 py-3 text-sm text-gray-700">
+            {{ pr.requester.get_full_name|default:pr.requester.username }}
+        </td>
+        <td class="px-3 py-3 text-sm text-gray-700 max-w-xs truncate">
+            {{ pr.description|truncatechars:60 }}
+        </td>
+        <td class="whitespace-nowrap px-3 py-3 text-sm text-gray-700">
+            {{ pr.vendor }}
+        </td>
+        <td class="whitespace-nowrap px-3 py-3 text-sm text-gray-900 font-medium text-right">
+            {{ pr.currency|currency_symbol }} {{ pr.total_price|floatformat:2 }}
+        </td>
+        <td class="whitespace-nowrap px-3 py-3 text-sm">
+            {% include "components/status_badge.html" with status=pr.status status_display=pr.get_status_display %}
+        </td>
+        <td class="whitespace-nowrap px-3 py-3 text-sm text-gray-500">
+            {{ pr.created_at|date:"d M Y" }}
+        </td>
+    </tr>
+    {% endfor %}
+</tbody>
+{% else %}
+<tbody>
+    <tr>
+        <td colspan="7" class="py-12 text-center text-sm text-gray-400">
+            No purchase requests found.
+        </td>
+    </tr>
+</tbody>
+{% endif %}

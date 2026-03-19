@@ -1,0 +1,4 @@
+{% load procurement_tags %}
+<span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-{{ status|status_color }}-100 text-{{ status|status_color }}-800">
+    {{ status_display }}
+</span>

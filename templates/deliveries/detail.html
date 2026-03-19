@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}{{ submission.request_number }}{% endblock %}
+{% block page_title %}Delivery Submission Detail{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto space-y-6">
+
+    <!-- Back link -->
+    <a href="{% url 'deliveries:list' %}" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+        </svg>
+        Back to Deliveries
+    </a>
+
+    <!-- Header card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <h2 class="text-xl font-semibold font-mono text-brand-700">{{ submission.request_number }}</h2>
+                <p class="text-sm text-gray-500 mt-1">Submitted {{ submission.created_at|date:"d M Y, H:i" }}</p>
+            </div>
+            {% if submission.status == "submitted" %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+                Submitted
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
+                Saved
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Details card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Submission Details</h3>
+        <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
+            <div>
+                <dt class="text-gray-500">Requester</dt>
+                <dd class="font-medium text-gray-900 mt-0.5">
+                    {{ submission.requester.get_full_name|default:submission.requester.username }}
+                </dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Vendor</dt>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.vendor }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Currency</dt>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.get_currency_display }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Total Price</dt>
+                <dd class="font-medium text-gray-900 mt-0.5">
+                    {{ submission.currency }}&nbsp;{{ submission.total_price|floatformat:2 }}
+                </dd>
+            </div>
+            {% if submission.purchase_request %}
+            <div class="sm:col-span-2">
+                <dt class="text-gray-500">Linked Purchase Request</dt>
+                <dd class="font-medium text-brand-700 mt-0.5">
+                    {{ submission.purchase_request.request_number }}
+                </dd>
+            </div>
+            {% endif %}
+        </dl>
+    </div>
+
+    <!-- Attachments card -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide">Attached Documents</h3>
+        </div>
+
+        <!-- Attachment list (HTMX-refreshable) -->
+        <div id="attachment-list">
+            {% include "deliveries/_attachment_list.html" %}
+        </div>
+
+        <!-- Upload more files -->
+        <div class="mt-4 pt-4 border-t border-gray-100" x-data="fileUpload()">
+            <p class="text-xs font-medium text-gray-600 mb-2">Upload additional files</p>
+            <form
+                hx-post="{% url 'deliveries:upload' submission.pk %}"
+                hx-target="#attachment-list"
+                hx-swap="innerHTML"
+                hx-encoding="multipart/form-data"
+                class="flex items-center gap-3"
+            >
+                {% csrf_token %}
+                <label class="flex items-center gap-2 cursor-pointer bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-sm hover:bg-gray-100 transition-colors">
+                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    Choose files
+                    <input type="file" name="files" multiple class="sr-only" x-ref="fileInput" @change="selectedFiles = Array.from($event.target.files)" />
+                </label>
+                <span class="text-xs text-gray-500" x-text="selectedFiles.length ? selectedFiles.length + ' file(s) selected' : ''"></span>
+                <button
+                    type="submit"
+                    x-show="selectedFiles.length > 0"
+                    class="bg-brand-600 text-white px-3 py-2 rounded-lg text-sm hover:bg-brand-700 transition-colors"
+                >
+                    Upload
+                </button>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function fileUpload() {
+    return { selectedFiles: [] };
+}
+</script>
+{% endblock %}

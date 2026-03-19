@@ -1,0 +1,70 @@
+{% extends "emails/base_email.html" %}
+
+{% block title %}Approval Required – {{ request_number }}{% endblock %}
+
+{% block content %}
+<p style="margin:0 0 16px 0;">Dear Approver,</p>
+
+<p style="margin:0 0 16px 0;">
+  A <strong>{{ request_type_display }}</strong> has been submitted and requires your approval.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0"
+       style="border:1px solid #e0e0e0;border-radius:4px;margin:0 0 24px 0;">
+  <tr>
+    <td style="padding:12px 16px;background-color:#f0f4f8;border-radius:4px 4px 0 0;">
+      <strong style="color:#1a3a5c;font-size:14px;">Request Details</strong>
+    </td>
+  </tr>
+  <tr>
+    <td style="padding:16px;">
+      <table width="100%" cellpadding="4" cellspacing="0" border="0" style="font-size:14px;">
+        <tr>
+          <td width="40%" style="color:#666666;">Request Number</td>
+          <td style="color:#333333;font-weight:bold;">{{ request_number }}</td>
+        </tr>
+        <tr>
+          <td style="color:#666666;">Requester</td>
+          <td style="color:#333333;">{{ requester_name }}</td>
+        </tr>
+        <tr>
+          <td style="color:#666666;">Vendor</td>
+          <td style="color:#333333;">{{ vendor }}</td>
+        </tr>
+        <tr>
+          <td style="color:#666666;">Amount</td>
+          <td style="color:#333333;">{{ currency }} {{ amount }}</td>
+        </tr>
+        <tr>
+          <td style="color:#666666;">Description</td>
+          <td style="color:#333333;">{{ description }}</td>
+        </tr>
+        {% if project %}
+        <tr>
+          <td style="color:#666666;">Project</td>
+          <td style="color:#333333;">{{ project }}</td>
+        </tr>
+        {% endif %}
+        <tr>
+          <td style="color:#666666;">Submitted At</td>
+          <td style="color:#333333;">{{ submitted_at }}</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
+
+{% if detail_url %}
+<p style="margin:0 0 16px 0;">
+  <a href="{{ detail_url }}"
+     style="display:inline-block;background-color:#1a3a5c;color:#ffffff;padding:10px 24px;
+            text-decoration:none;border-radius:4px;font-size:14px;font-weight:bold;">
+    Review and Approve
+  </a>
+</p>
+{% endif %}
+
+<p style="margin:0;color:#666666;font-size:13px;">
+  Please log in to the procurement system to review the full details and take action.
+</p>
+{% endblock %}

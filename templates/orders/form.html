@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+{% load procurement_tags %}
+
+{% block title %}{{ page_title }} - Procurement System{% endblock %}
+{% block page_title %}{{ page_title }}{% endblock %}
+
+{% block content %}
+<div
+    class="max-w-3xl mx-auto"
+    x-data="{
+        currency: '{{ form.currency.value|default:'SGD' }}',
+        totalPrice: '{{ form.total_price.value|default:'' }}',
+        poRequired: '{{ form.po_required.value|default:'' }}',
+        thresholds: { SGD: 1300, USD: 900, EUR: 800 },
+        get poWarning() {
+            const threshold = this.thresholds[this.currency];
+            if (!threshold || !this.totalPrice) return '';
+            const price = parseFloat(this.totalPrice);
+            if (isNaN(price)) return '';
+            if (price >= threshold) {
+                return 'PO is required for amounts over ' + this.currency + ' ' + threshold.toLocaleString() + '.';
+            }
+            return '';
+        }
+    }"
+>
+
+    <form method="post" enctype="multipart/form-data" id="pr-form">
+        {% csrf_token %}
+
+        <div class="space-y-6">
+
+            {# Form errors #}
+            {% if form.non_field_errors %}
+            <div class="rounded-md bg-red-50 border border-red-200 p-4">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3 text-sm text-red-700">
+                        {{ form.non_field_errors }}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {# Section 1: Classification #}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Classification</h3>
+                <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+
+                    {# Expense Category #}
+                    <div>
+                        <label for="{{ form.expense_category.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                            Project Expense <span class="text-red-500">*</span>
+                        </label>
+                        <select
+                            name="{{ form.expense_category.html_name }}"
+                            id="{{ form.expense_category.id_for_label }}"
+                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.expense_category.errors %}border-red-300{% endif %}"
+                        >
+                            <option value="">-- Select category --</option>
+                            {% for val, label in form.expense_category.field.choices %}
+                            {% if val %}
+                            <option value="{{ val }}" {% if form.expense_category.value|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                        {% if form.expense_category.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.expense_category.errors|join:", " }}</p>
+                        {% endif %}
+                    </div>
+
+                    {# Project / MC Number #}
+                    <div>
+                        <label for="{{ form.project.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                            MC Number <span class="text-red-500">*</span>
+                        </label>
+                        <select
+                            name="{{ form.project.html_name }}"
+                            id="{{ form.project.id_for_label }}"
+                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.project.errors %}border-red-300{% endif %}"
+                        >
+                            <option value="">-- Select project --</option>
+                            {% for val, label in form.project.field.choices %}
+                            {% if val %}
+                            <option value="{{ val }}" {% if form.project.value|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                        {% if form.project.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.project.errors|join:", " }}</p>
+                        {% endif %}
+                    </div>
+
+                </div>
+            </div>
+
+            {# Section 2: Request Details #}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Request Details</h3>
+                <div class="space-y-5">
+
+                    {# Description #}
+                    <div>
+                        <label for="{{ form.description.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                            Description <span class="text-red-500">*</span>
+                        </label>
+                        <textarea
+                            name="{{ form.description.html_name }}"
+                            id="{{ form.description.id_for_label }}"
+                            rows="4"
+                            placeholder="Describe what you are purchasing..."
+                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.description.errors %}border-red-300{% endif %}"
+                        >{{ form.description.value|default:"" }}</textarea>
+                        {% if form.description.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.description.errors|join:", " }}</p>
+                        {% endif %}
+                    </div>
+
+                    {# Vendor #}
+                    <div>
+                        <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                            Vendor <span class="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            name="{{ form.vendor.html_name }}"
+                            id="{{ form.vendor.id_for_label }}"
+                            value="{{ form.vendor.value|default:'' }}"
+                            placeholder="Vendor name or company"
+                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.vendor.errors %}border-red-300{% endif %}"
+                        />
+                        {% if form.vendor.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.vendor.errors|join:", " }}</p>
+                        {% endif %}
+                    </div>
+
+                </div>
+            </div>
+
+            {# Section 3: Financial Info #}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Financial Information</h3>
+                <div class="space-y-5">
+
+                    {# Currency + Total Price #}
+                    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                        <div>
+                            <label for="{{ form.currency.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                                Currency <span class="text-red-500">*</span>
+                            </label>
+                            <select
+                                name="{{ form.currency.html_name }}"
+                                id="{{ form.currency.id_for_label }}"
+                                x-model="currency"
+                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.currency.errors %}border-red-300{% endif %}"
+                            >
+                                {% for val, label in form.currency.field.choices %}
+                                <option value="{{ val }}" {% if form.currency.value == val %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            {% if form.currency.errors %}
+                            <p class="mt-1 text-xs text-red-600">{{ form.currency.errors|join:", " }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div>
+                            <label for="{{ form.total_price.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                                Total Price <span class="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="number"
+                                name="{{ form.total_price.html_name }}"
+                                id="{{ form.total_price.id_for_label }}"
+                                value="{{ form.total_price.value|default:'' }}"
+                                step="0.01"
+                                min="0.01"
+                                placeholder="0.00"
+                                x-model="totalPrice"
+                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.total_price.errors %}border-red-300{% endif %}"
+                            />
+                            {% if form.total_price.errors %}
+                            <p class="mt-1 text-xs text-red-600">{{ form.total_price.errors|join:", " }}</p>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {# PO threshold warning #}
+                    <div
+                        x-show="poWarning"
+                        x-transition
+                        class="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-800"
+                    >
+                        <svg class="w-4 h-4 flex-shrink-0 mt-0.5 text-amber-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                        </svg>
+                        <span x-text="poWarning"></span>
+                    </div>
+
+                    {# Justification #}
+                    <div>
+                        <label for="{{ form.justification.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                            Justification <span class="text-red-500">*</span>
+                        </label>
+                        <textarea
+                            name="{{ form.justification.html_name }}"
+                            id="{{ form.justification.id_for_label }}"
+                            rows="4"
+                            placeholder="Explain why this purchase is needed..."
+                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.justification.errors %}border-red-300{% endif %}"
+                        >{{ form.justification.value|default:"" }}</textarea>
+                        {% if form.justification.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.justification.errors|join:", " }}</p>
+                        {% endif %}
+                    </div>
+
+                    {# PO Required #}
+                    <div>
+                        <fieldset>
+                            <legend class="block text-sm font-medium text-gray-700 mb-2">
+                                Is a new PO required? <span class="text-red-500">*</span>
+                            </legend>
+                            <div class="flex items-center gap-6">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="{{ form.po_required.html_name }}"
+                                        value="True"
+                                        {% if form.po_required.value == True or form.po_required.value == "True" %}checked{% endif %}
+                                        class="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                                    />
+                                    <span class="text-sm text-gray-700">Yes</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="radio"
+                                        name="{{ form.po_required.html_name }}"
+                                        value="False"
+                                        {% if form.po_required.value == False or form.po_required.value == "False" or not form.po_required.value %}checked{% endif %}
+                                        class="h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                                    />
+                                    <span class="text-sm text-gray-700">N/A</span>
+                                </label>
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">
+                                Thresholds: SGD 1,300 / USD 900 / EUR 800. The system will auto-check on submission.
+                            </p>
+                        </fieldset>
+                        {% if form.po_required.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.po_required.errors|join:", " }}</p>
+                        {% endif %}
+                    </div>
+
+                    {# Target Payment #}
+                    <div>
+                        <label for="{{ form.target_payment.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                            Target Payment Date <span class="text-red-500">*</span>
+                        </label>
+                        <input
+                            type="text"
+                            name="{{ form.target_payment.html_name }}"
+                            id="{{ form.target_payment.id_for_label }}"
+                            value="{{ form.target_payment.value|default:'' }}"
+                            placeholder="Jan 2025"
+                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.target_payment.errors %}border-red-300{% endif %}"
+                        />
+                        {% if form.target_payment.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.target_payment.errors|join:", " }}</p>
+                        {% endif %}
+                    </div>
+
+                </div>
+            </div>
+
+            {# Section 4: File Attachments #}
+            {% if not is_create %}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Quotation / Supporting Files</h3>
+
+                {# Upload zone #}
+                {% url 'orders:purchase-request-upload' purchase_request.pk as upload_url %}
+                {% include "components/file_upload.html" with upload_url=upload_url %}
+
+                {# Existing attachments #}
+                <div id="attachments-container" class="mt-4">
+                    {% with purchase_request.attachments.all as attachments %}
+                    {% include "orders/_attachments_list.html" with attachments=attachments purchase_request=purchase_request %}
+                    {% endwith %}
+                </div>
+            </div>
+            {% else %}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-100">Quotation / Supporting Files</h3>
+                <p class="text-sm text-gray-500">
+                    Save the draft first, then upload files from the detail page.
+                </p>
+            </div>
+            {% endif %}
+
+        </div>
+
+        {# Form actions #}
+        <div class="mt-6 flex items-center justify-end gap-3">
+            {% if is_create %}
+            <a
+                href="{% url 'orders:purchase-request-list' %}"
+                class="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+            >
+                Cancel
+            </a>
+            {% else %}
+            <a
+                href="{% url 'orders:purchase-request-detail' purchase_request.pk %}"
+                class="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+            >
+                Cancel
+            </a>
+            {% endif %}
+
+            <button
+                type="submit"
+                name="action"
+                value="draft"
+                class="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+            >
+                Save as Draft
+            </button>
+
+            <button
+                type="submit"
+                name="action"
+                value="submit"
+                class="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 transition-colors"
+            >
+                Save &amp; Submit for Approval
+            </button>
+        </div>
+
+    </form>
+</div>
+{% endblock %}

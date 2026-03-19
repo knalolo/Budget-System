@@ -1,0 +1,23 @@
+Dear {{ requester_name }},
+
+Your Purchase Request has been APPROVED.
+
+REQUEST DETAILS
+---------------
+Request Number : {{ request_number }}
+Vendor         : {{ vendor }}
+Amount         : {{ currency }} {{ amount }}
+Description    : {{ description }}
+{% if project %}Project        : {{ project }}
+{% endif %}Approved At    : {{ approved_at }}
+{% if po_required %}PO Required    : Yes – A Purchase Order will be issued.
+{% endif %}
+Next steps: The procurement team will proceed with the purchase. You will be notified of further
+updates. If you have any questions, please contact the PCM team.
+
+{% if detail_url %}View your request at:
+{{ detail_url }}
+
+{% endif %}
+---
+This is an automated notification from the KEY Procurement System. Please do not reply to this email.

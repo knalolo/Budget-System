@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Delivery Submissions{% endblock %}
+{% block page_title %}Delivery Submissions{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+    <!-- Toolbar -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <form method="get" class="flex flex-wrap gap-2 items-center">
+            <input
+                type="text"
+                name="vendor"
+                value="{{ vendor_filter }}"
+                placeholder="Filter by vendor..."
+                class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+            <select name="status" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
+                <option value="">All statuses</option>
+                <option value="submitted" {% if status_filter == "submitted" %}selected{% endif %}>Submitted</option>
+                <option value="saved" {% if status_filter == "saved" %}selected{% endif %}>Saved</option>
+            </select>
+            <button type="submit" class="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-700 transition-colors">
+                Filter
+            </button>
+            {% if vendor_filter or status_filter %}
+            <a href="{% url 'deliveries:list' %}" class="text-sm text-gray-500 hover:text-gray-800">Clear</a>
+            {% endif %}
+        </form>
+
+        <a
+            href="{% url 'deliveries:create' %}"
+            class="inline-flex items-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
+        >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            New Submission
+        </a>
+    </div>
+
+    <!-- Table -->
+    <div id="submissions-table">
+        {% include "deliveries/_list_table.html" %}
+    </div>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+    <div class="flex items-center justify-between text-sm text-gray-600">
+        <span>Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+        <div class="flex gap-2">
+            {% if page_obj.has_previous %}
+            <a href="?page={{ page_obj.previous_page_number }}{% if vendor_filter %}&vendor={{ vendor_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}"
+               class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">
+                Previous
+            </a>
+            {% endif %}
+            {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}{% if vendor_filter %}&vendor={{ vendor_filter }}{% endif %}{% if status_filter %}&status={{ status_filter }}{% endif %}"
+               class="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50">
+                Next
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

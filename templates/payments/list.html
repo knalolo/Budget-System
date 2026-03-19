@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Payment Releases – Procurement System{% endblock %}
+{% block page_title %}Payment Releases{% endblock %}
+
+{% block content %}
+<div class="space-y-4">
+
+    <!-- Header bar -->
+    <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <!-- Status filter -->
+            <form method="get" id="filter-form">
+                <select
+                    name="status"
+                    onchange="document.getElementById('filter-form').submit()"
+                    class="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}" {% if value == status_filter %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
+        <a
+            href="{% url 'payments:create' %}"
+            class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
+        >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            New Payment Release
+        </a>
+    </div>
+
+    <!-- Table -->
+    <div
+        id="payment-releases-table"
+        hx-get="{% url 'payments:list-table' %}{% if status_filter %}?status={{ status_filter }}{% endif %}"
+        hx-trigger="load"
+        hx-swap="innerHTML"
+    >
+        {% include "payments/_list_table.html" %}
+    </div>
+
+</div>
+{% endblock %}
