@@ -1,0 +1,36 @@
+{% load procurement_tags %}
+{# Partial: rendered after file upload via HTMX, or included in detail/form pages #}
+{% if attachments %}
+<ul class="divide-y divide-gray-100">
+    {% for attachment in attachments %}
+    <li class="flex items-center justify-between gap-4 py-3">
+        <div class="flex items-center gap-3 min-w-0">
+            {# File type icon #}
+            <div class="flex-shrink-0 w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
+                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
+                </svg>
+            </div>
+            <div class="min-w-0">
+                <p class="text-sm font-medium text-gray-900 truncate">{{ attachment.original_filename }}</p>
+                <p class="text-xs text-gray-500">
+                    {{ attachment.get_file_type_display }} &bull;
+                    {{ attachment.file_size|file_size_display }} &bull;
+                    {{ attachment.created_at|date:"d M Y" }}
+                </p>
+            </div>
+        </div>
+        <a
+            href="{{ attachment.file.url }}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="flex-shrink-0 text-brand-600 hover:text-brand-800 text-sm font-medium transition-colors"
+        >
+            Download
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="text-sm text-gray-400 py-4 text-center">No files attached yet.</p>
+{% endif %}

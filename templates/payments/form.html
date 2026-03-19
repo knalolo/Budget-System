@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_create %}New Payment Release{% else %}Edit {{ payment.request_number }}{% endif %} – Procurement System{% endblock %}
+{% block page_title %}{% if is_create %}New Payment Release{% else %}Edit {{ payment.request_number }}{% endif %}{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto">
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+
+        <!-- Card header -->
+        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <h2 class="text-base font-semibold text-gray-800">
+                {% if is_create %}Create Payment Release{% else %}Edit Payment Release{% endif %}
+            </h2>
+            <a href="{% if is_create %}{% url 'payments:list' %}{% else %}{% url 'payments:detail' pk=payment.pk %}{% endif %}"
+               class="text-sm text-gray-500 hover:text-gray-700">
+                Cancel
+            </a>
+        </div>
+
+        <!-- Form body -->
+        <form
+            method="post"
+            enctype="multipart/form-data"
+            class="px-6 py-6 space-y-6"
+            x-data="{
+                poMode: '{{ form.po_number.value|default:'' }}' === 'N/A' || '{{ form.po_number.value|default:'' }}' === '' ? 'na' : 'other',
+                poCustom: '{{ form.po_number.value|default:'' }}' !== 'N/A' ? '{{ form.po_number.value|default:'' }}' : '',
+                get poValue() { return this.poMode === 'na' ? 'N/A' : this.poCustom; }
+            }"
+        >
+            {% csrf_token %}
+
+            <!-- Non-field errors -->
+            {% if form.non_field_errors %}
+            <div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                {% for error in form.non_field_errors %}
+                <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <!-- Row 1: Project Expense Category + MC Number (Project) -->
+            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                    <label for="{{ form.expense_category.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        Project Expense <span class="text-red-500">*</span>
+                    </label>
+                    {{ form.expense_category }}
+                    {% if form.expense_category.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.expense_category.errors.0 }}</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <label for="{{ form.project.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        MC Number <span class="text-red-500">*</span>
+                    </label>
+                    {{ form.project }}
+                    {% if form.project.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.project.errors.0 }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Row 2: Description -->
+            <div>
+                <label for="{{ form.description.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Description <span class="text-red-500">*</span>
+                </label>
+                {{ form.description }}
+                {% if form.description.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.description.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Row 3: Vendor -->
+            <div>
+                <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Vendor <span class="text-red-500">*</span>
+                </label>
+                {{ form.vendor }}
+                {% if form.vendor.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.vendor.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Row 4: Currency + Total Price -->
+            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                    <label for="{{ form.currency.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        Currency <span class="text-red-500">*</span>
+                    </label>
+                    {{ form.currency }}
+                    {% if form.currency.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.currency.errors.0 }}</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <label for="{{ form.total_price.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        Total Price <span class="text-red-500">*</span>
+                    </label>
+                    {{ form.total_price }}
+                    {% if form.total_price.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.total_price.errors.0 }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Row 5: Justification -->
+            <div>
+                <label for="{{ form.justification.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Justification <span class="text-red-500">*</span>
+                </label>
+                {{ form.justification }}
+                {% if form.justification.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.justification.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Row 6: PO Number (with Alpine.js toggle) -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    PO Number <span class="text-red-500">*</span>
+                </label>
+
+                <!-- Hidden input that carries the actual value -->
+                <input type="hidden" name="po_number" :value="poValue" />
+
+                <div class="flex items-center gap-4">
+                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input
+                            type="radio"
+                            value="na"
+                            x-model="poMode"
+                            class="text-brand-600 focus:ring-brand-500"
+                        />
+                        N/A
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                        <input
+                            type="radio"
+                            value="other"
+                            x-model="poMode"
+                            class="text-brand-600 focus:ring-brand-500"
+                        />
+                        Specific PO Number
+                    </label>
+                </div>
+
+                <div x-show="poMode === 'other'" x-transition class="mt-2">
+                    <input
+                        type="text"
+                        x-model="poCustom"
+                        placeholder="e.g. PO-2026-001"
+                        class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    />
+                </div>
+
+                {% if form.po_number.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.po_number.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Row 7: Target Payment -->
+            <div>
+                <label for="{{ form.target_payment.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Target Payment <span class="text-red-500">*</span>
+                </label>
+                {{ form.target_payment }}
+                {% if form.target_payment.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.target_payment.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            {% if is_create %}
+            <!-- Row 8: Official Invoice (file upload) -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    Official Invoice (optional – can upload after creation)
+                </label>
+                <input
+                    type="file"
+                    name="invoice_file"
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                    class="block w-full text-sm text-gray-500
+                        file:mr-4 file:py-2 file:px-4
+                        file:rounded-lg file:border-0
+                        file:text-sm file:font-medium
+                        file:bg-brand-50 file:text-brand-700
+                        hover:file:bg-brand-100 cursor-pointer"
+                />
+                <p class="mt-1 text-xs text-gray-400">PDF, JPG, PNG, DOC up to 1 GB</p>
+            </div>
+            {% endif %}
+
+            <!-- Actions -->
+            <div class="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
+                <a
+                    href="{% if is_create %}{% url 'payments:list' %}{% else %}{% url 'payments:detail' pk=payment.pk %}{% endif %}"
+                    class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                    Cancel
+                </a>
+                <button
+                    type="submit"
+                    class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
+                >
+                    {% if is_create %}Save Draft{% else %}Save Changes{% endif %}
+                </button>
+            </div>
+
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+    select, input[type="text"], input[type="number"], textarea {
+        display: block;
+        width: 100%;
+        border-radius: 0.5rem;
+        border: 1px solid #d1d5db;
+        padding: 0.5rem 0.75rem;
+        font-size: 0.875rem;
+        box-shadow: 0 1px 2px 0 rgba(0,0,0,.05);
+    }
+    select:focus, input[type="text"]:focus, input[type="number"]:focus, textarea:focus {
+        outline: none;
+        border-color: #3b82f6;
+        box-shadow: 0 0 0 3px rgba(59,130,246,.25);
+    }
+</style>
+{% endblock %}

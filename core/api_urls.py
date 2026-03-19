@@ -1,4 +1,10 @@
-"""Stub API URL configuration for core attachment endpoints."""
-from django.urls import path
+"""API URL configuration for core attachment endpoints."""
 
-urlpatterns: list = []
+from rest_framework.routers import DefaultRouter
+
+from .api_views import FileAttachmentViewSet
+
+router = DefaultRouter()
+router.register(r"attachments", FileAttachmentViewSet, basename="attachment")
+
+urlpatterns = router.urls

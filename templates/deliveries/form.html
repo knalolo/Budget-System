@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}New Delivery Submission{% endblock %}
+{% block page_title %}New Delivery Submission{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
+
+        <!-- Back link -->
+        <a href="{% url 'deliveries:list' %}" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+            Back to Deliveries
+        </a>
+
+        <h2 class="text-lg font-semibold text-gray-800">Submit Delivery / Sales Order Documents</h2>
+
+        {% if form.non_field_errors %}
+        <div class="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-800">
+            {% for error in form.non_field_errors %}
+            <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form
+            method="post"
+            enctype="multipart/form-data"
+            class="space-y-5"
+            x-data="fileUpload()"
+        >
+            {% csrf_token %}
+
+            <!-- ---- 1. File Upload (primary field) ---- -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">
+                    DO / SO Documents <span class="text-red-500">*</span>
+                </label>
+                <div
+                    class="relative border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer transition-colors"
+                    :class="dragOver ? 'border-brand-500 bg-brand-50' : 'hover:border-gray-400'"
+                    @dragover.prevent="dragOver = true"
+                    @dragleave.prevent="dragOver = false"
+                    @drop.prevent="handleDrop($event)"
+                    @click="$refs.fileInput.click()"
+                >
+                    <input
+                        type="file"
+                        name="files"
+                        multiple
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif"
+                        class="sr-only"
+                        x-ref="fileInput"
+                        @change="handleFiles($event.target.files)"
+                    />
+                    <svg class="mx-auto w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    <p class="text-sm text-gray-600">
+                        <span class="font-medium text-brand-600">Click to browse</span> or drag and drop
+                    </p>
+                    <p class="text-xs text-gray-400 mt-1">PDF, Word, Excel, JPG, PNG (max 1 GB each)</p>
+                </div>
+
+                <!-- File list preview -->
+                <template x-if="selectedFiles.length > 0">
+                    <ul class="mt-3 space-y-2">
+                        <template x-for="(file, idx) in selectedFiles" :key="idx">
+                            <li class="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2 text-sm border border-gray-200">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                                    </svg>
+                                    <span class="truncate" x-text="file.name"></span>
+                                </div>
+                                <button type="button" @click="removeFile(idx)" class="ml-2 text-gray-400 hover:text-red-500 flex-shrink-0">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                </button>
+                            </li>
+                        </template>
+                    </ul>
+                </template>
+            </div>
+
+            <!-- ---- 2. Vendor ---- -->
+            <div>
+                <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Vendor <span class="text-red-500">*</span>
+                </label>
+                {{ form.vendor }}
+                {% if form.vendor.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.vendor.errors|join:", " }}</p>
+                {% endif %}
+            </div>
+
+            <!-- ---- 3. Currency ---- -->
+            <div>
+                <label for="{{ form.currency.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Currency <span class="text-red-500">*</span>
+                </label>
+                {{ form.currency }}
+                {% if form.currency.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.currency.errors|join:", " }}</p>
+                {% endif %}
+            </div>
+
+            <!-- ---- 4. Total Price ---- -->
+            <div>
+                <label for="{{ form.total_price.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Total Price <span class="text-red-500">*</span>
+                </label>
+                {{ form.total_price }}
+                {% if form.total_price.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.total_price.errors|join:", " }}</p>
+                {% endif %}
+            </div>
+
+            <!-- ---- Submit ---- -->
+            <div class="pt-2 flex items-center gap-3">
+                <button
+                    type="submit"
+                    class="bg-brand-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors"
+                >
+                    Submit
+                </button>
+                <a href="{% url 'deliveries:list' %}" class="text-sm text-gray-500 hover:text-gray-800 transition-colors">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function fileUpload() {
+    return {
+        dragOver: false,
+        selectedFiles: [],
+        dataTransfer: new DataTransfer(),
+
+        handleFiles(fileList) {
+            Array.from(fileList).forEach(f => {
+                this.dataTransfer.items.add(f);
+                this.selectedFiles.push(f);
+            });
+            this.$refs.fileInput.files = this.dataTransfer.files;
+        },
+
+        handleDrop(event) {
+            this.dragOver = false;
+            this.handleFiles(event.dataTransfer.files);
+        },
+
+        removeFile(index) {
+            this.selectedFiles.splice(index, 1);
+            const dt = new DataTransfer();
+            this.selectedFiles.forEach(f => dt.items.add(f));
+            this.dataTransfer = dt;
+            this.$refs.fileInput.files = dt.files;
+        },
+    };
+}
+</script>
+
+<style>
+/* Style Django form widgets to match the design system */
+form input[type="text"],
+form input[type="number"],
+form select {
+    width: 100%;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: #111827;
+    outline: none;
+}
+form input[type="text"]:focus,
+form input[type="number"]:focus,
+form select:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+</style>
+{% endblock %}

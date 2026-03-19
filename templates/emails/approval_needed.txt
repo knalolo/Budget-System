@@ -1,0 +1,21 @@
+Dear Approver,
+
+A {{ request_type_display }} has been submitted and requires your approval.
+
+REQUEST DETAILS
+---------------
+Request Number : {{ request_number }}
+Requester      : {{ requester_name }}
+Vendor         : {{ vendor }}
+Amount         : {{ currency }} {{ amount }}
+Description    : {{ description }}
+{% if project %}Project        : {{ project }}
+{% endif %}Submitted At   : {{ submitted_at }}
+
+{% if detail_url %}Please review and approve at:
+{{ detail_url }}
+
+{% endif %}Please log in to the procurement system to review the full details and take action.
+
+---
+This is an automated notification from the KEY Procurement System. Please do not reply to this email.

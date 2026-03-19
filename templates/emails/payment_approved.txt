@@ -1,0 +1,22 @@
+Dear {{ requester_name }},
+
+Your Payment Release has been APPROVED.
+
+PAYMENT DETAILS
+---------------
+Request Number : {{ request_number }}
+Vendor         : {{ vendor }}
+Amount         : {{ currency }} {{ amount }}
+Description    : {{ description }}
+{% if project %}Project        : {{ project }}
+{% endif %}Approved At    : {{ approved_at }}
+
+Next steps: The finance team (Li Mei) has been notified and will process the payment. If you have
+any questions, please contact the PCM team.
+
+{% if detail_url %}View your payment release at:
+{{ detail_url }}
+
+{% endif %}
+---
+This is an automated notification from the KEY Procurement System. Please do not reply to this email.

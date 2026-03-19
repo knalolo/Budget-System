@@ -40,6 +40,9 @@ from .models import (
     ApprovalLog,
 )
 
+# Email notifications are imported lazily inside functions to avoid circular
+# imports between the approvals and core apps.
+
 if TYPE_CHECKING:
     from django.db.models import QuerySet
 
@@ -213,6 +216,8 @@ def _process_pcm_level(request_obj, approver, decision, comment, now, old_status
         decision,
     )
 
+    _fire_notification(request_obj, action, old_status, new_status)
+
     return request_obj
 
 
@@ -252,6 +257,8 @@ def _process_final_level(request_obj, approver, decision, comment, now, old_stat
         decision,
     )
 
+    _fire_notification(request_obj, action, old_status, new_status)
+
     return request_obj
 
 
@@ -260,6 +267,30 @@ def _validate_not_self_approval(request_obj, approver) -> None:
     if request_obj.requester_id == approver.pk:
         raise ValidationError(
             "Requesters cannot approve their own submissions."
+        )
+
+
+def _fire_notification(
+    request_obj,
+    action: str,
+    old_status: str,
+    new_status: str,
+) -> None:
+    """
+    Fire an email notification for the given action without raising exceptions.
+
+    Imported lazily to prevent circular imports between core and approvals.
+    """
+    try:
+        from core.services.email_service import trigger_post_approval_notification
+        trigger_post_approval_notification(request_obj, action, old_status, new_status)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(
+            "_fire_notification failed for %s #%s action=%r: %s",
+            type(request_obj).__name__,
+            getattr(request_obj, "pk", "?"),
+            action,
+            exc,
         )
 
 

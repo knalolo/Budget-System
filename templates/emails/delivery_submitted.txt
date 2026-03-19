@@ -1,0 +1,21 @@
+Dear {{ requester_name }},
+
+A DO/SO Submission has been completed and recorded in the procurement system.
+
+SUBMISSION DETAILS
+------------------
+Submission Number : {{ request_number }}
+Vendor            : {{ vendor }}
+Amount            : {{ currency }} {{ amount }}
+Description       : {{ description }}
+{% if project %}Project           : {{ project }}
+{% endif %}Submitted At      : {{ submitted_at }}
+
+The logistics team (Jess) has been notified. If you have any questions, please contact the PCM team.
+
+{% if detail_url %}View the submission at:
+{{ detail_url }}
+
+{% endif %}
+---
+This is an automated notification from the KEY Procurement System. Please do not reply to this email.

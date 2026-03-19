@@ -1,0 +1,103 @@
+{% load procurement_tags %}
+{# Reusable drag-drop file upload component.
+   Context: purchase_request (required), upload_url (optional - defaults to purchase-request-upload)
+#}
+<div
+    x-data="{
+        isDragging: false,
+        files: [],
+        uploading: false,
+        error: '',
+        allowedExtensions: ['.doc','.docx','.xls','.xlsx','.ppt','.pptx','.pdf','.jpg','.jpeg','.png','.gif','.bmp','.mp4','.avi','.mov','.mp3','.wav'],
+        maxBytes: 1073741824,
+
+        validateFile(file) {
+            const ext = '.' + file.name.split('.').pop().toLowerCase();
+            if (!this.allowedExtensions.includes(ext)) {
+                return 'File type ' + ext + ' is not allowed.';
+            }
+            if (file.size > this.maxBytes) {
+                return 'File exceeds maximum size of 1 GB.';
+            }
+            return null;
+        },
+
+        humanSize(bytes) {
+            if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(1) + ' GB';
+            if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+            if (bytes >= 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return bytes + ' B';
+        },
+
+        handleFiles(fileList) {
+            this.error = '';
+            Array.from(fileList).forEach(file => {
+                const err = this.validateFile(file);
+                if (err) { this.error = err; return; }
+                this.uploadFile(file);
+            });
+        },
+
+        uploadFile(file) {
+            this.uploading = true;
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('file_type', 'quotation');
+            const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+            fetch('{{ upload_url }}', {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken },
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) return response.text().then(t => { throw new Error(t); });
+                return response.text();
+            })
+            .then(html => {
+                document.getElementById('attachments-container').innerHTML = html;
+                this.uploading = false;
+            })
+            .catch(err => {
+                this.error = err.message || 'Upload failed. Please try again.';
+                this.uploading = false;
+            });
+        }
+    }"
+    @dragover.prevent="isDragging = true"
+    @dragleave.prevent="isDragging = false"
+    @drop.prevent="isDragging = false; handleFiles($event.dataTransfer.files)"
+>
+    {# Drop zone #}
+    <div
+        :class="isDragging ? 'border-brand-500 bg-brand-50' : 'border-gray-300 bg-gray-50'"
+        class="flex flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-10 cursor-pointer transition-colors"
+        @click="$refs.fileInput.click()"
+    >
+        <svg class="w-10 h-10 text-gray-400 mb-3" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        </svg>
+        <p class="text-sm text-gray-600"><span class="font-semibold text-brand-600">Click to upload</span> or drag and drop</p>
+        <p class="text-xs text-gray-400 mt-1">PDF, Word, Excel, PowerPoint, images, video, audio (up to 1 GB)</p>
+        <input
+            x-ref="fileInput"
+            type="file"
+            multiple
+            class="hidden"
+            @change="handleFiles($event.target.files)"
+            accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.jpg,.jpeg,.png,.gif,.bmp,.mp4,.avi,.mov,.mp3,.wav"
+        />
+    </div>
+
+    {# Upload progress indicator #}
+    <div x-show="uploading" class="mt-3 flex items-center gap-2 text-sm text-brand-600">
+        <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        Uploading...
+    </div>
+
+    {# Error message #}
+    <div x-show="error" x-text="error" class="mt-2 text-sm text-red-600"></div>
+</div>
