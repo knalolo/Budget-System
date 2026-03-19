@@ -116,3 +116,24 @@ def file_size_display(size_bytes) -> str:
             return f"{value:.1f} {unit}"
 
     return f"{size} B"
+
+
+# ---------------------------------------------------------------------------
+# get_item
+# ---------------------------------------------------------------------------
+
+@register.filter(name="get_item")
+def get_item(mapping, key):
+    """
+    Return ``mapping[key]``, or ``None`` if the key is absent.
+
+    Usage::
+
+        {{ config_values|get_item:field.key }}
+    """
+    if mapping is None:
+        return None
+    try:
+        return mapping.get(key)
+    except AttributeError:
+        return None

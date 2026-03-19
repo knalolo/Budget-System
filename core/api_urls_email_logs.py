@@ -1,4 +1,8 @@
-"""Stub API URL configuration for email log endpoints."""
+"""API URL configuration for email log endpoints."""
 from django.urls import path
 
-urlpatterns: list = []
+from core.config_api import EmailLogListView
+
+urlpatterns = [
+    path("", EmailLogListView.as_view(), name="api-email-logs-list"),
+]

@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Logs - Admin Panel{% endblock %}
+{% block page_title %}Audit Logs{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+    {# Sub-navigation #}
+    {% include "admin_panel/_subnav.html" with active="logs" %}
+
+    {# Tab bar #}
+    <div class="border-b border-gray-200">
+        <nav class="-mb-px flex gap-6" aria-label="Log tabs">
+            <a
+                href="?tab=approval_logs{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                class="{% if active_tab == 'approval_logs' %}border-brand-600 text-brand-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} whitespace-nowrap border-b-2 pb-3 px-1 text-sm font-medium transition-colors"
+            >
+                Approval Logs
+                {% if active_tab == 'approval_logs' and approval_logs_total is not None %}
+                <span class="ml-1.5 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{{ approval_logs_total }}</span>
+                {% endif %}
+            </a>
+            <a
+                href="?tab=email_logs{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}"
+                class="{% if active_tab == 'email_logs' %}border-brand-600 text-brand-600{% else %}border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700{% endif %} whitespace-nowrap border-b-2 pb-3 px-1 text-sm font-medium transition-colors"
+            >
+                Email Logs
+                {% if active_tab == 'email_logs' and email_logs_total is not None %}
+                <span class="ml-1.5 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600">{{ email_logs_total }}</span>
+                {% endif %}
+            </a>
+        </nav>
+    </div>
+
+    {# Filter bar #}
+    <form method="get" class="flex flex-wrap items-end gap-3">
+        <input type="hidden" name="tab" value="{{ active_tab }}" />
+
+        <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">From</label>
+            <input
+                type="date"
+                name="date_from"
+                value="{{ date_from }}"
+                class="rounded-md border border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2"
+            />
+        </div>
+
+        <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">To</label>
+            <input
+                type="date"
+                name="date_to"
+                value="{{ date_to }}"
+                class="rounded-md border border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2"
+            />
+        </div>
+
+        {% if active_tab == 'email_logs' %}
+        <div>
+            <label class="block text-xs font-medium text-gray-700 mb-1">Status</label>
+            <select
+                name="email_status"
+                class="rounded-md border border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2"
+            >
+                {% for value, label in email_status_choices %}
+                <option value="{{ value }}" {% if email_status_filter == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+
+        <div class="flex gap-2">
+            <button
+                type="submit"
+                class="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-500 transition-colors"
+            >
+                Filter
+            </button>
+            <a
+                href="?tab={{ active_tab }}"
+                class="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+            >
+                Clear
+            </a>
+        </div>
+    </form>
+
+    {# ------------------------------------------------------------------ #}
+    {# Approval Logs tab                                                   #}
+    {# ------------------------------------------------------------------ #}
+    {% if active_tab == 'approval_logs' %}
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="py-3 pl-6 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Date</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">User</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Action</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Object</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status Change</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Comment</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 bg-white">
+                    {% for log in approval_logs_page %}
+                    <tr class="hover:bg-gray-50 transition-colors">
+                        <td class="py-3 pl-6 pr-3 text-sm text-gray-500 whitespace-nowrap">
+                            {{ log.created_at|date:"d M Y, H:i" }}
+                        </td>
+                        <td class="px-3 py-3 text-sm text-gray-900">
+                            {{ log.action_by.get_full_name|default:log.action_by.username }}
+                        </td>
+                        <td class="px-3 py-3">
+                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                                {% if 'approved' in log.action %}bg-green-100 text-green-800
+                                {% elif 'rejected' in log.action %}bg-red-100 text-red-800
+                                {% elif log.action == 'submitted' %}bg-blue-100 text-blue-800
+                                {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                {{ log.get_action_display }}
+                            </span>
+                        </td>
+                        <td class="px-3 py-3 text-sm text-gray-600">
+                            {{ log.content_type.model|title }} #{{ log.object_id }}
+                        </td>
+                        <td class="px-3 py-3 text-xs text-gray-500">
+                            {% if log.old_status or log.new_status %}
+                            <span class="font-medium text-gray-700">{{ log.old_status|default:"—" }}</span>
+                            &rarr;
+                            <span class="font-medium text-gray-700">{{ log.new_status|default:"—" }}</span>
+                            {% else %}
+                            —
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-3 text-sm text-gray-500 max-w-xs truncate" title="{{ log.comment }}">
+                            {{ log.comment|default:"—" }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-6 py-10 text-center text-sm text-gray-400">
+                            No approval log entries found for the selected filters.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Approval logs pagination #}
+    {% with page_obj=approval_logs_page %}
+    {% include "components/pagination.html" %}
+    {% endwith %}
+
+    {# ------------------------------------------------------------------ #}
+    {# Email Logs tab                                                      #}
+    {# ------------------------------------------------------------------ #}
+    {% elif active_tab == 'email_logs' %}
+    <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th scope="col" class="py-3 pl-6 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Date</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Subject</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Recipients</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Sent At</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 bg-white">
+                    {% for log in email_logs_page %}
+                    <tr class="hover:bg-gray-50 transition-colors" x-data="{ expanded: false }">
+                        <td class="py-3 pl-6 pr-3 text-sm text-gray-500 whitespace-nowrap">
+                            {{ log.created_at|date:"d M Y, H:i" }}
+                        </td>
+                        <td class="px-3 py-3 text-sm text-gray-900 max-w-xs truncate" title="{{ log.subject }}">
+                            {{ log.subject }}
+                        </td>
+                        <td class="px-3 py-3 text-sm text-gray-600">
+                            {% for r in log.recipients %}
+                            <span class="block text-xs">{{ r }}</span>
+                            {% empty %}
+                            —
+                            {% endfor %}
+                            {% if log.cc_recipients %}
+                            <span class="block text-xs text-gray-400 mt-0.5">
+                                CC: {% for r in log.cc_recipients %}{{ r }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-3">
+                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                                {% if log.status == 'sent' %}bg-green-100 text-green-800
+                                {% elif log.status == 'failed' %}bg-red-100 text-red-800
+                                {% else %}bg-yellow-100 text-yellow-800{% endif %}">
+                                {{ log.get_status_display }}
+                            </span>
+                            {% if log.status == 'failed' and log.error_message %}
+                            <p class="mt-1 text-xs text-red-500 max-w-xs truncate" title="{{ log.error_message }}">
+                                {{ log.error_message }}
+                            </p>
+                            {% endif %}
+                        </td>
+                        <td class="px-3 py-3 text-sm text-gray-500">
+                            {{ log.sent_at|date:"d M Y, H:i"|default:"—" }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="5" class="px-6 py-10 text-center text-sm text-gray-400">
+                            No email log entries found for the selected filters.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {# Email logs pagination #}
+    {% with page_obj=email_logs_page %}
+    {% include "components/pagination.html" %}
+    {% endwith %}
+
+    {% endif %}
+
+</div>
+{% endblock %}
