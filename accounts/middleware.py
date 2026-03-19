@@ -19,6 +19,7 @@ _EXEMPT_PREFIXES = (
     "/auth/login/",
     "/auth/callback/",
     "/auth/logout/",
+    "/auth/dev-login/",
     "/api/",
     "/admin/",
     "/static/",
