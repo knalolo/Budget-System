@@ -1,58 +1,123 @@
-# Procurement Approval System
+# 🏛️ Procurement Approval System
 
-A full-featured internal procurement workflow platform built with Django 5.x. Manages purchase requests, payment releases, delivery submissions, and asset registration through a two-level approval engine with role-based access control.
+> **Streamline your procurement workflow from request to delivery** — Two-level approvals, automated email notifications, role-based dashboards, and a zero-build frontend. Built with Django 5.x, designed for teams that need structure without the overhead.
 
-## Table of Contents
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Django 5.x](https://img.shields.io/badge/Django-5.x-green.svg)](https://www.djangoproject.com/)
+[![DRF](https://img.shields.io/badge/DRF-3.15+-red.svg)](https://www.django-rest-framework.org/)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary-lightgrey.svg)](#-license)
 
-- [Features](#features)
-- [Tech Stack](#tech-stack)
-- [Architecture](#architecture)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Local Development](#local-development)
-  - [Docker Deployment](#docker-deployment)
-- [Configuration](#configuration)
-  - [Environment Variables](#environment-variables)
-  - [Runtime Configuration](#runtime-configuration)
-- [Usage](#usage)
-  - [Web Interface](#web-interface)
-  - [REST API](#rest-api)
-  - [CLI Tool](#cli-tool)
-- [Project Structure](#project-structure)
-- [Approval Workflow](#approval-workflow)
-- [Testing](#testing)
-- [Contributing](#contributing)
-- [License](#license)
+---
 
-## Features
+## 🚀 What Is This?
 
-- **Purchase Request Workflow** — Create, submit, and track procurement requests with auto-generated request numbers (`PR-YYYYMMDD-XXXX`), file attachments, and PO threshold warnings
-- **Payment Release Workflow** — Process vendor payments (`RP-YYYYMMDD-XXXX`) linked to approved purchase requests with full audit trail
-- **Delivery Submission Tracking** — Record delivery/sales orders (`DO-YYYYMMDD-XXXX`) with document attachments
-- **Asset Registration** — Batch register assets with individual item details and export to AssetTiger
-- **Two-Level Approval Engine** — Generic approval pipeline (PCM → Final Approver) shared across workflows with email notifications
-- **Role-Based Access Control** — Four roles: `requester`, `pcm_approver`, `final_approver`, `admin`
-- **Microsoft 365 SSO** — Azure AD authentication via MSAL
-- **Email Notifications** — Automated alerts on submission, approval, and rejection with full audit logging
-- **Admin Panel** — User management, system configuration, and audit log viewer
-- **REST API** — Full DRF API with token + session authentication, filtering, search, and pagination
-- **CLI Tool** — Terminal-based workflow management with Rich formatting
-- **Zero Build Frontend** — HTMX + Alpine.js + Tailwind CSS (CDN) — no Node.js or build step required
+A full-featured internal procurement platform that handles the entire lifecycle — from purchase requests through payment releases to delivery tracking and asset registration. Every step is:
 
-## Tech Stack
+- **📋 Workflow-Driven**: Two-level approval engine (PCM → Final Approver) with audit trail
+- **🔐 Role-Based**: Four roles (`requester`, `pcm_approver`, `final_approver`, `admin`) control access across every view
+- **📧 Notification-Aware**: Automated emails on submission, approval, and rejection — every action logged
+- **🖥️ Multi-Interface**: Web dashboard (HTMX + Alpine.js), REST API (DRF), and CLI tool (Click + Rich)
 
-| Layer | Technology |
-|-------|-----------|
-| Backend | Django 5.x, Django REST Framework |
-| Frontend | Django Templates, HTMX, Alpine.js, Tailwind CSS (CDN) |
-| Database | PostgreSQL 16 (production), SQLite (development) |
-| Authentication | MSAL (Microsoft 365 SSO), DRF Token Auth |
-| CLI | Click, Rich, httpx |
-| Testing | pytest, factory_boy, pytest-cov |
-| Linting | Ruff |
-| Deployment | Docker, Gunicorn, Nginx |
+**Think of it as**: Your procurement team's command center — structured approvals, zero paperwork, full transparency.
 
-## Architecture
+---
+
+## ⚡ Quick Start
+
+### Option 1: Local Development
+
+```bash
+# Clone and install
+git clone https://github.com/knalolo/Budget-System.git
+cd Budget-System
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+
+# Setup database and seed reference data
+cp .env.example .env
+python manage.py migrate
+python manage.py seed_data
+python manage.py createsuperuser
+
+# Launch
+python manage.py runserver
+```
+
+Visit `http://localhost:8000`. In dev mode, use `/auth/dev-login/` for quick access.
+
+### Option 2: Docker (Production-Ready)
+
+```bash
+cp .env.example .env
+# Edit .env with production values (SECRET_KEY, DB_PASSWORD, Azure AD, SMTP...)
+
+docker compose up -d --build
+```
+
+Three services start automatically:
+
+| Service | Role | Port |
+|---------|------|------|
+| 🐘 **db** | PostgreSQL 16 (Alpine) | 5432 |
+| 🐍 **web** | Django + Gunicorn (3 workers) | 8000 |
+| 🌐 **nginx** | Reverse proxy + static file serving | 80 |
+
+The entrypoint handles migrations, static files, data seeding, and optional superuser creation — zero manual steps.
+
+---
+
+## 🎯 Core Features
+
+### 📝 Purchase Requests
+
+Create, submit, and track procurement requests with auto-generated numbers (`PR-YYYYMMDD-XXXX`), file attachments (quotations, invoices, PO documents), and dynamic PO threshold warnings per currency.
+
+### 💰 Payment Releases
+
+Process vendor payments (`RP-YYYYMMDD-XXXX`) linked to approved purchase requests. Same two-level approval pipeline, same audit trail, same email notifications.
+
+### 📦 Delivery Submissions
+
+Record delivery and sales orders (`DO-YYYYMMDD-XXXX`) with document attachments. Lightweight tracking — no approval required.
+
+### 🏷️ Asset Registration
+
+Batch-register assets with individual item details (serial number, cost, location, department). Export to AssetTiger for inventory management.
+
+### ⚙️ Admin Panel
+
+User management, runtime system configuration (PO thresholds, notification emails, credit platforms), and full audit log viewer — all from the browser.
+
+---
+
+## 🔄 Approval Workflow
+
+All purchase requests and payment releases flow through the same generic two-level pipeline:
+
+```
+ ┌─────────┐    submit    ┌─────────────┐   approve   ┌───────────────┐   approve   ┌──────────┐
+ │  Draft   │ ──────────→ │ Pending PCM  │ ─────────→ │ Pending Final  │ ─────────→ │ Approved │
+ └─────────┘              └─────────────┘             └───────────────┘             └──────────┘
+                                │                            │
+                             reject                       reject
+                                │                            │
+                                ▼                            ▼
+                          ┌──────────┐                ┌──────────┐
+                          │  Draft   │                │  Draft   │
+                          └──────────┘                └──────────┘
+```
+
+**The Rules:**
+
+- 🚫 Requesters **cannot** approve their own submissions
+- 1️⃣ PCM approvers handle **first level**; final approvers handle **second level**
+- 🔁 Rejections **reset to draft** for revision and resubmission
+- 📝 Every action logged in `ApprovalLog` with timestamp, actor, and comment
+- 📧 Email notifications fired **automatically** at each status transition
+
+---
+
+## 🏗️ Architecture
 
 ### App Dependency Flow
 
@@ -70,85 +135,156 @@ deliveries (DeliverySubmission)                      assets (AssetRegistration, 
 
 ### Key Design Patterns
 
-- **Service Layer** — Business logic in `{app}/services.py`, not in views
-- **Generic Two-Level Approval** — Any model with the required fields can be "approvable" via `approvals/services.py`
-- **GenericForeignKey** — `FileAttachment`, `ApprovalLog`, and `EmailNotificationLog` attach to any model via `content_type` + `object_id`
-- **Split Settings** — `base.py` (shared) / `development.py` (SQLite, DEBUG) / `production.py` (PostgreSQL, security headers)
+| Pattern | How It's Used |
+|---------|--------------|
+| 🧩 **Service Layer** | Business logic in `{app}/services.py`, not in views |
+| 🔗 **GenericForeignKey** | `FileAttachment`, `ApprovalLog`, `EmailNotificationLog` attach to any model |
+| 🎛️ **Generic Approval Engine** | Any model with required fields becomes "approvable" via `approvals/services.py` |
+| ⚙️ **Split Settings** | `base.py` (shared) / `development.py` (SQLite) / `production.py` (PostgreSQL + security) |
+| 🔢 **Auto Request Numbers** | `PR-YYYYMMDD-XXXX`, `RP-YYYYMMDD-XXXX`, `DO-YYYYMMDD-XXXX` sequences |
+| 🗄️ **Runtime Config** | `SystemConfig` key-value store — edit PO thresholds and notification emails without redeployment |
 
-## Getting Started
+---
 
-### Prerequisites
+## 🛠️ Tech Stack
 
-- Python 3.11+
-- PostgreSQL 16 (production) or SQLite (development)
-- Docker & Docker Compose (for containerized deployment)
+| Layer | Technology |
+|-------|-----------|
+| 🐍 Backend | Django 5.x, Django REST Framework, Gunicorn |
+| 🎨 Frontend | Django Templates, HTMX, Alpine.js, Tailwind CSS (CDN) |
+| 🐘 Database | PostgreSQL 16 (production), SQLite (development) |
+| 🔐 Auth | MSAL (Microsoft 365 SSO), DRF Token Auth |
+| 📧 Email | SMTP (Office 365), templated HTML notifications |
+| 💻 CLI | Click, Rich, httpx |
+| 🧪 Testing | pytest, pytest-django, factory_boy, pytest-cov |
+| 🔍 Linting | Ruff |
+| 🐳 Deployment | Docker, Docker Compose, Nginx |
 
-### Local Development
+---
+
+## 🖥️ Three Ways to Use It
+
+### 🌐 Web Interface
+
+| Route | What It Does |
+|-------|-------------|
+| `/` | Role-based dashboard with pending items and quick actions |
+| `/purchase-requests/` | Full purchase request CRUD + approval actions |
+| `/payment-releases/` | Payment release management and tracking |
+| `/delivery-submissions/` | Delivery order submission and document uploads |
+| `/assets/` | Asset registration with batch item management |
+| `/admin-panel/` | User management, system config, audit logs |
+| `/auth/login/` | Microsoft 365 SSO login |
+
+### 🔌 REST API
+
+All endpoints under `/api/v1/` with Token or Session authentication.
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/procurement-system.git
-cd procurement-system
+# Get auth token
+curl -X POST http://localhost:8000/api/v1/auth/token/ \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "password"}'
 
-# Create virtual environment
-python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# .venv\Scripts\activate   # Windows
+# List purchase requests
+curl http://localhost:8000/api/v1/purchase-requests/ \
+  -H "Authorization: Token <your-token>"
 
-# Install with dev dependencies
-pip install -e ".[dev]"
-
-# Copy environment file
-cp .env.example .env
-
-# Run migrations and seed reference data
-python manage.py migrate
-python manage.py seed_data
-
-# Create a superuser
-python manage.py createsuperuser
-
-# Start the development server
-python manage.py runserver
+# Create a purchase request
+curl -X POST http://localhost:8000/api/v1/purchase-requests/ \
+  -H "Authorization: Token <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"description": "Lab equipment", "vendor": "Supplier Co", "currency": "SGD", "total_price": "500.00"}'
 ```
 
-The app is now running at `http://localhost:8000`. In development mode, a dev-login endpoint is available at `/auth/dev-login/`.
+Supports `?search=`, `?ordering=`, and field-specific filters. Paginated at 20 items per page.
 
-### Docker Deployment
+### 💻 CLI Tool
 
 ```bash
-# Copy and configure environment
-cp .env.example .env
-# Edit .env with production values (SECRET_KEY, DB_PASSWORD, Azure AD, SMTP, etc.)
+# Install and configure
+pip install -e .
+procurement-cli config set-url http://localhost:8000
+procurement-cli auth login
 
-# Build and start all services
-docker compose up -d --build
+# Workflow commands
+procurement-cli purchase-requests list
+procurement-cli purchase-requests create
+procurement-cli purchase-requests approve PR-20260320-0001
 
-# View logs
-docker compose logs -f web
+# Admin commands
+procurement-cli users list
+procurement-cli projects list
+procurement-cli config show
 ```
 
-This starts three services:
+Config stored at `~/.procurement-cli.json`. Output formatted with Rich tables and colors.
 
-| Service | Description | Port |
-|---------|-------------|------|
-| **db** | PostgreSQL 16 (Alpine) | 5432 |
-| **web** | Django + Gunicorn | 8000 |
-| **nginx** | Reverse proxy + static files | 80 |
+---
 
-The entrypoint script automatically runs migrations, collects static files, seeds reference data, and optionally creates a superuser (if `DJANGO_SUPERUSER_*` env vars are set).
+## 📂 Project Structure
 
-## Configuration
+```
+Budget-System/
+├── accounts/              # 🔐 User profiles & Microsoft 365 SSO
+│   ├── models.py          #    UserProfile (role, azure_oid)
+│   └── views.py           #    SSO login/callback, dev-login
+├── approvals/             # ✅ Generic approval engine
+│   ├── models.py          #    ApprovalLog (audit trail)
+│   └── services.py        #    submit_for_approval(), process_approval()
+├── assets/                # 🏷️ Asset registration & AssetTiger export
+│   └── models.py          #    AssetRegistration, AssetItem
+├── cli/                   # 💻 Click-based CLI tool
+│   ├── main.py            #    Entry point & command groups
+│   ├── commands/          #    Subcommands per domain
+│   ├── client.py          #    httpx API client
+│   └── formatters.py      #    Rich output formatting
+├── config/                # ⚙️ Django project configuration
+│   └── settings/
+│       ├── base.py        #    Shared settings & domain constants
+│       ├── development.py #    SQLite, DEBUG=True
+│       └── production.py  #    PostgreSQL, security headers
+├── core/                  # 🧩 Shared models & services
+│   ├── models.py          #    FileAttachment, SystemConfig, EmailNotificationLog
+│   ├── permissions.py     #    Role-based permission helpers
+│   └── services/
+│       ├── email_service.py
+│       ├── file_service.py
+│       └── request_number_service.py
+├── deliveries/            # 📦 Delivery/SO submission tracking
+├── orders/                # 📝 Purchase requests & projects
+│   ├── models.py          #    PurchaseRequest, Project, ExpenseCategory
+│   └── services.py        #    PR approval logic & email triggers
+├── payments/              # 💰 Payment release workflow
+│   ├── models.py          #    PaymentRelease
+│   └── services.py        #    Payment approval logic
+├── templates/             # 🎨 Django templates (HTMX + Alpine.js)
+│   ├── components/        #    Reusable UI components
+│   └── emails/            #    Email notification templates
+├── docker/
+│   ├── entrypoint.sh      #    Container startup script
+│   └── nginx/nginx.conf   #    Reverse proxy config
+├── docker-compose.yml
+├── Dockerfile
+├── pyproject.toml
+├── conftest.py            #    Shared pytest fixtures
+└── manage.py
+```
+
+---
+
+## ⚙️ Configuration
 
 ### Environment Variables
 
 <details>
-<summary>Click to expand full list</summary>
+<summary><strong>Click to expand full list</strong></summary>
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| **Django** | | |
 | `SECRET_KEY` | Django secret key | *required* |
-| `DJANGO_SETTINGS_MODULE` | Settings module path | `config.settings.production` |
+| `DJANGO_SETTINGS_MODULE` | Settings module | `config.settings.production` |
 | `ALLOWED_HOSTS` | Comma-separated hostnames | *required* |
 | `CSRF_TRUSTED_ORIGINS` | Trusted origins with scheme | — |
 | **Database** | | |
@@ -178,9 +314,9 @@ The entrypoint script automatically runs migrations, collects static files, seed
 
 </details>
 
-### Runtime Configuration
+### Runtime Configuration (SystemConfig)
 
-The `SystemConfig` model provides a key-value store editable from the admin panel:
+Editable from the admin panel — no redeployment needed:
 
 | Key | Description | Default |
 |-----|-------------|---------|
@@ -192,184 +328,97 @@ The `SystemConfig` model provides a key-value store editable from the admin pane
 | `notify_jess_email` | Notification recipient | — |
 | `credit_platforms` | Pre-approved credit vendors | Digikey, RS Components, Element14 |
 
-## Usage
+---
 
-### Web Interface
-
-| Route | Description |
-|-------|-------------|
-| `/` | Dashboard with role-based pending items |
-| `/purchase-requests/` | Purchase request management |
-| `/payment-releases/` | Payment release management |
-| `/delivery-submissions/` | Delivery submission tracking |
-| `/assets/` | Asset registration and items |
-| `/admin-panel/` | User management, config, audit logs |
-| `/auth/login/` | Microsoft 365 SSO login |
-
-### REST API
-
-All endpoints under `/api/v1/` with Token or Session authentication.
+## 🧪 Testing
 
 ```bash
-# Obtain auth token
-curl -X POST http://localhost:8000/api/v1/auth/token/ \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin", "password": "password"}'
+pytest                              # Run all tests
+pytest orders/tests/test_api.py     # Single file
+pytest -k test_submit               # By name pattern
+pytest --cov=orders --cov-report=term-missing  # With coverage
 
-# List purchase requests
-curl http://localhost:8000/api/v1/purchase-requests/ \
-  -H "Authorization: Token <your-token>"
-
-# Create a purchase request
-curl -X POST http://localhost:8000/api/v1/purchase-requests/ \
-  -H "Authorization: Token <your-token>" \
-  -H "Content-Type: application/json" \
-  -d '{"description": "Lab equipment", "vendor": "Supplier Co", "currency": "SGD", "total_price": "500.00"}'
-```
-
-Pagination: 20 items per page. Supports `?search=`, `?ordering=`, and field-specific filters.
-
-### CLI Tool
-
-```bash
-# Install the CLI
-pip install -e .
-
-# Configure API endpoint
-procurement-cli config set-url http://localhost:8000
-
-# Authenticate
-procurement-cli auth login
-
-# List purchase requests
-procurement-cli purchase-requests list
-
-# Create a new purchase request
-procurement-cli purchase-requests create
-
-# Approve a request (PCM or Final, auto-detected)
-procurement-cli purchase-requests approve <request-number>
-
-# Admin: manage users, projects, config
-procurement-cli users list
-procurement-cli projects list
-procurement-cli config show
-```
-
-Configuration is stored at `~/.procurement-cli.json`.
-
-## Project Structure
-
-```
-procurement-system/
-├── accounts/              # User profiles & Microsoft 365 SSO
-│   ├── models.py          # UserProfile (role, azure_oid)
-│   ├── views.py           # SSO login/callback, dev-login
-│   └── serializers.py
-├── approvals/             # Generic approval engine
-│   ├── models.py          # ApprovalLog (audit trail)
-│   └── services.py        # submit_for_approval(), process_approval()
-├── assets/                # Asset registration & AssetTiger export
-│   ├── models.py          # AssetRegistration, AssetItem
-│   └── views.py
-├── cli/                   # Click-based CLI tool
-│   ├── main.py            # Entry point & command groups
-│   ├── commands/          # Subcommands per domain
-│   ├── client.py          # httpx API client
-│   ├── config.py          # ~/.procurement-cli.json management
-│   └── formatters.py      # Rich output formatting
-├── config/                # Django project configuration
-│   ├── settings/
-│   │   ├── base.py        # Shared settings & domain constants
-│   │   ├── development.py # SQLite, DEBUG=True
-│   │   └── production.py  # PostgreSQL, security headers
-│   ├── urls.py            # Root URL routing
-│   └── wsgi.py
-├── core/                  # Shared models & services
-│   ├── models.py          # FileAttachment, SystemConfig, EmailNotificationLog
-│   ├── permissions.py     # Role-based permission helpers
-│   └── services/
-│       ├── email_service.py
-│       ├── file_service.py
-│       └── request_number_service.py
-├── deliveries/            # Delivery/SO submission tracking
-├── orders/                # Purchase requests & projects
-│   ├── models.py          # PurchaseRequest, Project, ExpenseCategory
-│   └── services.py        # PR approval logic & email triggers
-├── payments/              # Payment release workflow
-│   ├── models.py          # PaymentRelease
-│   └── services.py        # Payment approval logic
-├── templates/             # Django templates (HTMX + Alpine.js)
-│   ├── base.html
-│   ├── components/        # Reusable UI components
-│   └── emails/            # Email notification templates
-├── docker/
-│   ├── entrypoint.sh      # Container startup script
-│   └── nginx/nginx.conf   # Nginx reverse proxy config
-├── docker-compose.yml
-├── Dockerfile
-├── pyproject.toml
-├── conftest.py            # Shared pytest fixtures
-└── manage.py
-```
-
-## Approval Workflow
-
-All purchase requests and payment releases follow the same two-level approval pipeline:
-
-```
- ┌─────────┐    submit    ┌─────────────┐   approve   ┌───────────────┐   approve   ┌──────────┐
- │  Draft   │ ──────────→ │ Pending PCM  │ ─────────→ │ Pending Final  │ ─────────→ │ Approved │
- └─────────┘              └─────────────┘             └───────────────┘             └──────────┘
-                                │                            │
-                             reject                       reject
-                                │                            │
-                                ▼                            ▼
-                          ┌──────────┐                ┌──────────┐
-                          │  Draft   │                │  Draft   │
-                          └──────────┘                └──────────┘
-```
-
-**Rules:**
-- Requesters cannot approve their own submissions
-- PCM approvers handle the first level; final approvers handle the second
-- Rejections reset the request to draft for revision
-- Every action is logged in `ApprovalLog` with timestamp and comment
-- Email notifications are sent automatically at each status change
-
-## Testing
-
-```bash
-# Run all tests
-pytest
-
-# Run a specific test file
-pytest orders/tests/test_api.py
-
-# Run tests matching a pattern
-pytest -k test_submit
-
-# Run with coverage report
-pytest --cov=orders --cov-report=term-missing
-
-# Lint
-ruff check .
-ruff check . --fix
+ruff check .                        # Lint
+ruff check . --fix                  # Auto-fix
 ```
 
 **Test stack:** pytest + pytest-django + factory_boy
 
-Tests cover models, services, API endpoints, approval workflows, and role-based permissions. Shared fixtures are defined in `conftest.py` (user factories, API clients per role, sample projects/categories).
+Shared fixtures in `conftest.py` provide user factories per role, pre-configured API clients, and sample reference data. Tests cover models, services, API endpoints, approval workflows, and role-based permissions.
 
-## Contributing
+---
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/amazing-feature`)
-3. Write tests first (TDD), then implement
-4. Ensure `pytest` passes and `ruff check .` is clean
-5. Commit using conventional commits (`feat:`, `fix:`, `refactor:`, etc.)
-6. Open a pull request
+## 🎁 What Makes This Different?
 
-## License
+### Unlike Spreadsheet-Based Tracking:
+- ❌ Email chains and shared spreadsheets with no audit trail
+- ✅ Structured workflows with role-based approvals and full history
+
+### Unlike Heavy ERP Systems:
+- ❌ Months of setup, complex licensing, and consultant fees
+- ✅ Deploy in minutes with Docker — zero build step frontend, single `pip install`
+
+### Unlike Generic Form Builders:
+- ❌ One-size-fits-all forms with no business logic
+- ✅ Purpose-built approval engine with email notifications, PO thresholds, and asset tracking
+
+---
+
+## 📊 Stats
+
+- 🏛️ **7 Django apps** working in concert
+- 🔄 **8 status stages** in the procurement lifecycle
+- 👥 **4 roles** with granular permission control
+- 💱 **3 currencies** supported (SGD, USD, EUR)
+- 📎 **8 file types** for document attachments
+- 🧪 **240+ tests** covering business logic and API
+- 💻 **3 interfaces** — Web, REST API, and CLI
+
+---
+
+## 🗺️ Roadmap
+
+- [x] Two-level approval engine (PCM → Final)
+- [x] Purchase request and payment release workflows
+- [x] Delivery submission tracking
+- [x] Asset registration with AssetTiger export
+- [x] Microsoft 365 SSO integration
+- [x] Email notification system with audit logging
+- [x] CLI tool with Rich formatting
+- [x] Docker deployment (web + PostgreSQL + nginx)
+- [ ] Dashboard analytics and charts
+- [ ] Bulk approval actions
+- [ ] PDF report generation
+- [ ] Mobile-responsive redesign
+- [ ] Webhook integrations
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how:
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feat/amazing-feature`)
+3. **Write tests first** (TDD) — then implement
+4. **Ensure** `pytest` passes and `ruff check .` is clean
+5. **Commit** with conventional commits (`feat:`, `fix:`, `refactor:`, etc.)
+6. **Open** a pull request
+
+---
+
+## 📜 License
 
 This project is proprietary. All rights reserved.
+
+---
+
+<div align="center">
+
+**🏛️ Procurement Approval System 🏛️**
+
+From request to delivery — structured, transparent, audited.
+
+[⭐ Star this repo](https://github.com/knalolo/Budget-System) · [🐛 Report an issue](https://github.com/knalolo/Budget-System/issues) · [🍴 Fork it](https://github.com/knalolo/Budget-System/fork)
+
+</div>
