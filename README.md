@@ -7,6 +7,8 @@
 [![DRF](https://img.shields.io/badge/DRF-3.15+-red.svg)](https://www.django-rest-framework.org/)
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary-lightgrey.svg)](#-license)
 
+**English** | [中文](README.zh-CN.md)
+
 ---
 
 ## 🚀 What Is This?
