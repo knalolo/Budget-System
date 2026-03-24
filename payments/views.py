@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.decorators import method_decorator
 from django.views import View
 
-from core.services.file_service import save_attachment
+from core.services.file_service import save_attachment, validate_file
 
 from .forms import PaymentReleaseForm
 from .models import PaymentRelease
@@ -24,6 +24,10 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 _LOGIN_REQUIRED = method_decorator(login_required, name="dispatch")
+PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES = {
+    "invoice": "Official Invoice",
+    "proforma_invoice": "Proforma Invoice",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -70,17 +74,84 @@ class PaymentReleaseCreateView(View):
 
     def get(self, request: HttpRequest) -> HttpResponse:
         form = PaymentReleaseForm()
-        return render(request, self.template_name, {"form": form, "is_create": True})
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "is_create": True,
+                "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
+                "selected_attachment_type": "invoice",
+            },
+        )
 
     def post(self, request: HttpRequest) -> HttpResponse:
         form = PaymentReleaseForm(request.POST)
+        uploaded_files = request.FILES.getlist("attachment_files")
+
+        try:
+            attachment_type = _clean_payment_attachment_type(
+                request.POST.get("attachment_file_type", "invoice")
+            )
+            _validate_payment_attachments(uploaded_files)
+        except ValidationError as exc:
+            form.add_error(None, _validation_error_message(exc))
+            return render(
+                request,
+                self.template_name,
+                {
+                    "form": form,
+                    "is_create": True,
+                    "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
+                    "selected_attachment_type": request.POST.get(
+                        "attachment_file_type",
+                        "invoice",
+                    ),
+                },
+            )
+
         if form.is_valid():
             payment = form.save(commit=False)
             payment.requester = request.user
             payment.save()
-            messages.success(request, f"Payment release {payment.request_number} created.")
+
+            _save_payment_attachments(
+                payment_release=payment,
+                uploaded_files=uploaded_files,
+                uploaded_by=request.user,
+                file_type=attachment_type,
+            )
+
+            action = request.POST.get("action", "draft")
+            if action == "submit":
+                try:
+                    submit_payment_release(payment)
+                    messages.success(
+                        request,
+                        f"Payment release {payment.request_number} submitted for approval.",
+                    )
+                except ValidationError as exc:
+                    messages.error(request, _validation_error_message(exc))
+                    return redirect("payments:detail", pk=payment.pk)
+            else:
+                messages.success(
+                    request,
+                    f"Payment release {payment.request_number} created.",
+                )
             return redirect("payments:detail", pk=payment.pk)
-        return render(request, self.template_name, {"form": form, "is_create": True})
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "is_create": True,
+                "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
+                "selected_attachment_type": request.POST.get(
+                    "attachment_file_type",
+                    "invoice",
+                ),
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -113,6 +184,8 @@ class PaymentReleaseDetailView(View):
             "payment": payment,
             "can_edit": payment.can_be_edited and payment.requester == request.user,
             "can_approve": _can_approve(request.user, payment),
+            "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
+            "selected_attachment_type": "invoice",
         }
         return render(request, self.template_name, context)
 
@@ -145,7 +218,17 @@ class PaymentReleaseUpdateView(View):
             return redirect("payments:detail", pk=pk)
 
         form = PaymentReleaseForm(instance=payment)
-        return render(request, self.template_name, {"form": form, "payment": payment, "is_create": False})
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "payment": payment,
+                "is_create": False,
+                "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
+                "selected_attachment_type": "invoice",
+            },
+        )
 
     def post(self, request: HttpRequest, pk: int) -> HttpResponse:
         try:
@@ -161,7 +244,17 @@ class PaymentReleaseUpdateView(View):
             form.save()
             messages.success(request, "Payment release updated.")
             return redirect("payments:detail", pk=pk)
-        return render(request, self.template_name, {"form": form, "payment": payment, "is_create": False})
+        return render(
+            request,
+            self.template_name,
+            {
+                "form": form,
+                "payment": payment,
+                "is_create": False,
+                "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
+                "selected_attachment_type": "invoice",
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +341,19 @@ def upload_view(request: HttpRequest, pk: int) -> HttpResponse:
         messages.error(request, "No file provided.")
         return redirect("payments:detail", pk=pk)
 
-    file_type = request.POST.get("file_type", "invoice")
+    try:
+        file_type = _clean_payment_attachment_type(request.POST.get("file_type", "invoice"))
+    except ValidationError as exc:
+        messages.error(request, _validation_error_message(exc))
+        if request.headers.get("HX-Request"):
+            payment.refresh_from_db()
+            return render(
+                request,
+                "payments/_attachments_list.html",
+                {"payment": payment, "attachments": payment.attachments.all()},
+            )
+        return redirect("payments:detail", pk=pk)
+
     try:
         save_attachment(
             uploaded_file=uploaded_file,
@@ -333,3 +438,44 @@ def _status_choices() -> list[tuple[str, str]]:
     """Return all payment status choices including an empty 'All' option."""
     from django.conf import settings
     return [("", "All statuses")] + list(settings.PAYMENT_STATUS_CHOICES)
+
+
+def _clean_payment_attachment_type(raw_value: str) -> str:
+    """Return a validated attachment file type for payment releases."""
+    file_type = (raw_value or "invoice").strip()
+    if file_type not in PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES:
+        raise ValidationError(
+            "Attachment type must be Official Invoice or Proforma Invoice."
+        )
+    return file_type
+
+
+def _validate_payment_attachments(uploaded_files) -> None:
+    """Validate all uploaded payment attachments before persisting them."""
+    for uploaded_file in uploaded_files:
+        validate_file(uploaded_file)
+
+
+def _save_payment_attachments(
+    payment_release: PaymentRelease,
+    uploaded_files,
+    uploaded_by,
+    file_type: str,
+) -> None:
+    """Persist uploaded attachments for a payment release."""
+    for uploaded_file in uploaded_files:
+        save_attachment(
+            uploaded_file=uploaded_file,
+            content_object=payment_release,
+            file_type=file_type,
+            uploaded_by=uploaded_by,
+        )
+
+
+def _validation_error_message(exc: ValidationError) -> str:
+    """Return a stable single-line message from a Django ValidationError."""
+    if hasattr(exc, "messages") and exc.messages:
+        return str(exc.messages[0])
+    if hasattr(exc, "message"):
+        return str(exc.message)
+    return str(exc)
