@@ -8,6 +8,7 @@
         files: [],
         uploading: false,
         error: '',
+        fileType: '{{ default_file_type|default:"quotation" }}',
         allowedExtensions: ['.doc','.docx','.xls','.xlsx','.ppt','.pptx','.pdf','.jpg','.jpeg','.png','.gif','.bmp','.mp4','.avi','.mov','.mp3','.wav'],
         maxBytes: 1073741824,
 
@@ -42,7 +43,7 @@
             this.uploading = true;
             const formData = new FormData();
             formData.append('file', file);
-            formData.append('file_type', 'quotation');
+            formData.append('file_type', this.fileType);
             const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
             fetch('{{ upload_url }}', {
@@ -68,6 +69,23 @@
     @dragleave.prevent="isDragging = false"
     @drop.prevent="isDragging = false; handleFiles($event.dataTransfer.files)"
 >
+    {% if show_file_type_selector %}
+    <div class="mb-3">
+        <label for="attachment-file-type" class="block text-sm font-medium text-gray-700 mb-1">
+            Attachment Type
+        </label>
+        <select
+            id="attachment-file-type"
+            x-model="fileType"
+            class="block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
+        >
+            {% for value, label in attachment_type_options %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    {% endif %}
+
     {# Drop zone #}
     <div
         :class="isDragging ? 'border-brand-500 bg-brand-50' : 'border-gray-300 bg-gray-50'"

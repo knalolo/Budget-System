@@ -7,17 +7,16 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
-from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from approvals.services import can_user_approve, get_approval_history
-from core.services.file_service import save_attachment
+from core.services.file_service import save_attachment, validate_file
 
 from .forms import PurchaseRequestForm
-from .models import ExpenseCategory, Project, PurchaseRequest
+from .models import Project, PurchaseRequest
 from .services import (
     approve_purchase_request,
     mark_ordered,
@@ -34,6 +33,10 @@ logger = logging.getLogger(__name__)
 
 PENDING_APPROVAL_STATUSES = ("pending_pcm", "pending_final")
 PAGE_SIZE = 20
+PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES = {
+    "quotation": "Quotation",
+    "new_order_list": "New Order List",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -103,10 +106,28 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
     template_name = "orders/form.html"
 
     def form_valid(self, form):
+        uploaded_files = self.request.FILES.getlist("attachment_files")
+
+        try:
+            attachment_type = _clean_purchase_request_attachment_type(
+                self.request.POST.get("attachment_file_type", "quotation")
+            )
+            _validate_purchase_request_attachments(uploaded_files)
+        except ValidationError as exc:
+            form.add_error(None, _validation_error_message(exc))
+            return self.form_invalid(form)
+
         instance = form.save(commit=False)
         instance.requester = self.request.user
         instance.status = "draft"
         instance.save()
+
+        _save_purchase_request_attachments(
+            purchase_request=instance,
+            uploaded_files=uploaded_files,
+            uploaded_by=self.request.user,
+            file_type=attachment_type,
+        )
 
         action = self.request.POST.get("action", "draft")
         if action == "submit":
@@ -130,6 +151,11 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
         context = super().get_context_data(**kwargs)
         context["page_title"] = "New Purchase Request"
         context["is_create"] = True
+        context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
+        context["selected_attachment_type"] = self.request.POST.get(
+            "attachment_file_type",
+            "quotation",
+        )
         return context
 
 
@@ -153,6 +179,8 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         context["approval_history"] = approval_history
         context["can_approve"] = can_approve
         context["attachments"] = pr.attachments.select_related("uploaded_by")
+        context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
+        context["selected_attachment_type"] = "quotation"
         return context
 
 
@@ -199,6 +227,11 @@ class PurchaseRequestUpdateView(LoginRequiredMixin, UpdateView):
         context["page_title"] = f"Edit {self.object.request_number}"
         context["is_create"] = False
         context["purchase_request"] = self.object
+        context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
+        context["selected_attachment_type"] = self.request.POST.get(
+            "attachment_file_type",
+            "quotation",
+        )
         return context
 
 
@@ -341,7 +374,12 @@ def purchase_request_upload(request, pk):
     if not uploaded_file:
         return HttpResponse("No file provided.", status=400)
 
-    file_type = request.POST.get("file_type", "quotation")
+    try:
+        file_type = _clean_purchase_request_attachment_type(
+            request.POST.get("file_type", "quotation")
+        )
+    except ValidationError as exc:
+        return HttpResponse(_validation_error_message(exc), status=400)
 
     try:
         save_attachment(
@@ -371,3 +409,42 @@ def _htmx_detail_redirect(request, pk: int) -> HttpResponse:
     response = HttpResponse(status=204)
     response["HX-Redirect"] = reverse_lazy("orders:purchase-request-detail", kwargs={"pk": pk})
     return response
+
+
+def _clean_purchase_request_attachment_type(raw_value: str) -> str:
+    """Return a validated attachment file type for purchase request uploads."""
+    file_type = (raw_value or "quotation").strip()
+    if file_type not in PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES:
+        raise ValidationError("Attachment type must be Quotation or New Order List.")
+    return file_type
+
+
+def _validate_purchase_request_attachments(uploaded_files) -> None:
+    """Validate all uploaded files before persisting the purchase request."""
+    for uploaded_file in uploaded_files:
+        validate_file(uploaded_file)
+
+
+def _save_purchase_request_attachments(
+    purchase_request: PurchaseRequest,
+    uploaded_files,
+    uploaded_by,
+    file_type: str,
+) -> None:
+    """Persist uploaded attachments for a purchase request."""
+    for uploaded_file in uploaded_files:
+        save_attachment(
+            uploaded_file=uploaded_file,
+            content_object=purchase_request,
+            file_type=file_type,
+            uploaded_by=uploaded_by,
+        )
+
+
+def _validation_error_message(exc: ValidationError) -> str:
+    """Return a stable single-line message from a Django ValidationError."""
+    if hasattr(exc, "messages") and exc.messages:
+        return str(exc.messages[0])
+    if hasattr(exc, "message"):
+        return str(exc.message)
+    return str(exc)
