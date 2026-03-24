@@ -1,8 +1,11 @@
 <!DOCTYPE html>
-<html lang="en" x-data="{ sidebarOpen: true }">
+<html lang="en" translate="no" class="notranslate" x-data="{ sidebarOpen: true }">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Language" content="en" />
+    <meta name="google" content="notranslate" />
+    <meta name="language" content="English" />
     <title>{% block title %}Procurement System{% endblock %}</title>
 
     <!-- Tailwind CSS (Play CDN - no build step required) -->
@@ -39,7 +42,7 @@
     {% block extra_head %}{% endblock %}
 </head>
 
-<body class="bg-gray-100 text-gray-900 antialiased" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<body class="bg-gray-100 text-gray-900 antialiased notranslate" translate="no" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 
 <!-- ------------------------------------------------------------------ -->
 <!-- Layout wrapper                                                       -->

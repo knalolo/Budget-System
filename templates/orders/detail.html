@@ -40,7 +40,7 @@
                         </svg>
                         Edit
                     </a>
-                    <form method="post" action="{% url 'orders:purchase-request-submit' purchase_request.pk %}">
+                    <form method="post" action="{% url 'orders:purchase-request-submit' purchase_request.pk %}" {% if attachments.count == 0 %}onsubmit="return window.confirm('No attachment added. Click OK to submit anyway, or Cancel to continue adding attachments.');"{% endif %}>
                         {% csrf_token %}
                         <button
                             type="submit"
@@ -173,7 +173,7 @@
                 {% if purchase_request.is_draft %}
                 <div class="mb-4">
                     {% url 'orders:purchase-request-upload' purchase_request.pk as upload_url %}
-                    {% include "components/file_upload.html" with upload_url=upload_url %}
+                    {% include "components/file_upload.html" with upload_url=upload_url show_file_type_selector=True attachment_type_options=attachment_type_options default_file_type=selected_attachment_type %}
                 </div>
                 {% endif %}
 

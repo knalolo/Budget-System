@@ -11,6 +11,9 @@
         currency: '{{ form.currency.value|default:'SGD' }}',
         totalPrice: '{{ form.total_price.value|default:'' }}',
         poRequired: '{{ form.po_required.value|default:'' }}',
+        existingAttachmentCount: {% if purchase_request %}{{ purchase_request.attachments.count }}{% else %}0{% endif %},
+        attachmentFileCount: 0,
+        selectedAttachmentNames: [],
         thresholds: { SGD: 1300, USD: 900, EUR: 800 },
         get poWarning() {
             const threshold = this.thresholds[this.currency];
@@ -21,11 +24,31 @@
                 return 'PO is required for amounts over ' + this.currency + ' ' + threshold.toLocaleString() + '.';
             }
             return '';
+        },
+        hasAnyAttachments() {
+            return this.existingAttachmentCount > 0 || this.attachmentFileCount > 0;
+        },
+        handleAttachmentSelection(fileList) {
+            const files = Array.from(fileList || []);
+            this.attachmentFileCount = files.length;
+            this.selectedAttachmentNames = files.map(file => file.name);
+        },
+        confirmSubmitWithoutAttachments(event) {
+            const action = event.submitter ? event.submitter.value : 'draft';
+            if (action !== 'submit' || this.hasAnyAttachments()) {
+                return;
+            }
+            const confirmed = window.confirm(
+                'No attachment added. Click OK to submit anyway, or Cancel to continue adding attachments.'
+            );
+            if (!confirmed) {
+                event.preventDefault();
+            }
         }
     }"
 >
 
-    <form method="post" enctype="multipart/form-data" id="pr-form">
+    <form method="post" enctype="multipart/form-data" id="pr-form" @submit="confirmSubmitWithoutAttachments($event)">
         {% csrf_token %}
 
         <div class="space-y-6">
@@ -282,7 +305,7 @@
 
                 {# Upload zone #}
                 {% url 'orders:purchase-request-upload' purchase_request.pk as upload_url %}
-                {% include "components/file_upload.html" with upload_url=upload_url %}
+                {% include "components/file_upload.html" with upload_url=upload_url show_file_type_selector=True attachment_type_options=attachment_type_options default_file_type=selected_attachment_type %}
 
                 {# Existing attachments #}
                 <div id="attachments-container" class="mt-4">
@@ -293,10 +316,61 @@
             </div>
             {% else %}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-                <h3 class="text-sm font-semibold text-gray-900 mb-2 pb-2 border-b border-gray-100">Quotation / Supporting Files</h3>
-                <p class="text-sm text-gray-500">
-                    Save the draft first, then upload files from the detail page.
-                </p>
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Quotation / New Order List</h3>
+                <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <div>
+                        <label for="attachment_file_type" class="block text-sm font-medium text-gray-700 mb-1">
+                            Attachment Type
+                        </label>
+                        <select
+                            id="attachment_file_type"
+                            name="attachment_file_type"
+                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                        >
+                            {% for value, label in attachment_type_options %}
+                            <option value="{{ value }}" {% if selected_attachment_type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <label for="attachment_files" class="block text-sm font-medium text-gray-700 mb-1">
+                            Upload Files
+                        </label>
+                        <input
+                            id="attachment_files"
+                            name="attachment_files"
+                            type="file"
+                            multiple
+                            x-ref="createAttachmentInput"
+                            @change="handleAttachmentSelection($event.target.files)"
+                            accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.jpg,.jpeg,.png,.gif,.bmp,.mp4,.avi,.mov,.mp3,.wav"
+                            class="block w-full text-sm text-gray-500
+                                file:mr-4 file:py-2 file:px-4
+                                file:rounded-lg file:border-0
+                                file:text-sm file:font-medium
+                                file:bg-brand-50 file:text-brand-700
+                                hover:file:bg-brand-100 cursor-pointer"
+                        />
+                        <p class="mt-2 text-xs text-gray-500">
+                            These files will be saved together with the purchase request. If you submit without attachments, the system will remind you first.
+                        </p>
+                        <p class="mt-1 text-xs text-gray-400">
+                            Up to 10 files. Allowed types: Word, Excel, PowerPoint, PDF, image, video, audio. Max 1 GB per file.
+                        </p>
+                    </div>
+                </div>
+
+                <template x-if="selectedAttachmentNames.length > 0">
+                    <div class="mt-4 rounded-md bg-gray-50 border border-gray-200 px-4 py-3">
+                        <p class="text-sm font-medium text-gray-700" x-text="attachmentFileCount + ' file(s) selected'"></p>
+                        <ul class="mt-2 space-y-1 text-sm text-gray-500">
+                            <template x-for="name in selectedAttachmentNames" :key="name">
+                                <li class="truncate" x-text="name"></li>
+                            </template>
+                        </ul>
+                    </div>
+                </template>
             </div>
             {% endif %}
 
