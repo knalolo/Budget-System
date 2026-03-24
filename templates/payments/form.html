@@ -1,13 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}{% if is_create %}New Payment Release{% else %}Edit {{ payment.request_number }}{% endif %} – Procurement System{% endblock %}
+{% block title %}{% if is_create %}New Payment Release{% else %}Edit {{ payment.request_number }}{% endif %} - Procurement System{% endblock %}
 {% block page_title %}{% if is_create %}New Payment Release{% else %}Edit {{ payment.request_number }}{% endif %}{% endblock %}
 
 {% block content %}
 <div class="max-w-3xl mx-auto">
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
 
-        <!-- Card header -->
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
             <h2 class="text-base font-semibold text-gray-800">
                 {% if is_create %}Create Payment Release{% else %}Edit Payment Release{% endif %}
@@ -18,20 +17,42 @@
             </a>
         </div>
 
-        <!-- Form body -->
         <form
             method="post"
             enctype="multipart/form-data"
+            id="payment-form"
             class="px-6 py-6 space-y-6"
             x-data="{
                 poMode: '{{ form.po_number.value|default:'' }}' === 'N/A' || '{{ form.po_number.value|default:'' }}' === '' ? 'na' : 'other',
                 poCustom: '{{ form.po_number.value|default:'' }}' !== 'N/A' ? '{{ form.po_number.value|default:'' }}' : '',
-                get poValue() { return this.poMode === 'na' ? 'N/A' : this.poCustom; }
+                attachmentFileCount: 0,
+                selectedAttachmentNames: [],
+                get poValue() { return this.poMode === 'na' ? 'N/A' : this.poCustom; },
+                hasAnyAttachments() {
+                    return this.attachmentFileCount > 0;
+                },
+                handleAttachmentSelection(fileList) {
+                    const files = Array.from(fileList || []);
+                    this.attachmentFileCount = files.length;
+                    this.selectedAttachmentNames = files.map(file => file.name);
+                },
+                confirmSubmitWithoutAttachments(event) {
+                    const action = event.submitter ? event.submitter.value : 'draft';
+                    if (action !== 'submit' || this.hasAnyAttachments()) {
+                        return;
+                    }
+                    const confirmed = window.confirm(
+                        'No attachment added. Click OK to submit anyway, or Cancel to continue adding attachments.'
+                    );
+                    if (!confirmed) {
+                        event.preventDefault();
+                    }
+                }
             }"
+            @submit="confirmSubmitWithoutAttachments($event)"
         >
             {% csrf_token %}
 
-            <!-- Non-field errors -->
             {% if form.non_field_errors %}
             <div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
                 {% for error in form.non_field_errors %}
@@ -40,7 +61,6 @@
             </div>
             {% endif %}
 
-            <!-- Row 1: Project Expense Category + MC Number (Project) -->
             <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
                     <label for="{{ form.expense_category.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
@@ -62,7 +82,6 @@
                 </div>
             </div>
 
-            <!-- Row 2: Description -->
             <div>
                 <label for="{{ form.description.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
                     Description <span class="text-red-500">*</span>
@@ -73,7 +92,6 @@
                 {% endif %}
             </div>
 
-            <!-- Row 3: Vendor -->
             <div>
                 <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
                     Vendor <span class="text-red-500">*</span>
@@ -84,7 +102,6 @@
                 {% endif %}
             </div>
 
-            <!-- Row 4: Currency + Total Price -->
             <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
                     <label for="{{ form.currency.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
@@ -106,7 +123,6 @@
                 </div>
             </div>
 
-            <!-- Row 5: Justification -->
             <div>
                 <label for="{{ form.justification.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
                     Justification <span class="text-red-500">*</span>
@@ -117,13 +133,11 @@
                 {% endif %}
             </div>
 
-            <!-- Row 6: PO Number (with Alpine.js toggle) -->
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">
                     PO Number <span class="text-red-500">*</span>
                 </label>
 
-                <!-- Hidden input that carries the actual value -->
                 <input type="hidden" name="po_number" :value="poValue" />
 
                 <div class="flex items-center gap-4">
@@ -161,7 +175,6 @@
                 {% endif %}
             </div>
 
-            <!-- Row 7: Target Payment -->
             <div>
                 <label for="{{ form.target_payment.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
                     Target Payment <span class="text-red-500">*</span>
@@ -173,27 +186,75 @@
             </div>
 
             {% if is_create %}
-            <!-- Row 8: Official Invoice (file upload) -->
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">
-                    Official Invoice (optional – can upload after creation)
+                    Official Invoice / Proforma Invoice
                 </label>
-                <input
-                    type="file"
-                    name="invoice_file"
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-                    class="block w-full text-sm text-gray-500
-                        file:mr-4 file:py-2 file:px-4
-                        file:rounded-lg file:border-0
-                        file:text-sm file:font-medium
-                        file:bg-brand-50 file:text-brand-700
-                        hover:file:bg-brand-100 cursor-pointer"
-                />
-                <p class="mt-1 text-xs text-gray-400">PDF, JPG, PNG, DOC up to 1 GB</p>
+                <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    <div>
+                        <label for="attachment_file_type" class="block text-sm font-medium text-gray-700 mb-1">
+                            Attachment Type
+                        </label>
+                        <select
+                            id="attachment_file_type"
+                            name="attachment_file_type"
+                            class="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                        >
+                            {% for value, label in attachment_type_options %}
+                            <option value="{{ value }}" {% if selected_attachment_type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="sm:col-span-2">
+                        <label for="attachment_files" class="block text-sm font-medium text-gray-700 mb-1">
+                            Upload Files
+                        </label>
+                        <input
+                            id="attachment_files"
+                            name="attachment_files"
+                            type="file"
+                            multiple
+                            x-ref="createAttachmentInput"
+                            @change="handleAttachmentSelection($event.target.files)"
+                            accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.jpg,.jpeg,.png,.gif,.bmp,.mp4,.avi,.mov,.mp3,.wav"
+                            class="sr-only"
+                        />
+                        <div class="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 sm:flex-row sm:items-center">
+                            <button
+                                type="button"
+                                @click="$refs.createAttachmentInput.click()"
+                                class="inline-flex items-center justify-center rounded-lg bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100 transition-colors"
+                            >
+                                Choose Files
+                            </button>
+                            <p
+                                class="text-sm text-gray-500"
+                                x-text="attachmentFileCount > 0 ? attachmentFileCount + ' file(s) selected' : 'No files selected'"
+                            ></p>
+                        </div>
+                        <p class="mt-2 text-xs text-gray-500">
+                            Attach the vendor invoice when available. Proforma Invoice is acceptable for advance or down payment purposes. PO documents are not accepted here.
+                        </p>
+                        <p class="mt-1 text-xs text-gray-400">
+                            Up to 10 files. Allowed types: Word, Excel, PowerPoint, PDF, image, video, audio. Max 1 GB per file.
+                        </p>
+                    </div>
+                </div>
+
+                <template x-if="selectedAttachmentNames.length > 0">
+                    <div class="mt-4 rounded-md bg-gray-50 border border-gray-200 px-4 py-3">
+                        <p class="text-sm font-medium text-gray-700" x-text="attachmentFileCount + ' file(s) selected'"></p>
+                        <ul class="mt-2 space-y-1 text-sm text-gray-500">
+                            <template x-for="name in selectedAttachmentNames" :key="name">
+                                <li class="truncate" x-text="name"></li>
+                            </template>
+                        </ul>
+                    </div>
+                </template>
             </div>
             {% endif %}
 
-            <!-- Actions -->
             <div class="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
                 <a
                     href="{% if is_create %}{% url 'payments:list' %}{% else %}{% url 'payments:detail' pk=payment.pk %}{% endif %}"
@@ -201,12 +262,31 @@
                 >
                     Cancel
                 </a>
+                {% if is_create %}
+                <button
+                    type="submit"
+                    name="action"
+                    value="draft"
+                    class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                >
+                    Save Draft
+                </button>
+                <button
+                    type="submit"
+                    name="action"
+                    value="submit"
+                    class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
+                >
+                    Save &amp; Submit for Approval
+                </button>
+                {% else %}
                 <button
                     type="submit"
                     class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
                 >
-                    {% if is_create %}Save Draft{% else %}Save Changes{% endif %}
+                    Save Changes
                 </button>
+                {% endif %}
             </div>
 
         </form>

@@ -1,12 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}{{ payment.request_number }} – Payment Release{% endblock %}
+{% block title %}{{ payment.request_number }} - Payment Release{% endblock %}
 {% block page_title %}Payment Release Detail{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto space-y-6">
 
-    <!-- Back link -->
     <a href="{% url 'payments:list' %}" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -14,7 +13,6 @@
         Back to Payment Releases
     </a>
 
-    <!-- Header card -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -25,11 +23,9 @@
                 </p>
             </div>
 
-            <!-- Status + workflow actions -->
             {% include "payments/_detail_status.html" %}
         </div>
 
-        <!-- Details grid -->
         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 px-6 py-6">
 
             <div>
@@ -68,7 +64,7 @@
             <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Linked Purchase Request</dt>
                 <dd class="mt-1 text-sm text-brand-600">
-                    <a href="{% url 'orders:detail' pk=payment.purchase_request.pk %}" class="hover:underline">
+                    <a href="{% url 'orders:purchase-request-detail' pk=payment.purchase_request.pk %}" class="hover:underline">
                         {{ payment.purchase_request.request_number }}
                     </a>
                 </dd>
@@ -87,7 +83,6 @@
 
         </dl>
 
-        <!-- Edit button (draft only) -->
         {% if can_edit %}
         <div class="px-6 pb-4">
             <a
@@ -103,7 +98,6 @@
         {% endif %}
     </div>
 
-    <!-- Approval section -->
     {% if can_approve %}
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" x-data="{ comment: '' }">
         <div class="px-6 py-4 border-b border-gray-100">
@@ -152,7 +146,6 @@
     </div>
     {% endif %}
 
-    <!-- PCM Approval result -->
     {% if payment.pcm_approver %}
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100">
@@ -188,7 +181,6 @@
     </div>
     {% endif %}
 
-    <!-- Final Approval result -->
     {% if payment.final_approver %}
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100">
@@ -224,7 +216,6 @@
     </div>
     {% endif %}
 
-    <!-- Attachments -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100">
             <h3 class="text-base font-semibold text-gray-800">Attachments</h3>
@@ -233,7 +224,6 @@
 
             {% include "payments/_attachments_list.html" with attachments=payment.attachments.all %}
 
-            <!-- Upload form -->
             <form
                 method="post"
                 action="{% url 'payments:upload' pk=payment.pk %}"
@@ -243,6 +233,7 @@
                 hx-swap="outerHTML"
                 hx-encoding="multipart/form-data"
                 class="mt-4 flex flex-wrap items-end gap-3"
+                x-data="{ selectedFileName: 'No file selected' }"
             >
                 {% csrf_token %}
                 <div class="flex-1 min-w-0">
@@ -250,28 +241,32 @@
                     <input
                         type="file"
                         name="file"
+                        x-ref="detailAttachmentInput"
+                        @change="selectedFileName = $event.target.files.length ? $event.target.files[0].name : 'No file selected'"
                         required
-                        class="block w-full text-sm text-gray-500
-                            file:mr-3 file:py-1.5 file:px-3
-                            file:rounded-lg file:border-0
-                            file:text-sm file:font-medium
-                            file:bg-brand-50 file:text-brand-700
-                            hover:file:bg-brand-100 cursor-pointer"
+                        accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.jpg,.jpeg,.png,.gif,.bmp,.mp4,.avi,.mov,.mp3,.wav"
+                        class="sr-only"
                     />
+                    <div class="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
+                        <button
+                            type="button"
+                            @click="$refs.detailAttachmentInput.click()"
+                            class="inline-flex items-center justify-center rounded-lg bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100 transition-colors"
+                        >
+                            Choose File
+                        </button>
+                        <p class="text-sm text-gray-500" x-text="selectedFileName"></p>
+                    </div>
                 </div>
                 <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">File Type</label>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Attachment Type</label>
                     <select
                         name="file_type"
                         class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
-                        <option value="invoice">Invoice</option>
-                        <option value="proforma_invoice">Proforma Invoice</option>
-                        <option value="delivery_order">Delivery Order</option>
-                        <option value="sales_order">Sales Order</option>
-                        <option value="po_document">PO Document</option>
-                        <option value="quotation">Quotation</option>
-                        <option value="other">Other</option>
+                        {% for value, label in attachment_type_options %}
+                        <option value="{{ value }}" {% if selected_attachment_type == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <button
@@ -281,10 +276,12 @@
                     Upload
                 </button>
             </form>
+            <p class="text-xs text-gray-400">
+                Official Invoice is preferred. Proforma Invoice is acceptable for advance or down payment purposes. PO documents are not accepted here.
+            </p>
         </div>
     </div>
 
-    <!-- Approval history -->
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100">
             <h3 class="text-base font-semibold text-gray-800">Approval History</h3>
