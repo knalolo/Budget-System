@@ -44,6 +44,7 @@ docker/nginx/*.pid
 
 # Logs
 *.log
+.runserver.pid
 
 # Reference PDFs
 *.pdf
