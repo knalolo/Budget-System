@@ -2,7 +2,7 @@
 
 from django import forms
 
-from orders.models import PurchaseRequest
+from payments.models import PaymentRelease
 
 from .models import AssetItem, AssetRegistration
 
@@ -10,18 +10,22 @@ from .models import AssetItem, AssetRegistration
 class AssetRegistrationForm(forms.ModelForm):
     """Form for the top-level AssetRegistration record."""
 
-    purchase_request = forms.ModelChoiceField(
-        queryset=PurchaseRequest.objects.filter(status="approved").order_by(
-            "-created_at"
-        ),
+    payment_release = forms.ModelChoiceField(
+        queryset=PaymentRelease.objects.filter(status="approved").order_by("-created_at"),
         required=False,
         empty_label="-- None (standalone registration) --",
-        help_text="Optionally link this registration to an approved purchase request.",
+        help_text="Optionally link this registration to an approved payment release.",
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["payment_release"].label_from_instance = (
+            lambda payment_release: f"{payment_release.request_number} - {payment_release.vendor}"
+        )
 
     class Meta:
         model = AssetRegistration
-        fields = ["purchase_request", "notes"]
+        fields = ["payment_release", "notes"]
         widgets = {
             "notes": forms.Textarea(attrs={"rows": 3}),
         }

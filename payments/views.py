@@ -28,6 +28,7 @@ PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES = {
     "invoice": "Official Invoice",
     "proforma_invoice": "Proforma Invoice",
 }
+LINKED_PURCHASE_REQUEST_PARAM = "purchase_request"
 
 
 # ---------------------------------------------------------------------------
@@ -73,19 +74,28 @@ class PaymentReleaseCreateView(View):
     template_name = "payments/form.html"
 
     def get(self, request: HttpRequest) -> HttpResponse:
-        form = PaymentReleaseForm()
-        return render(
+        try:
+            source_purchase_request = _get_linkable_purchase_request(request)
+        except PermissionError:
+            return HttpResponseForbidden(
+                "You do not have permission to use this purchase request."
+            )
+        form = PaymentReleaseForm(
+            initial=_payment_release_initial_from_purchase_request(source_purchase_request)
+        )
+        return _render_payment_create_form(
             request,
-            self.template_name,
-            {
-                "form": form,
-                "is_create": True,
-                "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
-                "selected_attachment_type": "invoice",
-            },
+            form,
+            source_purchase_request=source_purchase_request,
         )
 
     def post(self, request: HttpRequest) -> HttpResponse:
+        try:
+            source_purchase_request = _get_linkable_purchase_request(request)
+        except PermissionError:
+            return HttpResponseForbidden(
+                "You do not have permission to use this purchase request."
+            )
         form = PaymentReleaseForm(request.POST)
         uploaded_files = request.FILES.getlist("attachment_files")
 
@@ -96,23 +106,16 @@ class PaymentReleaseCreateView(View):
             _validate_payment_attachments(uploaded_files)
         except ValidationError as exc:
             form.add_error(None, _validation_error_message(exc))
-            return render(
+            return _render_payment_create_form(
                 request,
-                self.template_name,
-                {
-                    "form": form,
-                    "is_create": True,
-                    "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
-                    "selected_attachment_type": request.POST.get(
-                        "attachment_file_type",
-                        "invoice",
-                    ),
-                },
+                form,
+                source_purchase_request=source_purchase_request,
             )
 
         if form.is_valid():
             payment = form.save(commit=False)
             payment.requester = request.user
+            payment.purchase_request = source_purchase_request
             payment.save()
 
             _save_payment_attachments(
@@ -139,18 +142,10 @@ class PaymentReleaseCreateView(View):
                     f"Payment release {payment.request_number} created.",
                 )
             return redirect("payments:detail", pk=payment.pk)
-        return render(
+        return _render_payment_create_form(
             request,
-            self.template_name,
-            {
-                "form": form,
-                "is_create": True,
-                "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
-                "selected_attachment_type": request.POST.get(
-                    "attachment_file_type",
-                    "invoice",
-                ),
-            },
+            form,
+            source_purchase_request=source_purchase_request,
         )
 
 
@@ -438,6 +433,85 @@ def _status_choices() -> list[tuple[str, str]]:
     """Return all payment status choices including an empty 'All' option."""
     from django.conf import settings
     return [("", "All statuses")] + list(settings.PAYMENT_STATUS_CHOICES)
+
+
+def _render_payment_create_form(
+    request: HttpRequest,
+    form: PaymentReleaseForm,
+    *,
+    source_purchase_request=None,
+) -> HttpResponse:
+    """Render the create form, preserving linked purchase-request context."""
+    return render(
+        request,
+        PaymentReleaseCreateView.template_name,
+        {
+            "form": form,
+            "is_create": True,
+            "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
+            "selected_attachment_type": request.POST.get(
+                "attachment_file_type",
+                "invoice",
+            ),
+            "source_purchase_request": source_purchase_request,
+            "initial_po_mode": _payment_release_po_mode(source_purchase_request, form),
+        },
+    )
+
+
+def _get_linkable_purchase_request(request: HttpRequest):
+    """
+    Return the purchase request referenced by the request, if any.
+
+    Requesters may only link their own purchase requests. Admins may link any
+    purchase request. Missing ids simply return None.
+    """
+    raw_purchase_request_id = (
+        request.POST.get(LINKED_PURCHASE_REQUEST_PARAM)
+        or request.GET.get(LINKED_PURCHASE_REQUEST_PARAM)
+    )
+    if not raw_purchase_request_id:
+        return None
+
+    from orders.models import PurchaseRequest
+
+    purchase_request = get_object_or_404(
+        PurchaseRequest.objects.select_related("requester", "project", "expense_category"),
+        pk=raw_purchase_request_id,
+    )
+
+    if purchase_request.requester != request.user and not _is_admin(request.user):
+        raise PermissionError
+
+    return purchase_request
+
+
+def _payment_release_initial_from_purchase_request(purchase_request) -> dict:
+    """Build initial payment-release form values from a purchase request."""
+    if purchase_request is None:
+        return {}
+
+    return {
+        "expense_category": purchase_request.expense_category_id,
+        "project": purchase_request.project_id,
+        "description": purchase_request.description,
+        "vendor": purchase_request.vendor,
+        "currency": purchase_request.currency,
+        "total_price": purchase_request.total_price,
+        "justification": purchase_request.justification,
+        "po_number": "" if purchase_request.po_required else "N/A",
+        "target_payment": purchase_request.target_payment,
+    }
+
+
+def _payment_release_po_mode(purchase_request, form: PaymentReleaseForm) -> str:
+    """Return the initial PO mode for the payment-release form."""
+    po_number_value = form["po_number"].value()
+    if purchase_request is not None and purchase_request.po_required and not po_number_value:
+        return "other"
+    if po_number_value and po_number_value != "N/A":
+        return "other"
+    return "na"
 
 
 def _clean_payment_attachment_type(raw_value: str) -> str:

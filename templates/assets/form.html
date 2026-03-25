@@ -69,26 +69,26 @@
 
             <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
 
-                {# Purchase Request (optional) #}
+                {# Payment Release (optional) #}
                 <div>
-                    <label for="{{ form.purchase_request.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                        Purchase Request <span class="text-gray-400 font-normal">(optional)</span>
+                    <label for="{{ form.payment_release.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        Payment Release <span class="text-gray-400 font-normal">(optional)</span>
                     </label>
                     <select
-                        name="{{ form.purchase_request.html_name }}"
-                        id="{{ form.purchase_request.id_for_label }}"
-                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.purchase_request.errors %}border-red-300{% endif %}"
+                        name="{{ form.payment_release.html_name }}"
+                        id="{{ form.payment_release.id_for_label }}"
+                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.payment_release.errors %}border-red-300{% endif %}"
                     >
                         <option value="">-- None (standalone registration) --</option>
-                        {% for val, label in form.purchase_request.field.choices %}
+                        {% for val, label in form.payment_release.field.choices %}
                         {% if val %}
-                        <option value="{{ val }}" {% if form.purchase_request.value|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
+                        <option value="{{ val }}" {% if form.payment_release.value|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
                         {% endif %}
                         {% endfor %}
                     </select>
-                    <p class="mt-1 text-xs text-gray-500">{{ form.purchase_request.help_text }}</p>
-                    {% if form.purchase_request.errors %}
-                    <p class="mt-1 text-xs text-red-600">{{ form.purchase_request.errors|join:", " }}</p>
+                    <p class="mt-1 text-xs text-gray-500">{{ form.payment_release.help_text }}</p>
+                    {% if form.payment_release.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.payment_release.errors|join:", " }}</p>
                     {% endif %}
                 </div>
 

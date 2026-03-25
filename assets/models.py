@@ -21,6 +21,13 @@ ASSET_STATUS_CHOICES = [
 class AssetRegistration(models.Model):
     """A collection of asset items to be exported to AssetTiger."""
 
+    payment_release = models.ForeignKey(
+        "payments.PaymentRelease",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="asset_registrations",
+    )
     purchase_request = models.ForeignKey(
         "orders.PurchaseRequest",
         null=True,
@@ -51,6 +58,12 @@ class AssetRegistration(models.Model):
     @property
     def item_count(self) -> int:
         return self.items.count()
+
+    @property
+    def linked_purchase_request(self):
+        if self.payment_release_id and self.payment_release:
+            return self.payment_release.purchase_request
+        return self.purchase_request
 
 
 class AssetItem(models.Model):

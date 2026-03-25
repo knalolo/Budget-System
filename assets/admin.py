@@ -28,13 +28,18 @@ class AssetRegistrationAdmin(admin.ModelAdmin):
     list_display = [
         "id",
         "requester",
-        "purchase_request",
+        "payment_release",
         "status",
         "item_count",
         "created_at",
     ]
     list_filter = ["status"]
-    search_fields = ["requester__username", "requester__first_name", "notes"]
+    search_fields = [
+        "requester__username",
+        "requester__first_name",
+        "payment_release__request_number",
+        "notes",
+    ]
     readonly_fields = ["created_at", "updated_at"]
     inlines = [AssetItemInline]
 

@@ -394,14 +394,6 @@ def update_user_role(request: HttpRequest, pk: int) -> HttpResponse:
             status=400,
         )
 
-    # Prevent admins from accidentally demoting themselves.
-    if target_user == request.user and new_role != settings.ROLE_ADMIN:
-        messages.warning(
-            request,
-            "You cannot change your own role away from admin.",
-        )
-        return HttpResponse(status=400)
-
     profile, _ = UserProfile.objects.get_or_create(user=target_user)
     profile.role = new_role
     profile.save(update_fields=["role", "updated_at"])

@@ -233,8 +233,8 @@
                 class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
             >
                 Purchase Requests
-                {% if stats.total_prs %}
-                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.total_prs }}</span>
+                {% if stats.dashboard_prs_count %}
+                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.dashboard_prs_count }}</span>
                 {% endif %}
             </button>
             <button
@@ -243,8 +243,8 @@
                 class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
             >
                 Payment Releases
-                {% if stats.total_payments %}
-                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.total_payments }}</span>
+                {% if stats.dashboard_payments_count %}
+                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.dashboard_payments_count }}</span>
                 {% endif %}
             </button>
             <button

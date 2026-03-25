@@ -5,7 +5,7 @@ import logging
 from datetime import date
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Q, Sum
+from django.db.models import Exists, OuterRef, Q, Sum
 from django.views.generic import TemplateView
 
 logger = logging.getLogger(__name__)
@@ -66,6 +66,32 @@ def _build_pending_approvals_query(user):
     return pr_qs, payment_qs
 
 
+def _dashboard_purchase_requests_query(user):
+    """Return PRs that are still in the purchase-request stage."""
+    from orders.models import PurchaseRequest
+    from payments.models import PaymentRelease
+
+    payment_exists = PaymentRelease.objects.filter(purchase_request=OuterRef("pk"))
+    return PurchaseRequest.objects.filter(requester=user).annotate(
+        has_payment_release=Exists(payment_exists)
+    ).filter(has_payment_release=False)
+
+
+def _dashboard_payment_releases_query(user):
+    """Return payments that have not yet advanced into the delivery stage."""
+    from deliveries.models import DeliverySubmission
+    from payments.models import PaymentRelease
+
+    delivery_exists = DeliverySubmission.objects.filter(
+        purchase_request=OuterRef("purchase_request_id")
+    )
+    return PaymentRelease.objects.filter(requester=user).annotate(
+        has_delivery_submission=Exists(delivery_exists)
+    ).filter(
+        Q(purchase_request__isnull=True) | Q(has_delivery_submission=False)
+    )
+
+
 def _total_spend_this_month(user) -> dict[str, float]:
     """
     Compute total approved spend for this calendar month, grouped by currency.
@@ -101,13 +127,15 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         # ------------------------------------------------------------------
         # Recent activity for the current user
         # ------------------------------------------------------------------
+        my_purchase_requests_qs = _dashboard_purchase_requests_query(user)
         my_purchase_requests = (
-            PurchaseRequest.objects.filter(requester=user)
+            my_purchase_requests_qs
             .select_related("project", "expense_category")
             .order_by("-created_at")[:10]
         )
+        my_payment_releases_qs = _dashboard_payment_releases_query(user)
         my_payment_releases = (
-            PaymentRelease.objects.filter(requester=user)
+            my_payment_releases_qs
             .select_related("project", "expense_category")
             .order_by("-created_at")[:10]
         )
@@ -152,6 +180,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ).count()
 
         total_deliveries = DeliverySubmission.objects.filter(requester=user).count()
+        dashboard_prs_count = my_purchase_requests_qs.count()
+        dashboard_payments_count = my_payment_releases_qs.count()
 
         # Approved PRs this month (all currencies, for headline count)
         approved_this_month = PurchaseRequest.objects.filter(
@@ -178,6 +208,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             "total_payments": total_payments,
             "approved_payments": approved_payments,
             "total_deliveries": total_deliveries,
+            "dashboard_prs_count": dashboard_prs_count,
+            "dashboard_payments_count": dashboard_payments_count,
             "approved_this_month": approved_this_month,
             "total_spend_display": total_spend_display,
             "spend_by_currency": spend_by_currency,

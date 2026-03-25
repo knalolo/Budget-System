@@ -23,7 +23,7 @@
             id="payment-form"
             class="px-6 py-6 space-y-6"
             x-data="{
-                poMode: '{{ form.po_number.value|default:'' }}' === 'N/A' || '{{ form.po_number.value|default:'' }}' === '' ? 'na' : 'other',
+                poMode: '{{ initial_po_mode|default:"na" }}',
                 poCustom: '{{ form.po_number.value|default:'' }}' !== 'N/A' ? '{{ form.po_number.value|default:'' }}' : '',
                 attachmentFileCount: 0,
                 selectedAttachmentNames: [],
@@ -52,12 +52,29 @@
             @submit="confirmSubmitWithoutAttachments($event)"
         >
             {% csrf_token %}
+            {% if source_purchase_request %}
+            <input type="hidden" name="purchase_request" value="{{ source_purchase_request.pk }}" />
+            {% endif %}
 
             {% if form.non_field_errors %}
             <div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
                 {% for error in form.non_field_errors %}
                 <p>{{ error }}</p>
                 {% endfor %}
+            </div>
+            {% endif %}
+
+            {% if source_purchase_request %}
+            <div class="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm text-indigo-900">
+                <p class="font-semibold">Creating Payment Release from {{ source_purchase_request.request_number }}</p>
+                <p class="mt-1 text-indigo-800">
+                    The fields below were prefilled from the linked purchase request.
+                    {% if source_purchase_request.po_required %}
+                    Enter the actual PO number before submitting the payment release.
+                    {% else %}
+                    Since this request does not require a PO, the PO number defaults to `N/A`.
+                    {% endif %}
+                </p>
             </div>
             {% endif %}
 
