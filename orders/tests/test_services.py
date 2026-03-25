@@ -191,6 +191,11 @@ class TestMarkOrdered:
         updated = mark_ordered(pr)
         assert updated.status == "ordered"
 
+    def test_po_required_approved_raises_until_po_sent(self):
+        pr = PurchaseRequestFactory(status="approved", po_required=True)
+        with pytest.raises(ValidationError):
+            mark_ordered(pr)
+
     def test_po_sent_transitions_to_ordered(self):
         pr = PurchaseRequestFactory(status="po_sent")
         updated = mark_ordered(pr)

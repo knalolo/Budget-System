@@ -9,7 +9,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from approvals.services import can_user_approve, get_approval_history
@@ -176,11 +176,17 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         pr = self.object
         approval_history = get_approval_history(pr).select_related("action_by")
         can_approve, _ = can_user_approve(pr, self.request.user)
+        first_payment_release = pr.payment_releases.order_by("-created_at").first()
         context["approval_history"] = approval_history
         context["can_approve"] = can_approve
         context["attachments"] = pr.attachments.select_related("uploaded_by")
         context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
         context["selected_attachment_type"] = "quotation"
+        context["has_payment_release"] = first_payment_release is not None
+        context["first_payment_release"] = first_payment_release
+        context["payment_release_create_url"] = (
+            f"{reverse('payments:create')}?purchase_request={pr.pk}"
+        )
         return context
 
 
@@ -353,14 +359,23 @@ def purchase_request_mark_ordered(request, pk):
         updated_pr = mark_ordered(pr)
         messages.success(
             request,
-            f"Purchase request {updated_pr.request_number} marked as ordered.",
+            (
+                f"Purchase request {updated_pr.request_number} marked as ordered. "
+                "Continue by creating the linked payment release."
+            ),
         )
     except ValidationError as exc:
         messages.error(request, str(exc.message))
+        if request.headers.get("HX-Request"):
+            return _htmx_detail_redirect(request, pk)
+        return redirect("orders:purchase-request-detail", pk=pk)
 
+    payment_release_url = f"{reverse('payments:create')}?purchase_request={updated_pr.pk}"
     if request.headers.get("HX-Request"):
-        return _htmx_detail_redirect(request, pk)
-    return redirect("orders:purchase-request-detail", pk=pk)
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = payment_release_url
+        return response
+    return redirect(payment_release_url)
 
 
 @login_required

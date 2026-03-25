@@ -30,11 +30,22 @@
                     <dt class="text-gray-500">Requester</dt>
                     <dd class="text-gray-900 font-medium">{{ registration.requester.get_full_name|default:registration.requester.username }}</dd>
 
+                    <dt class="text-gray-500">Payment Release</dt>
+                    <dd class="text-gray-900">
+                        {% if registration.payment_release %}
+                            <a href="{% url 'payments:detail' registration.payment_release.pk %}" class="text-brand-600 hover:underline">
+                                {{ registration.payment_release.request_number }}
+                            </a>
+                        {% else %}
+                            <span class="text-gray-400">None</span>
+                        {% endif %}
+                    </dd>
+
                     <dt class="text-gray-500">Purchase Request</dt>
                     <dd class="text-gray-900">
-                        {% if registration.purchase_request %}
-                            <a href="{% url 'orders:purchase-request-detail' registration.purchase_request.pk %}" class="text-brand-600 hover:underline">
-                                {{ registration.purchase_request.request_number }}
+                        {% if registration.linked_purchase_request %}
+                            <a href="{% url 'orders:purchase-request-detail' registration.linked_purchase_request.pk %}" class="text-brand-600 hover:underline">
+                                {{ registration.linked_purchase_request.request_number }}
                             </a>
                         {% else %}
                             <span class="text-gray-400">None</span>

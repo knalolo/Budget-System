@@ -34,7 +34,12 @@ class AssetRegistrationListView(LoginRequiredMixin, ListView):
 
     def get_queryset(self):
         return (
-            AssetRegistration.objects.select_related("requester", "purchase_request")
+            AssetRegistration.objects.select_related(
+                "requester",
+                "payment_release",
+                "payment_release__purchase_request",
+                "purchase_request",
+            )
             .prefetch_related("items")
             .order_by("-created_at")
         )
@@ -106,6 +111,11 @@ class AssetRegistrationCreateView(LoginRequiredMixin, CreateView):
     def form_valid(self, form):
         registration = form.save(commit=False)
         registration.requester = self.request.user
+        registration.purchase_request = (
+            registration.payment_release.purchase_request
+            if registration.payment_release_id
+            else None
+        )
         registration.save()
 
         items_data = _parse_items_from_post(self.request.POST)
@@ -142,7 +152,10 @@ class AssetRegistrationDetailView(LoginRequiredMixin, DetailView):
 
     def get_queryset(self):
         return AssetRegistration.objects.select_related(
-            "requester", "purchase_request"
+            "requester",
+            "payment_release",
+            "payment_release__purchase_request",
+            "purchase_request",
         ).prefetch_related("items")
 
     def get_context_data(self, **kwargs):

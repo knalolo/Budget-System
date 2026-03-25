@@ -24,6 +24,39 @@ def _payment_release_payload(project, category, *, action="draft") -> dict:
 
 @pytest.mark.django_db
 class TestPaymentReleaseCreateView:
+    def test_get_prefills_from_linked_purchase_request(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        from orders.models import PurchaseRequest
+
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Advance payment for testing services",
+            vendor="Playtest Vendor",
+            currency="SGD",
+            total_price="500.00",
+            justification="Needed to lock the test slot.",
+            po_required=False,
+            target_payment="Apr 2026",
+            status="ordered",
+        )
+
+        response = client.get(
+            f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+        )
+
+        assert response.status_code == 200
+        assert response.context["source_purchase_request"] == purchase_request
+        assert response.context["form"].initial["vendor"] == purchase_request.vendor
+        assert response.context["form"].initial["po_number"] == "N/A"
+
     def test_create_saves_uploaded_invoice(
         self,
         client,
@@ -53,6 +86,78 @@ class TestPaymentReleaseCreateView:
         assert payment.status == "draft"
         assert attachment.file_type == "invoice"
         assert attachment.original_filename == "official-invoice.pdf"
+
+    def test_create_links_payment_to_purchase_request(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        from orders.models import PurchaseRequest
+
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Advance payment for testing services",
+            vendor="Playtest Vendor",
+            currency="SGD",
+            total_price="500.00",
+            justification="Needed to lock the test slot.",
+            po_required=False,
+            target_payment="Apr 2026",
+            status="ordered",
+        )
+
+        payload = _payment_release_payload(sample_project, sample_expense_category)
+        payload["purchase_request"] = purchase_request.pk
+
+        response = client.post(reverse("payments:create"), data=payload)
+
+        assert response.status_code == 302
+        payment = PaymentRelease.objects.get(requester=regular_user)
+        assert payment.purchase_request == purchase_request
+        assert payment.request_number == purchase_request.request_number.replace(
+            "PR-",
+            "RP-",
+            1,
+        )
+
+    def test_create_syncs_request_number_with_linked_purchase_request(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        from orders.models import PurchaseRequest
+
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequest.objects.create(
+            request_number="PR-20260325-0002",
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Advance payment for testing services",
+            vendor="Playtest Vendor",
+            currency="SGD",
+            total_price="500.00",
+            justification="Needed to lock the test slot.",
+            po_required=False,
+            target_payment="Apr 2026",
+            status="ordered",
+        )
+
+        payload = _payment_release_payload(sample_project, sample_expense_category)
+        payload["purchase_request"] = purchase_request.pk
+
+        response = client.post(reverse("payments:create"), data=payload)
+
+        assert response.status_code == 302
+        payment = PaymentRelease.objects.get(requester=regular_user)
+        assert payment.request_number == "RP-20260325-0002"
 
     def test_create_submit_saves_proforma_and_submits(
         self,

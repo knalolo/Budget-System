@@ -28,7 +28,7 @@
                     <tr>
                         <th class="py-3 pl-4 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pl-6">#</th>
                         <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Requester</th>
-                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Purchase Request</th>
+                        <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Payment Release</th>
                         <th class="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Items</th>
                         <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
                         <th class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Date</th>
@@ -43,12 +43,17 @@
                             {{ reg.requester.get_full_name|default:reg.requester.username }}
                         </td>
                         <td class="px-3 py-3 text-sm text-gray-700">
-                            {% if reg.purchase_request %}
-                                <a href="{% url 'orders:purchase-request-detail' reg.purchase_request.pk %}" class="text-brand-600 hover:underline">
-                                    {{ reg.purchase_request.request_number }}
+                            {% if reg.payment_release %}
+                                <a href="{% url 'payments:detail' reg.payment_release.pk %}" class="text-brand-600 hover:underline">
+                                    {{ reg.payment_release.request_number }}
                                 </a>
+                                {% if reg.linked_purchase_request %}
+                                <div class="mt-1 text-xs text-gray-400">
+                                    {{ reg.linked_purchase_request.request_number }}
+                                </div>
+                                {% endif %}
                             {% else %}
-                                <span class="text-gray-400">—</span>
+                                <span class="text-gray-400">-</span>
                             {% endif %}
                         </td>
                         <td class="px-3 py-3 text-sm text-right text-gray-700">{{ reg.item_count }}</td>

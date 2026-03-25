@@ -3,6 +3,8 @@
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 
+from payments.models import PaymentRelease
+
 from .models import AssetItem, AssetRegistration
 
 User = get_user_model()
@@ -77,12 +79,14 @@ class AssetRegistrationListSerializer(serializers.ModelSerializer):
 
     requester = UserBriefSerializer(read_only=True)
     item_count = serializers.IntegerField(source="item_count", read_only=True)
+    payment_release = serializers.PrimaryKeyRelatedField(read_only=True)
     purchase_request = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = AssetRegistration
         fields = [
             "id",
+            "payment_release",
             "purchase_request",
             "requester",
             "status",
@@ -103,11 +107,18 @@ class AssetRegistrationDetailSerializer(serializers.ModelSerializer):
     requester = UserBriefSerializer(read_only=True)
     items = AssetItemWriteSerializer(many=True, required=False)
     item_count = serializers.IntegerField(source="item_count", read_only=True)
+    payment_release = serializers.PrimaryKeyRelatedField(
+        queryset=PaymentRelease.objects.filter(status="approved"),
+        required=False,
+        allow_null=True,
+    )
+    purchase_request = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = AssetRegistration
         fields = [
             "id",
+            "payment_release",
             "purchase_request",
             "requester",
             "status",
@@ -128,8 +139,12 @@ class AssetRegistrationDetailSerializer(serializers.ModelSerializer):
     def create(self, validated_data: dict) -> AssetRegistration:
         items_data = validated_data.pop("items", [])
         request = self.context["request"]
+        payment_release = validated_data.get("payment_release")
         registration = AssetRegistration.objects.create(
             requester=request.user,
+            purchase_request=(
+                payment_release.purchase_request if payment_release is not None else None
+            ),
             **validated_data,
         )
         for item_data in items_data:
@@ -138,10 +153,17 @@ class AssetRegistrationDetailSerializer(serializers.ModelSerializer):
 
     def update(self, instance: AssetRegistration, validated_data: dict) -> AssetRegistration:
         items_data = validated_data.pop("items", None)
+        payment_release_supplied = "payment_release" in validated_data
 
         # Update scalar fields
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        if payment_release_supplied:
+            instance.purchase_request = (
+                instance.payment_release.purchase_request
+                if instance.payment_release is not None
+                else None
+            )
         instance.save()
 
         # Replace items only when explicitly provided

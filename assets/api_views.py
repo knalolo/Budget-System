@@ -24,7 +24,12 @@ class AssetRegistrationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return (
-            AssetRegistration.objects.select_related("requester", "purchase_request")
+            AssetRegistration.objects.select_related(
+                "requester",
+                "payment_release",
+                "payment_release__purchase_request",
+                "purchase_request",
+            )
             .prefetch_related("items")
             .order_by("-created_at")
         )

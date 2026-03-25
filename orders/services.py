@@ -183,16 +183,29 @@ def mark_ordered(purchase_request):
     """
     Transition a purchase request to 'ordered'.
 
-    Validation: status must be 'approved' or 'po_sent'.
+    Validation:
+    - PO-required requests must first be marked as 'po_sent'.
+    - Non-PO requests may transition from 'approved' or 'po_sent'.
     Creates an ApprovalLog entry with ACTION_STATUS_CHANGED.
     Returns the updated instance.
     Raises ValidationError if precondition is not met.
     """
-    allowed_statuses = ("approved", "po_sent")
+    if purchase_request.po_required:
+        allowed_statuses = ("po_sent",)
+        error_message = (
+            "PO-required purchase requests must be marked as PO sent before they can be marked as ordered. "
+            f"Current status: '{purchase_request.status}'."
+        )
+    else:
+        allowed_statuses = ("approved", "po_sent")
+        error_message = (
+            "Purchase request must be 'approved' or 'po_sent' to be marked as ordered. "
+            f"Current status: '{purchase_request.status}'."
+        )
+
     if purchase_request.status not in allowed_statuses:
         raise ValidationError(
-            f"Purchase request must be 'approved' or 'po_sent' to be marked as ordered. "
-            f"Current status: '{purchase_request.status}'."
+            error_message
         )
 
     old_status = purchase_request.status

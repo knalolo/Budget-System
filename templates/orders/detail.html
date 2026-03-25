@@ -59,7 +59,7 @@
                     <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
                         {% csrf_token %}
                         <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
-                            Mark as Ordered
+                            Mark as Ordered &amp; Create Payment Release
                         </button>
                     </form>
                     {% else %}
@@ -69,21 +69,31 @@
                             Mark PO Sent
                         </button>
                     </form>
-                    <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
-                        {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
-                            Mark as Ordered
-                        </button>
-                    </form>
                     {% endif %}
 
                 {% elif purchase_request.status == "po_sent" %}
                     <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
                         {% csrf_token %}
                         <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
-                            Mark as Ordered
+                            Mark as Ordered &amp; Create Payment Release
                         </button>
                     </form>
+                {% elif purchase_request.status == "ordered" %}
+                    {% if has_payment_release %}
+                    <a
+                        href="{% url 'payments:detail' first_payment_release.pk %}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+                    >
+                        View Payment Release
+                    </a>
+                    {% else %}
+                    <a
+                        href="{{ payment_release_create_url }}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
+                    >
+                        Create Payment Release
+                    </a>
+                    {% endif %}
                 {% endif %}
             </div>
         </div>

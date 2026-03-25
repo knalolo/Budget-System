@@ -1,6 +1,7 @@
 """Models for the payments app: PaymentRelease."""
 
 import logging
+import re
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -12,6 +13,7 @@ from core.services.request_number_service import generate_request_number
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+PURCHASE_REQUEST_NUMBER_RE = re.compile(r"^PR-(\d{8})-(\d{4})$")
 
 
 class PaymentRelease(models.Model):
@@ -116,8 +118,23 @@ class PaymentRelease(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         if not self.request_number:
-            self.request_number = generate_request_number("RP")
+            self.request_number = self._generate_request_number()
         super().save(*args, **kwargs)
+
+    def _generate_request_number(self) -> str:
+        """Prefer the linked purchase-request sequence when available."""
+        if self.purchase_request_id and self.purchase_request:
+            match = PURCHASE_REQUEST_NUMBER_RE.match(
+                self.purchase_request.request_number or ""
+            )
+            if match:
+                synced_number = f"RP-{match.group(1)}-{match.group(2)}"
+                if not PaymentRelease.objects.filter(
+                    request_number=synced_number
+                ).exists():
+                    return synced_number
+
+        return generate_request_number("RP")
 
     # ------------------------------------------------------------------
     # Status properties

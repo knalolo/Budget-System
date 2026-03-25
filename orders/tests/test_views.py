@@ -182,3 +182,67 @@ class TestPurchaseRequestUploadView:
 
         assert response.status_code == 400
         assert not purchase_request.attachments.exists()
+
+
+@pytest.mark.django_db
+class TestPurchaseRequestOrderWorkflowView:
+    def test_mark_ordered_redirects_to_payment_release_create_for_non_po_request(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Bench power supply",
+            vendor="Acme Components",
+            currency="SGD",
+            total_price="450.00",
+            justification="Needed for prototype validation.",
+            po_required=False,
+            target_payment="Jan 2026",
+            status="approved",
+        )
+
+        response = client.post(
+            reverse("orders:purchase-request-mark-ordered", args=[purchase_request.pk]),
+        )
+
+        assert response.status_code == 302
+        assert response.url == f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+
+    def test_po_required_request_must_be_marked_po_sent_before_ordered(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Bench power supply",
+            vendor="Acme Components",
+            currency="SGD",
+            total_price="1450.00",
+            justification="Needed for prototype validation.",
+            po_required=True,
+            target_payment="Jan 2026",
+            status="approved",
+        )
+
+        response = client.post(
+            reverse("orders:purchase-request-mark-ordered", args=[purchase_request.pk]),
+        )
+
+        assert response.status_code == 302
+        assert response.url == reverse("orders:purchase-request-detail", args=[purchase_request.pk])
+
+        purchase_request.refresh_from_db()
+        assert purchase_request.status == "approved"
