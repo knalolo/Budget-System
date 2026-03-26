@@ -30,7 +30,7 @@ def _get_user_role(user) -> str:
 def _build_pending_approvals_query(user):
     """
     Return (pr_qs, payment_qs) querysets of items pending the given user's
-    approval based on their role.  Returns empty querysets for requesters.
+    approval based on their role. Returns empty querysets for requesters.
     """
     from orders.models import PurchaseRequest
     from payments.models import PaymentRelease
@@ -38,7 +38,6 @@ def _build_pending_approvals_query(user):
     role = _get_user_role(user)
 
     if role in _PCM_APPROVER_ROLES and role in _FINAL_APPROVER_ROLES:
-        # admin: sees all pending items
         pr_qs = PurchaseRequest.objects.filter(
             status__in=_PENDING_STATUSES
         ).exclude(requester=user)
@@ -92,11 +91,24 @@ def _dashboard_payment_releases_query(user):
     )
 
 
-def _total_spend_this_month(user) -> dict[str, float]:
-    """
-    Compute total approved spend for this calendar month, grouped by currency.
-    Returns a dict of {currency: amount}.
-    """
+def _sum_by_currency(qs) -> dict[str, float]:
+    """Return a {currency: amount} summary for the supplied queryset."""
+    rows = qs.values("currency").annotate(total=Sum("total_price"))
+    return {row["currency"]: float(row["total"] or 0) for row in rows}
+
+
+def _format_spend_summary(spend_by_currency: dict[str, float]) -> str:
+    """Return a compact spend summary suitable for dashboard cards."""
+    spend_parts = []
+    for currency in ("SGD", "USD", "EUR"):
+        amount = spend_by_currency.get(currency)
+        if amount:
+            spend_parts.append(f"{currency} {amount:,.2f}")
+    return " / ".join(spend_parts) if spend_parts else "—"
+
+
+def _approved_pr_spend_this_month(user) -> dict[str, float]:
+    """Compute approved PR value for the current month, grouped by currency."""
     from orders.models import PurchaseRequest
 
     today = date.today()
@@ -106,8 +118,47 @@ def _total_spend_this_month(user) -> dict[str, float]:
         created_at__year=today.year,
         created_at__month=today.month,
     )
-    rows = qs.values("currency").annotate(total=Sum("total_price"))
-    return {row["currency"]: float(row["total"] or 0) for row in rows}
+    return _sum_by_currency(qs)
+
+
+def _approved_payment_spend_this_month(user) -> dict[str, float]:
+    """
+    Compute approved payment-release value for the current month.
+
+    Uses updated_at so the value reflects when the payment was approved.
+    """
+    from payments.models import PaymentRelease
+
+    today = date.today()
+    qs = PaymentRelease.objects.filter(
+        requester=user,
+        status="approved",
+        updated_at__year=today.year,
+        updated_at__month=today.month,
+    )
+    return _sum_by_currency(qs)
+
+
+def _requester_pending_items_count(user) -> int:
+    """Return the count of the requester's current items still under review."""
+    pending_prs = _dashboard_purchase_requests_query(user).filter(status__in=_PENDING_STATUSES)
+    pending_payments = _dashboard_payment_releases_query(user).filter(status__in=_PENDING_STATUSES)
+    return pending_prs.count() + pending_payments.count()
+
+
+def _requester_next_step_items_count(user) -> int:
+    """
+    Return the count of items ready for the requester's next action.
+
+    This covers:
+    - PRs that are approved / PO sent / ordered, but not yet moved into payments
+    - Payment releases that are approved, but not yet moved into deliveries
+    """
+    ready_prs = _dashboard_purchase_requests_query(user).filter(
+        status__in=("approved", "po_sent", "ordered")
+    )
+    ready_payments = _dashboard_payment_releases_query(user).filter(status="approved")
+    return ready_prs.count() + ready_payments.count()
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):
@@ -119,14 +170,10 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         user = self.request.user
 
-        # Lazy imports to avoid circular imports at module level.
         from deliveries.models import DeliverySubmission
         from orders.models import PurchaseRequest
         from payments.models import PaymentRelease
 
-        # ------------------------------------------------------------------
-        # Recent activity for the current user
-        # ------------------------------------------------------------------
         my_purchase_requests_qs = _dashboard_purchase_requests_query(user)
         my_purchase_requests = (
             my_purchase_requests_qs
@@ -144,9 +191,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             .order_by("-created_at")[:5]
         )
 
-        # ------------------------------------------------------------------
-        # Pending approvals queue
-        # ------------------------------------------------------------------
         pr_pending_qs, payment_pending_qs = _build_pending_approvals_query(user)
 
         pr_pending = (
@@ -162,9 +206,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
 
         pending_approvals_count = pr_pending_qs.count() + payment_pending_qs.count()
 
-        # ------------------------------------------------------------------
-        # Summary statistics
-        # ------------------------------------------------------------------
         today = date.today()
         total_prs = PurchaseRequest.objects.filter(requester=user).count()
         approved_prs = PurchaseRequest.objects.filter(
@@ -183,7 +224,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         dashboard_prs_count = my_purchase_requests_qs.count()
         dashboard_payments_count = my_payment_releases_qs.count()
 
-        # Approved PRs this month (all currencies, for headline count)
         approved_this_month = PurchaseRequest.objects.filter(
             requester=user,
             status="approved",
@@ -191,15 +231,13 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             created_at__month=today.month,
         ).count()
 
-        spend_by_currency = _total_spend_this_month(user)
+        requester_pending_count = _requester_pending_items_count(user)
+        requester_next_step_count = _requester_next_step_items_count(user)
 
-        # Build a human-readable spend summary (primary currency first)
-        spend_parts = []
-        for currency in ("SGD", "USD", "EUR"):
-            amount = spend_by_currency.get(currency)
-            if amount:
-                spend_parts.append(f"{currency} {amount:,.2f}")
-        total_spend_display = " / ".join(spend_parts) if spend_parts else "—"
+        pr_spend_by_currency = _approved_pr_spend_this_month(user)
+        payment_spend_by_currency = _approved_payment_spend_this_month(user)
+        total_spend_display = _format_spend_summary(pr_spend_by_currency)
+        approved_payment_spend_display = _format_spend_summary(payment_spend_by_currency)
 
         stats = {
             "total_prs": total_prs,
@@ -212,12 +250,13 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             "dashboard_payments_count": dashboard_payments_count,
             "approved_this_month": approved_this_month,
             "total_spend_display": total_spend_display,
-            "spend_by_currency": spend_by_currency,
+            "spend_by_currency": pr_spend_by_currency,
+            "requester_pending_count": requester_pending_count,
+            "requester_next_step_count": requester_next_step_count,
+            "approved_payment_spend_display": approved_payment_spend_display,
+            "approved_payment_spend_by_currency": payment_spend_by_currency,
         }
 
-        # ------------------------------------------------------------------
-        # Role flags for template rendering
-        # ------------------------------------------------------------------
         user_role = _get_user_role(user)
         is_approver = user_role in _ALL_APPROVER_ROLES
 
