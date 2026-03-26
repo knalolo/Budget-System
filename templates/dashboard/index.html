@@ -66,21 +66,21 @@
         </div>
 
         <!-- Pending Approvals -->
-        <div class="bg-white rounded-xl shadow-sm border {% if pending_approvals_count > 0 %}border-yellow-200{% else %}border-gray-100{% endif %} p-5">
+        <div class="bg-white rounded-xl shadow-sm border {% if is_approver %}{% if pending_approvals_count > 0 %}border-yellow-200{% else %}border-gray-100{% endif %}{% else %}{% if stats.requester_pending_count > 0 %}border-yellow-200{% else %}border-gray-100{% endif %}{% endif %} p-5">
             <div class="flex items-start justify-between">
                 <div>
                     <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">
                         {% if is_approver %}Pending My Approval{% else %}Pending Approval{% endif %}
                     </p>
-                    <p class="mt-1 text-3xl font-bold {% if pending_approvals_count > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}">
-                        {{ pending_approvals_count }}
+                    <p class="mt-1 text-3xl font-bold {% if is_approver %}{% if pending_approvals_count > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}{% else %}{% if stats.requester_pending_count > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}{% endif %}">
+                        {% if is_approver %}{{ pending_approvals_count }}{% else %}{{ stats.requester_pending_count }}{% endif %}
                     </p>
                     <p class="mt-1 text-xs text-gray-400">
-                        {% if is_approver %}Items awaiting your review{% else %}Your items in review{% endif %}
+                        {% if is_approver %}Items awaiting your review{% else %}Items still waiting for approval{% endif %}
                     </p>
                 </div>
-                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if pending_approvals_count > 0 %}bg-yellow-50{% else %}bg-gray-50{% endif %} flex items-center justify-center">
-                    <svg class="w-5 h-5 {% if pending_approvals_count > 0 %}text-yellow-500{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if is_approver %}{% if pending_approvals_count > 0 %}bg-yellow-50{% else %}bg-gray-50{% endif %}{% else %}{% if stats.requester_pending_count > 0 %}bg-yellow-50{% else %}bg-gray-50{% endif %}{% endif %} flex items-center justify-center">
+                    <svg class="w-5 h-5 {% if is_approver %}{% if pending_approvals_count > 0 %}text-yellow-500{% else %}text-gray-400{% endif %}{% else %}{% if stats.requester_pending_count > 0 %}text-yellow-500{% else %}text-gray-400{% endif %}{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
@@ -91,9 +91,15 @@
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <div class="flex items-start justify-between">
                 <div>
-                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Approved This Month</p>
-                    <p class="mt-1 text-3xl font-bold text-green-600">{{ stats.approved_this_month }}</p>
-                    <p class="mt-1 text-xs text-gray-400">Purchase requests approved</p>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                        {% if is_approver %}Approved This Month{% else %}Ready For Next Step{% endif %}
+                    </p>
+                    <p class="mt-1 text-3xl font-bold text-green-600">
+                        {% if is_approver %}{{ stats.approved_this_month }}{% else %}{{ stats.requester_next_step_count }}{% endif %}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-400">
+                        {% if is_approver %}Purchase requests approved{% else %}Items waiting for your next action{% endif %}
+                    </p>
                 </div>
                 <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
                     <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
@@ -108,8 +114,12 @@
             <div class="flex items-start justify-between">
                 <div>
                     <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Spend This Month</p>
-                    <p class="mt-1 text-lg font-bold text-gray-900 leading-tight">{{ stats.total_spend_display }}</p>
-                    <p class="mt-1 text-xs text-gray-400">Approved PR value</p>
+                    <p class="mt-1 text-lg font-bold text-gray-900 leading-tight">
+                        {% if is_approver %}{{ stats.total_spend_display }}{% else %}{{ stats.approved_payment_spend_display }}{% endif %}
+                    </p>
+                    <p class="mt-1 text-xs text-gray-400">
+                        {% if is_approver %}Approved PR value{% else %}Approved payment release value{% endif %}
+                    </p>
                 </div>
                 <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
                     <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
