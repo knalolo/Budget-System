@@ -99,7 +99,10 @@
     </div>
 
     {% if can_approve %}
-    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden" x-data="{ comment: '' }">
+    <div
+        class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden"
+        x-data="{ comment: '', submittingAction: '' }"
+    >
         <div class="px-6 py-4 border-b border-gray-100">
             <h3 class="text-base font-semibold text-gray-800">Approval Decision</h3>
             <p class="text-sm text-gray-500 mt-0.5">
@@ -117,31 +120,47 @@
                 ></textarea>
             </div>
             <div class="flex gap-3">
-                <form method="post" action="{% url 'payments:approve' pk=payment.pk %}"
-                      hx-post="{% url 'payments:approve' pk=payment.pk %}"
-                      hx-target="#detail-status"
-                      hx-swap="outerHTML"
-                      hx-include="[name='comment']">
+                <form
+                    method="post"
+                    action="{% url 'payments:approve' pk=payment.pk %}"
+                    @submit="submittingAction = 'approve'"
+                >
                     {% csrf_token %}
                     <input type="hidden" name="comment" :value="comment" />
-                    <button type="submit"
-                            class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 transition-colors">
-                        Approve
+                    <button
+                        type="submit"
+                        :disabled="submittingAction !== ''"
+                        class="rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors"
+                        :class="submittingAction !== '' ? 'cursor-not-allowed opacity-60' : 'hover:bg-green-700'"
+                    >
+                        <span x-show="submittingAction !== 'approve'">Approve</span>
+                        <span x-show="submittingAction === 'approve'">Approving...</span>
                     </button>
                 </form>
-                <form method="post" action="{% url 'payments:reject' pk=payment.pk %}"
-                      hx-post="{% url 'payments:reject' pk=payment.pk %}"
-                      hx-target="#detail-status"
-                      hx-swap="outerHTML"
-                      hx-include="[name='comment']">
+                <form
+                    method="post"
+                    action="{% url 'payments:reject' pk=payment.pk %}"
+                    @submit="submittingAction = 'reject'"
+                >
                     {% csrf_token %}
                     <input type="hidden" name="comment" :value="comment" />
-                    <button type="submit"
-                            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 transition-colors">
-                        Reject
+                    <button
+                        type="submit"
+                        :disabled="submittingAction !== ''"
+                        class="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors"
+                        :class="submittingAction !== '' ? 'cursor-not-allowed opacity-60' : 'hover:bg-red-700'"
+                    >
+                        <span x-show="submittingAction !== 'reject'">Reject</span>
+                        <span x-show="submittingAction === 'reject'">Rejecting...</span>
                     </button>
                 </form>
             </div>
+            <p
+                x-show="submittingAction !== ''"
+                class="text-sm text-gray-500"
+            >
+                Submitting your decision...
+            </p>
         </div>
     </div>
     {% endif %}
