@@ -25,7 +25,7 @@ ruff check . --fix
 python manage.py makemigrations
 python manage.py migrate
 
-# Seed reference data (idempotent)
+# Seed reference data (idempotent, --reset to wipe first)
 python manage.py seed_data
 
 # CLI tool (after pip install -e .)
@@ -34,7 +34,7 @@ procurement-cli --help
 
 ## Architecture
 
-Django 5.x procurement approval system with 7 apps, DRF API, HTMX/Alpine.js frontend (zero build step), and a Click-based CLI.
+Django 5.x procurement approval system with 7 apps, DRF API, HTMX/Alpine.js frontend (zero build step), and a Click-based CLI. Timezone: `Asia/Singapore` (`USE_TZ=True`).
 
 ### App Dependency Flow
 
@@ -52,9 +52,14 @@ deliveries (DeliverySubmission)                      assets (AssetRegistration, 
 
 ### Settings: `config/settings/`
 
-- `base.py` — All shared config, domain constants (`CURRENCY_CHOICES`, `PR_STATUS_CHOICES`, `ROLE_CHOICES`, `FILE_TYPE_CHOICES`), DRF config, Azure AD / email settings from env
+- `base.py` — All shared config, domain constants, DRF config, Azure AD / email settings from env
 - `development.py` — SQLite, DEBUG=True, console email, `ALLOWED_HOSTS=["*"]`
 - `production.py` — PostgreSQL, SMTP email, security headers, logging
+
+Domain constants in `base.py` (import these, don't hardcode strings):
+- Status: `PR_STATUS_DRAFT`, `PR_STATUS_PENDING_PCM`, `PR_STATUS_PENDING_FINAL`, `PR_STATUS_APPROVED`, etc.
+- Roles: `ROLE_REQUESTER`, `ROLE_PCM_APPROVER`, `ROLE_FINAL_APPROVER`, `ROLE_ADMIN`
+- Choices: `CURRENCY_CHOICES`, `PR_STATUS_CHOICES`, `PAYMENT_STATUS_CHOICES`, `ROLE_CHOICES`, `FILE_TYPE_CHOICES`, `DECISION_CHOICES`
 
 ### Two-Level Approval Engine (`approvals/services.py`)
 
@@ -72,9 +77,11 @@ Key functions:
 - `can_user_approve(obj, user)` → (bool, reason) — checks role, prevents self-approval
 - Post-approval triggers email notifications via lazy import of `core.services.email_service`
 
+Rejection resets status back to `draft` for revision and resubmission.
+
 ### GenericForeignKey Pattern
 
-`FileAttachment` and `ApprovalLog` both use `content_type` + `object_id` + `GenericForeignKey`. Approvable models declare `GenericRelation` for reverse access:
+`FileAttachment`, `ApprovalLog`, and `EmailNotificationLog` use `content_type` + `object_id` + `GenericForeignKey`. Approvable models declare `GenericRelation` for reverse access:
 ```python
 attachments = GenericRelation("core.FileAttachment")
 approval_logs = GenericRelation("approvals.ApprovalLog")
@@ -86,20 +93,30 @@ Business logic lives in `{app}/services.py`, not in views:
 - `orders/services.py` — PO threshold check, submit/approve/reject with email triggers
 - `payments/services.py` — same pattern for PaymentRelease
 - `core/services/email_service.py` — renders templates, sends via Django mail, logs to EmailNotificationLog
-- `core/services/request_number_service.py` — generates `PR-YYYYMMDD-XXXX` / `RP-` / `DO-` sequences
+- `core/services/request_number_service.py` — generates `PR-YYYYMMDD-XXXX` / `RP-` / `DO-` sequences (daily sequential counter)
 - `core/services/file_service.py` — validates extensions/size, saves FileAttachment
+
+### Middleware
+
+- `core.middleware.ForceEnglishMiddleware` — pins all requests to English locale
+- `accounts.middleware.LoginRequiredMiddleware` — enforces auth except for `/auth/`, `/api/`, `/admin/`, `/static/`, `/media/`
 
 ### URL Structure
 
-- `/auth/*` — SSO login/callback/logout + dev-login (DEBUG only)
+- `/auth/*` — SSO login/callback/logout + `/auth/dev-login/` (DEBUG only, quick role-based access)
 - `/api/v1/*` — DRF REST API (Token + Session auth)
 - `/purchase-requests/*`, `/payment-releases/*`, `/delivery-submissions/*`, `/assets/*` — HTMX template views
 - `/admin-panel/*` — user management, system config, audit logs
-- `/` — dashboard
+- `/` — role-aware dashboard (`core:dashboard`)
 
 ### Frontend
 
-Templates in `templates/` use Tailwind CSS (Play CDN), HTMX (inline POST for approvals), Alpine.js (form state toggles, PO threshold warnings, dynamic asset item rows). Reusable components in `templates/components/`.
+Templates in `templates/` use Tailwind CSS (Play CDN), HTMX, Alpine.js. Zero build step.
+
+- HTMX: inline POST for approvals, inline attachment uploads via `*_upload_attachment_htmx` endpoints
+- Alpine.js: form state toggles, PO threshold warnings, dynamic asset item rows, tabbed activity views
+- Reusable components in `templates/components/`
+- Inline attachments: views handle `request.FILES.getlist("attachment_files")` with validation helpers (`_validate_*_attachments`, `_save_*_attachments`)
 
 ### Role-Based Access
 
@@ -108,6 +125,14 @@ Templates in `templates/` use Tailwind CSS (Play CDN), HTMX (inline POST for app
 ### SystemConfig
 
 Runtime key-value store (`core/models.py`). Access via `SystemConfig.get_value(key, default)` / `SystemConfig.set_value(key, value)`. Keys: `po_threshold_sgd/usd/eur`, `notify_li_mei_email/jolly_email/jess_email`, `credit_platforms`.
+
+### Test Fixtures (`conftest.py`)
+
+Shared fixtures for all tests:
+- `user_factory(role, ...)` — callable that creates unique users with profiles
+- Role-specific users: `regular_user`, `pcm_approver`, `final_approver`, `admin_user`
+- Authenticated DRF clients: `api_client`, `api_client_pcm`, `api_client_final`, `api_client_admin`, `anon_client`
+- Domain data: `sample_project`, `sample_expense_category`
 
 ### CLI (`cli/`)
 
