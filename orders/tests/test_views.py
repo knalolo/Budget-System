@@ -14,6 +14,7 @@ def _purchase_request_payload(project, category, *, action="draft") -> dict:
         "description": "Bench power supply",
         "vendor": "Acme Components",
         "currency": "SGD",
+        "ordered_quantity": "2",
         "total_price": "450.00",
         "justification": "Needed for prototype validation.",
         "po_required": "False",
@@ -115,6 +116,7 @@ class TestPurchaseRequestUploadView:
             description="Oscilloscope",
             vendor="Tek Supplier",
             currency="SGD",
+            ordered_quantity=1,
             total_price="100.00",
             justification="Lab usage",
             po_required=False,
@@ -159,6 +161,7 @@ class TestPurchaseRequestUploadView:
             description="Oscilloscope",
             vendor="Tek Supplier",
             currency="SGD",
+            ordered_quantity=1,
             total_price="100.00",
             justification="Lab usage",
             po_required=False,
@@ -186,7 +189,7 @@ class TestPurchaseRequestUploadView:
 
 @pytest.mark.django_db
 class TestPurchaseRequestOrderWorkflowView:
-    def test_mark_ordered_redirects_to_payment_release_create_for_non_po_request(
+    def test_mark_ordered_redirects_to_delivery_create_for_non_po_request(
         self,
         client,
         regular_user,
@@ -201,6 +204,7 @@ class TestPurchaseRequestOrderWorkflowView:
             description="Bench power supply",
             vendor="Acme Components",
             currency="SGD",
+            ordered_quantity=2,
             total_price="450.00",
             justification="Needed for prototype validation.",
             po_required=False,
@@ -213,7 +217,7 @@ class TestPurchaseRequestOrderWorkflowView:
         )
 
         assert response.status_code == 302
-        assert response.url == f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+        assert response.url == f"{reverse('deliveries:create')}?purchase_request={purchase_request.pk}"
 
     def test_po_required_request_must_be_marked_po_sent_before_ordered(
         self,
@@ -230,6 +234,7 @@ class TestPurchaseRequestOrderWorkflowView:
             description="Bench power supply",
             vendor="Acme Components",
             currency="SGD",
+            ordered_quantity=2,
             total_price="1450.00",
             justification="Needed for prototype validation.",
             po_required=True,

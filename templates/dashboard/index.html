@@ -15,7 +15,7 @@
             <h2 class="text-xl font-semibold text-gray-800">
                 Welcome{% if user.first_name %}, {{ user.first_name }}{% endif %}
             </h2>
-            <p class="text-sm text-gray-500 mt-0.5">Here is an overview of your procurement activity.</p>
+            <p class="text-sm text-gray-500 mt-0.5">Current workflow: Purchase Request -> Delivery Tracking -> Payment Release -> Assets.</p>
         </div>
 
         <!-- Quick actions -->
@@ -27,19 +27,19 @@
                 </svg>
                 New PR
             </a>
+            <a href="{% url 'deliveries:create' %}"
+               class="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                New Delivery
+            </a>
             <a href="{% url 'payments:create' %}"
                class="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                 </svg>
                 New Payment
-            </a>
-            <a href="{% url 'deliveries:create' %}"
-               class="inline-flex items-center gap-1.5 rounded-lg bg-white border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-                New DO/SO
             </a>
         </div>
     </div>
@@ -48,8 +48,7 @@
     <!-- Summary cards (4-column grid)                                      -->
     <!-- ------------------------------------------------------------------ -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
-
-        <!-- Total Requests -->
+        {% if is_approver %}
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <div class="flex items-start justify-between">
                 <div>
@@ -65,41 +64,27 @@
             </div>
         </div>
 
-        <!-- Pending Approvals -->
-        <div class="bg-white rounded-xl shadow-sm border {% if is_approver %}{% if pending_approvals_count > 0 %}border-yellow-200{% else %}border-gray-100{% endif %}{% else %}{% if stats.requester_pending_count > 0 %}border-yellow-200{% else %}border-gray-100{% endif %}{% endif %} p-5">
+        <div class="bg-white rounded-xl shadow-sm border {% if pending_approvals_count > 0 %}border-yellow-200{% else %}border-gray-100{% endif %} p-5">
             <div class="flex items-start justify-between">
                 <div>
-                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        {% if is_approver %}Pending My Approval{% else %}Pending Approval{% endif %}
-                    </p>
-                    <p class="mt-1 text-3xl font-bold {% if is_approver %}{% if pending_approvals_count > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}{% else %}{% if stats.requester_pending_count > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}{% endif %}">
-                        {% if is_approver %}{{ pending_approvals_count }}{% else %}{{ stats.requester_pending_count }}{% endif %}
-                    </p>
-                    <p class="mt-1 text-xs text-gray-400">
-                        {% if is_approver %}Items awaiting your review{% else %}Items still waiting for approval{% endif %}
-                    </p>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Pending My Approval</p>
+                    <p class="mt-1 text-3xl font-bold {% if pending_approvals_count > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}">{{ pending_approvals_count }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Items awaiting your review</p>
                 </div>
-                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if is_approver %}{% if pending_approvals_count > 0 %}bg-yellow-50{% else %}bg-gray-50{% endif %}{% else %}{% if stats.requester_pending_count > 0 %}bg-yellow-50{% else %}bg-gray-50{% endif %}{% endif %} flex items-center justify-center">
-                    <svg class="w-5 h-5 {% if is_approver %}{% if pending_approvals_count > 0 %}text-yellow-500{% else %}text-gray-400{% endif %}{% else %}{% if stats.requester_pending_count > 0 %}text-yellow-500{% else %}text-gray-400{% endif %}{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if pending_approvals_count > 0 %}bg-yellow-50{% else %}bg-gray-50{% endif %} flex items-center justify-center">
+                    <svg class="w-5 h-5 {% if pending_approvals_count > 0 %}text-yellow-500{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                 </div>
             </div>
         </div>
 
-        <!-- Approved This Month -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <div class="flex items-start justify-between">
                 <div>
-                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        {% if is_approver %}Approved This Month{% else %}Ready For Next Step{% endif %}
-                    </p>
-                    <p class="mt-1 text-3xl font-bold text-green-600">
-                        {% if is_approver %}{{ stats.approved_this_month }}{% else %}{{ stats.requester_next_step_count }}{% endif %}
-                    </p>
-                    <p class="mt-1 text-xs text-gray-400">
-                        {% if is_approver %}Purchase requests approved{% else %}Items waiting for your next action{% endif %}
-                    </p>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Approved This Month</p>
+                    <p class="mt-1 text-3xl font-bold text-green-600">{{ stats.approved_this_month }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Purchase requests approved</p>
                 </div>
                 <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center">
                     <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
@@ -109,17 +94,12 @@
             </div>
         </div>
 
-        <!-- Total Spend This Month -->
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <div class="flex items-start justify-between">
                 <div>
                     <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Spend This Month</p>
-                    <p class="mt-1 text-lg font-bold text-gray-900 leading-tight">
-                        {% if is_approver %}{{ stats.total_spend_display }}{% else %}{{ stats.approved_payment_spend_display }}{% endif %}
-                    </p>
-                    <p class="mt-1 text-xs text-gray-400">
-                        {% if is_approver %}Approved PR value{% else %}Approved payment release value{% endif %}
-                    </p>
+                    <p class="mt-1 text-lg font-bold text-gray-900 leading-tight">{{ stats.total_spend_display }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Approved PR value</p>
                 </div>
                 <div class="flex-shrink-0 w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
                     <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
@@ -128,7 +108,67 @@
                 </div>
             </div>
         </div>
+        {% else %}
+        <div class="bg-white rounded-xl shadow-sm border {% if stats.requester_pending_count > 0 %}border-yellow-200{% else %}border-gray-100{% endif %} p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Pending Approval</p>
+                    <p class="mt-1 text-3xl font-bold {% if stats.requester_pending_count > 0 %}text-yellow-600{% else %}text-gray-900{% endif %}">{{ stats.requester_pending_count }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Items still waiting for approval</p>
+                </div>
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if stats.requester_pending_count > 0 %}bg-yellow-50{% else %}bg-gray-50{% endif %} flex items-center justify-center">
+                    <svg class="w-5 h-5 {% if stats.requester_pending_count > 0 %}text-yellow-500{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
 
+        <div class="bg-white rounded-xl shadow-sm border {% if stats.requester_ready_for_payment_count > 0 %}border-emerald-200{% else %}border-gray-100{% endif %} p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Ready For Payment</p>
+                    <p class="mt-1 text-3xl font-bold {% if stats.requester_ready_for_payment_count > 0 %}text-emerald-600{% else %}text-gray-900{% endif %}">{{ stats.requester_ready_for_payment_count }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Delivered items ready for the payment step</p>
+                </div>
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if stats.requester_ready_for_payment_count > 0 %}bg-emerald-50{% else %}bg-gray-50{% endif %} flex items-center justify-center">
+                    <svg class="w-5 h-5 {% if stats.requester_ready_for_payment_count > 0 %}text-emerald-500{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border {% if stats.requester_do_pending_count > 0 %}border-slate-200{% else %}border-gray-100{% endif %} p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">DO Pending</p>
+                    <p class="mt-1 text-3xl font-bold {% if stats.requester_do_pending_count > 0 %}text-slate-700{% else %}text-gray-900{% endif %}">{{ stats.requester_do_pending_count }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Ordered items still waiting for delivery evidence</p>
+                </div>
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if stats.requester_do_pending_count > 0 %}bg-slate-100{% else %}bg-gray-50{% endif %} flex items-center justify-center">
+                    <svg class="w-5 h-5 {% if stats.requester_do_pending_count > 0 %}text-slate-500{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 17.25v-4.5m3 4.5v-7.5m3 7.5v-10.5M3.75 19.5h16.5" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border {% if stats.requester_partial_delivery_count > 0 %}border-amber-200{% else %}border-gray-100{% endif %} p-5">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Partially Delivered</p>
+                    <p class="mt-1 text-3xl font-bold {% if stats.requester_partial_delivery_count > 0 %}text-amber-600{% else %}text-gray-900{% endif %}">{{ stats.requester_partial_delivery_count }}</p>
+                    <p class="mt-1 text-xs text-gray-400">Goods received in batches and still outstanding</p>
+                </div>
+                <div class="flex-shrink-0 w-10 h-10 rounded-lg {% if stats.requester_partial_delivery_count > 0 %}bg-amber-50{% else %}bg-gray-50{% endif %} flex items-center justify-center">
+                    <svg class="w-5 h-5 {% if stats.requester_partial_delivery_count > 0 %}text-amber-500{% else %}text-gray-400{% endif %}" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5l9-4.5 9 4.5m-18 0l9 4.5m-9-4.5v9l9 4.5m0-9l9-4.5m-9 4.5v9" />
+                    </svg>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <!-- ------------------------------------------------------------------ -->
@@ -248,6 +288,16 @@
                 {% endif %}
             </button>
             <button
+                @click="activeTab = 'deliveries'"
+                :class="activeTab === 'deliveries' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
+                class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
+            >
+                Delivery Tracking
+                {% if stats.dashboard_deliveries_count %}
+                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.dashboard_deliveries_count }}</span>
+                {% endif %}
+            </button>
+            <button
                 @click="activeTab = 'payments'"
                 :class="activeTab === 'payments' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
                 class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
@@ -255,16 +305,6 @@
                 Payment Releases
                 {% if stats.dashboard_payments_count %}
                 <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.dashboard_payments_count }}</span>
-                {% endif %}
-            </button>
-            <button
-                @click="activeTab = 'deliveries'"
-                :class="activeTab === 'deliveries' ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'"
-                class="px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px"
-            >
-                Deliveries
-                {% if stats.total_deliveries %}
-                <span class="ml-1.5 inline-flex items-center rounded-full bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-600">{{ stats.total_deliveries }}</span>
                 {% endif %}
             </button>
         </div>
@@ -323,6 +363,65 @@
             {% endif %}
         </div>
 
+        <!-- Delivery Tracking panel -->
+        <div x-show="activeTab === 'deliveries'" x-cloak class="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-t-0 border-gray-100">
+            <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
+                <p class="text-xs text-gray-500">Showing your last {{ my_delivery_stage_requests|length }} delivery-stage requests</p>
+                <a href="{% url 'deliveries:list' %}" class="text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">View All &rarr;</a>
+            </div>
+
+            {% if my_delivery_stage_requests %}
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-50">
+                    <thead>
+                        <tr class="bg-gray-50">
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">PR #</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Ordered</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Delivered</th>
+                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Outstanding</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
+                            <th class="px-4 py-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-50">
+                        {% for purchase_request in my_delivery_stage_requests %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ purchase_request.request_number }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-800">{{ purchase_request.vendor }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">{{ purchase_request.ordered_quantity }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">{{ purchase_request.delivered_quantity }}</td>
+                            <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">{{ purchase_request.remaining_quantity }}</td>
+                            <td class="px-4 py-3">
+                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                    bg-{{ purchase_request.delivery_stage_status|status_color }}-100 text-{{ purchase_request.delivery_stage_status|status_color }}-800">
+                                    {{ purchase_request.delivery_stage_display }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3 text-sm text-gray-500">{{ purchase_request.updated_at|date:"M d, Y" }}</td>
+                            <td class="px-4 py-3 text-right">
+                                {% with latest_delivery=purchase_request.latest_delivery_submission %}
+                                {% if latest_delivery %}
+                                <a href="{% url 'deliveries:detail' latest_delivery.pk %}" class="text-xs text-brand-600 hover:text-brand-800 transition-colors">View</a>
+                                {% else %}
+                                <a href="{% url 'deliveries:create' %}?purchase_request={{ purchase_request.pk }}" class="text-xs text-brand-600 hover:text-brand-800 transition-colors">Create DO</a>
+                                {% endif %}
+                                {% endwith %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="px-5 py-10 text-center">
+                <p class="text-sm text-gray-400">No requests are currently in delivery tracking.</p>
+                <a href="{% url 'deliveries:create' %}" class="mt-2 inline-block text-sm text-brand-600 hover:underline">Create a delivery record &rarr;</a>
+            </div>
+            {% endif %}
+        </div>
+
         <!-- Payment Releases panel -->
         <div x-show="activeTab === 'payments'" x-cloak class="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-t-0 border-gray-100">
             <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
@@ -337,7 +436,7 @@
                         <tr class="bg-gray-50">
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Request #</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Project</th>
+                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Payment Type</th>
                             <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
                             <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
@@ -349,7 +448,7 @@
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ payment.request_number }}</td>
                             <td class="px-4 py-3 text-sm text-gray-800">{{ payment.vendor }}</td>
-                            <td class="px-4 py-3 text-sm text-gray-500">{{ payment.project.mc_number }}</td>
+                            <td class="px-4 py-3 text-sm text-gray-500">{{ payment.get_payment_type_display }}</td>
                             <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">
                                 {{ payment.currency|currency_symbol }} {{ payment.total_price|floatformat:2 }}
                             </td>
@@ -361,8 +460,7 @@
                             </td>
                             <td class="px-4 py-3 text-sm text-gray-500">{{ payment.created_at|date:"M d, Y" }}</td>
                             <td class="px-4 py-3 text-right">
-                                <a href="{% url 'payments:detail' payment.pk %}"
-                                   class="text-xs text-brand-600 hover:text-brand-800 transition-colors">View</a>
+                                <a href="{% url 'payments:detail' payment.pk %}" class="text-xs text-brand-600 hover:text-brand-800 transition-colors">View</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -372,59 +470,7 @@
             {% else %}
             <div class="px-5 py-10 text-center">
                 <p class="text-sm text-gray-400">No payment releases yet.</p>
-                <a href="{% url 'payments:create' %}" class="mt-2 inline-block text-sm text-brand-600 hover:underline">Create your first one &rarr;</a>
-            </div>
-            {% endif %}
-        </div>
-
-        <!-- Deliveries panel -->
-        <div x-show="activeTab === 'deliveries'" x-cloak class="bg-white rounded-b-xl rounded-tr-xl shadow-sm border border-t-0 border-gray-100">
-            <div class="flex items-center justify-between px-5 py-3 border-b border-gray-50">
-                <p class="text-xs text-gray-500">Showing your last {{ my_delivery_submissions|length }} delivery submissions</p>
-                <a href="{% url 'deliveries:list' %}" class="text-xs font-medium text-brand-600 hover:text-brand-800 transition-colors">View All &rarr;</a>
-            </div>
-
-            {% if my_delivery_submissions %}
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-50">
-                    <thead>
-                        <tr class="bg-gray-50">
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Request #</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Vendor</th>
-                            <th class="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Amount</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-                            <th class="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Date</th>
-                            <th class="px-4 py-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-50">
-                        {% for delivery in my_delivery_submissions %}
-                        <tr class="hover:bg-gray-50 transition-colors">
-                            <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ delivery.request_number }}</td>
-                            <td class="px-4 py-3 text-sm text-gray-800">{{ delivery.vendor }}</td>
-                            <td class="px-4 py-3 text-sm text-right font-medium text-gray-900">
-                                {{ delivery.currency|currency_symbol }} {{ delivery.total_price|floatformat:2 }}
-                            </td>
-                            <td class="px-4 py-3">
-                                <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
-                                    bg-{{ delivery.status|status_color }}-100 text-{{ delivery.status|status_color }}-800">
-                                    {{ delivery.get_status_display }}
-                                </span>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-500">{{ delivery.created_at|date:"M d, Y" }}</td>
-                            <td class="px-4 py-3 text-right">
-                                <a href="{% url 'deliveries:detail' delivery.pk %}"
-                                   class="text-xs text-brand-600 hover:text-brand-800 transition-colors">View</a>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {% else %}
-            <div class="px-5 py-10 text-center">
-                <p class="text-sm text-gray-400">No delivery submissions yet.</p>
-                <a href="{% url 'deliveries:create' %}" class="mt-2 inline-block text-sm text-brand-600 hover:underline">Create your first one &rarr;</a>
+                <a href="{% url 'payments:create' %}" class="mt-2 inline-block text-sm text-brand-600 hover:underline">Create a payment release &rarr;</a>
             </div>
             {% endif %}
         </div>

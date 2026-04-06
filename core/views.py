@@ -66,29 +66,29 @@ def _build_pending_approvals_query(user):
 
 
 def _dashboard_purchase_requests_query(user):
-    """Return PRs that are still in the purchase-request stage."""
+    """Return PRs that are still in the pre-delivery purchase-request stage."""
     from orders.models import PurchaseRequest
-    from payments.models import PaymentRelease
 
-    payment_exists = PaymentRelease.objects.filter(purchase_request=OuterRef("pk"))
-    return PurchaseRequest.objects.filter(requester=user).annotate(
-        has_payment_release=Exists(payment_exists)
-    ).filter(has_payment_release=False)
+    return PurchaseRequest.objects.filter(
+        requester=user,
+    ).exclude(status="ordered")
+
+
+def _dashboard_delivery_stage_query(user):
+    """Return ordered PRs that are now in delivery tracking stage."""
+    from orders.models import PurchaseRequest
+
+    return PurchaseRequest.objects.filter(
+        requester=user,
+        status="ordered",
+    ).select_related("project", "expense_category")
 
 
 def _dashboard_payment_releases_query(user):
-    """Return payments that have not yet advanced into the delivery stage."""
-    from deliveries.models import DeliverySubmission
+    """Return the requester's payment releases."""
     from payments.models import PaymentRelease
 
-    delivery_exists = DeliverySubmission.objects.filter(
-        purchase_request=OuterRef("purchase_request_id")
-    )
-    return PaymentRelease.objects.filter(requester=user).annotate(
-        has_delivery_submission=Exists(delivery_exists)
-    ).filter(
-        Q(purchase_request__isnull=True) | Q(has_delivery_submission=False)
-    )
+    return PaymentRelease.objects.filter(requester=user)
 
 
 def _sum_by_currency(qs) -> dict[str, float]:
@@ -146,19 +146,32 @@ def _requester_pending_items_count(user) -> int:
     return pending_prs.count() + pending_payments.count()
 
 
-def _requester_next_step_items_count(user) -> int:
-    """
-    Return the count of items ready for the requester's next action.
-
-    This covers:
-    - PRs that are approved / PO sent / ordered, but not yet moved into payments
-    - Payment releases that are approved, but not yet moved into deliveries
-    """
-    ready_prs = _dashboard_purchase_requests_query(user).filter(
-        status__in=("approved", "po_sent", "ordered")
+def _requester_ready_for_payment_count(user) -> int:
+    return sum(
+        1
+        for purchase_request in _dashboard_delivery_stage_query(user)
+        if (
+            purchase_request.is_ready_for_payment
+            and purchase_request.remaining_quantity == 0
+            and not purchase_request.payment_releases.filter(payment_type="standard").exists()
+        )
     )
-    ready_payments = _dashboard_payment_releases_query(user).filter(status="approved")
-    return ready_prs.count() + ready_payments.count()
+
+
+def _requester_do_pending_count(user) -> int:
+    return sum(
+        1
+        for purchase_request in _dashboard_delivery_stage_query(user)
+        if purchase_request.delivered_quantity == 0
+    )
+
+
+def _requester_partial_delivery_count(user) -> int:
+    return sum(
+        1
+        for purchase_request in _dashboard_delivery_stage_query(user)
+        if purchase_request.delivered_quantity > 0 and purchase_request.remaining_quantity > 0
+    )
 
 
 class DashboardView(LoginRequiredMixin, TemplateView):
@@ -175,21 +188,15 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         from payments.models import PaymentRelease
 
         my_purchase_requests_qs = _dashboard_purchase_requests_query(user)
-        my_purchase_requests = (
-            my_purchase_requests_qs
-            .select_related("project", "expense_category")
-            .order_by("-created_at")[:10]
-        )
+        my_purchase_requests = my_purchase_requests_qs.select_related(
+            "project", "expense_category"
+        ).order_by("-created_at")[:10]
+        my_delivery_stage_requests_qs = _dashboard_delivery_stage_query(user)
+        my_delivery_stage_requests = my_delivery_stage_requests_qs.order_by("-updated_at")[:10]
         my_payment_releases_qs = _dashboard_payment_releases_query(user)
-        my_payment_releases = (
-            my_payment_releases_qs
-            .select_related("project", "expense_category")
-            .order_by("-created_at")[:10]
-        )
-        my_delivery_submissions = (
-            DeliverySubmission.objects.filter(requester=user)
-            .order_by("-created_at")[:5]
-        )
+        my_payment_releases = my_payment_releases_qs.select_related(
+            "project", "expense_category", "purchase_request"
+        ).order_by("-created_at")[:10]
 
         pr_pending_qs, payment_pending_qs = _build_pending_approvals_query(user)
 
@@ -232,7 +239,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         ).count()
 
         requester_pending_count = _requester_pending_items_count(user)
-        requester_next_step_count = _requester_next_step_items_count(user)
+        requester_ready_for_payment_count = _requester_ready_for_payment_count(user)
+        requester_do_pending_count = _requester_do_pending_count(user)
+        requester_partial_delivery_count = _requester_partial_delivery_count(user)
 
         pr_spend_by_currency = _approved_pr_spend_this_month(user)
         payment_spend_by_currency = _approved_payment_spend_this_month(user)
@@ -248,11 +257,14 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             "total_deliveries": total_deliveries,
             "dashboard_prs_count": dashboard_prs_count,
             "dashboard_payments_count": dashboard_payments_count,
+            "dashboard_deliveries_count": my_delivery_stage_requests_qs.count(),
             "approved_this_month": approved_this_month,
             "total_spend_display": total_spend_display,
             "spend_by_currency": pr_spend_by_currency,
             "requester_pending_count": requester_pending_count,
-            "requester_next_step_count": requester_next_step_count,
+            "requester_ready_for_payment_count": requester_ready_for_payment_count,
+            "requester_do_pending_count": requester_do_pending_count,
+            "requester_partial_delivery_count": requester_partial_delivery_count,
             "approved_payment_spend_display": approved_payment_spend_display,
             "approved_payment_spend_by_currency": payment_spend_by_currency,
         }
@@ -263,8 +275,8 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         context.update(
             {
                 "my_purchase_requests": my_purchase_requests,
+                "my_delivery_stage_requests": my_delivery_stage_requests,
                 "my_payment_releases": my_payment_releases,
-                "my_delivery_submissions": my_delivery_submissions,
                 "pr_pending_approvals": pr_pending,
                 "payment_pending_approvals": payment_pending,
                 "pending_approvals_count": pending_approvals_count,

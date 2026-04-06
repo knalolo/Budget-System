@@ -15,7 +15,11 @@
             <div>
                 <div class="flex items-center gap-3 flex-wrap">
                     <h2 class="text-xl font-bold text-gray-900">{{ purchase_request.request_number }}</h2>
+                    {% if purchase_request.status == "ordered" %}
+                    {% include "components/status_badge.html" with status=purchase_request.delivery_stage_status status_display=purchase_request.delivery_stage_display %}
+                    {% else %}
                     {% include "components/status_badge.html" with status=purchase_request.status status_display=purchase_request.get_status_display %}
+                    {% endif %}
                     {% if purchase_request.po_required %}
                     <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">PO Required</span>
                     {% endif %}
@@ -59,7 +63,7 @@
                     <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
                         {% csrf_token %}
                         <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
-                            Mark as Ordered &amp; Create Payment Release
+                            Mark as Ordered &amp; Track Delivery
                         </button>
                     </form>
                     {% else %}
@@ -75,23 +79,48 @@
                     <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
                         {% csrf_token %}
                         <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
-                            Mark as Ordered &amp; Create Payment Release
+                            Mark as Ordered &amp; Track Delivery
                         </button>
                     </form>
                 {% elif purchase_request.status == "ordered" %}
-                    {% if has_payment_release %}
+                    {% if has_delivery_submission %}
+                    <a
+                        href="{% url 'deliveries:detail' latest_delivery_submission.pk %}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+                    >
+                        View Delivery Record
+                    </a>
+                    {% else %}
+                    <a
+                        href="{{ delivery_submission_create_url }}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors"
+                    >
+                        Create Delivery Record
+                    </a>
+                    {% endif %}
+
+                    {% if purchase_request.is_ready_for_payment and not has_standard_payment_release %}
+                    <a
+                        href="{{ payment_release_create_url }}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors"
+                    >
+                        Create Payment Release
+                    </a>
+                    {% elif has_payment_release %}
                     <a
                         href="{% url 'payments:detail' first_payment_release.pk %}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
                     >
                         View Payment Release
                     </a>
-                    {% else %}
+                    {% endif %}
+
+                    {% if purchase_request.remaining_quantity > 0 %}
                     <a
-                        href="{{ payment_release_create_url }}"
-                        class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
+                        href="{{ advance_payment_create_url }}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 transition-colors"
                     >
-                        Create Payment Release
+                        Request Advance Payment
                     </a>
                     {% endif %}
                 {% endif %}
@@ -148,15 +177,25 @@
             {# Financial Information #}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
                 <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Financial Information</h3>
-                <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-3 text-sm">
+                <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4 text-sm">
                     <div>
                         <dt class="font-medium text-gray-500">Currency</dt>
                         <dd class="mt-1 text-gray-900">{{ purchase_request.get_currency_display }}</dd>
                     </div>
                     <div>
+                        <dt class="font-medium text-gray-500">Ordered Quantity</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.ordered_quantity }}</dd>
+                    </div>
+                    <div>
                         <dt class="font-medium text-gray-500">Total Price</dt>
                         <dd class="mt-1 text-lg font-bold text-gray-900">
                             {{ purchase_request.currency|currency_symbol }} {{ purchase_request.total_price|floatformat:2 }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Unit Price</dt>
+                        <dd class="mt-1 text-gray-900">
+                            {{ purchase_request.currency|currency_symbol }} {{ purchase_request.unit_price|floatformat:2 }}
                         </dd>
                     </div>
                     <div>
@@ -171,6 +210,44 @@
                     </div>
                 </dl>
             </div>
+
+            {% if purchase_request.status == "ordered" %}
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Delivery &amp; Payment Tracking</h3>
+                <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4 text-sm">
+                    <div>
+                        <dt class="font-medium text-gray-500">Ordered</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.ordered_quantity }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Delivered</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.delivered_quantity }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Outstanding</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.remaining_quantity }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Stage</dt>
+                        <dd class="mt-1">
+                            {% include "components/status_badge.html" with status=purchase_request.delivery_stage_status status_display=purchase_request.delivery_stage_display %}
+                        </dd>
+                    </div>
+                </dl>
+
+                <div class="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+                    {% if purchase_request.delivered_quantity == 0 %}
+                    Delivery must be recorded before standard payment can start. Use advance payment only when the supplier requires prepayment.
+                    {% elif purchase_request.remaining_quantity > 0 %}
+                    This request is only partially delivered. Standard payment is limited to the delivered quantity, and the remaining units still require DO follow-up.
+                    {% elif purchase_request.has_short_close %}
+                    This request was short closed. The remaining quantity will not be delivered or paid.
+                    {% else %}
+                    Delivery is complete. The requester can move on to Payment Release.
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
 
             {# File Attachments #}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">

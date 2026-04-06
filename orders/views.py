@@ -176,16 +176,27 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         pr = self.object
         approval_history = get_approval_history(pr).select_related("action_by")
         can_approve, _ = can_user_approve(pr, self.request.user)
-        first_payment_release = pr.payment_releases.order_by("-created_at").first()
+        latest_payment_release = pr.payment_releases.order_by("-created_at").first()
+        has_standard_payment_release = pr.payment_releases.filter(payment_type="standard").exists()
         context["approval_history"] = approval_history
         context["can_approve"] = can_approve
         context["attachments"] = pr.attachments.select_related("uploaded_by")
         context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
         context["selected_attachment_type"] = "quotation"
-        context["has_payment_release"] = first_payment_release is not None
-        context["first_payment_release"] = first_payment_release
+        context["has_payment_release"] = latest_payment_release is not None
+        context["has_standard_payment_release"] = has_standard_payment_release
+        context["first_payment_release"] = latest_payment_release
+        latest_delivery_submission = pr.delivery_submissions.order_by("-created_at").first()
+        context["latest_delivery_submission"] = latest_delivery_submission
+        context["has_delivery_submission"] = latest_delivery_submission is not None
+        context["delivery_submission_create_url"] = (
+            f"{reverse('deliveries:create')}?purchase_request={pr.pk}"
+        )
         context["payment_release_create_url"] = (
             f"{reverse('payments:create')}?purchase_request={pr.pk}"
+        )
+        context["advance_payment_create_url"] = (
+            f"{reverse('payments:create')}?purchase_request={pr.pk}&payment_type=advance"
         )
         return context
 
@@ -361,7 +372,7 @@ def purchase_request_mark_ordered(request, pk):
             request,
             (
                 f"Purchase request {updated_pr.request_number} marked as ordered. "
-                "Continue by creating the linked payment release."
+                "Continue by tracking delivery before payment."
             ),
         )
     except ValidationError as exc:
@@ -370,12 +381,12 @@ def purchase_request_mark_ordered(request, pk):
             return _htmx_detail_redirect(request, pk)
         return redirect("orders:purchase-request-detail", pk=pk)
 
-    payment_release_url = f"{reverse('payments:create')}?purchase_request={updated_pr.pk}"
+    delivery_submission_url = f"{reverse('deliveries:create')}?purchase_request={updated_pr.pk}"
     if request.headers.get("HX-Request"):
         response = HttpResponse(status=204)
-        response["HX-Redirect"] = payment_release_url
+        response["HX-Redirect"] = delivery_submission_url
         return response
-    return redirect(payment_release_url)
+    return redirect(delivery_submission_url)
 
 
 @login_required

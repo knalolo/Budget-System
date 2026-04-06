@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 
@@ -36,6 +37,8 @@ def submit_payment_release(payment_release):
             "PaymentRelease #%s submitted without attachments.",
             payment_release.pk,
         )
+
+    _validate_delivery_and_payment_limits(payment_release)
 
     payment_release = approval_service.submit_for_approval(payment_release)
 
@@ -81,3 +84,41 @@ def reject_payment_release(payment_release, approver, comment: str = ""):
         approver.pk,
     )
     return payment_release
+
+
+def _validate_delivery_and_payment_limits(payment_release) -> None:
+    """Enforce delivery-first payment rules unless the request is an advance payment."""
+    purchase_request = payment_release.purchase_request
+    if purchase_request is None:
+        return
+
+    if payment_release.payment_quantity > purchase_request.ordered_quantity:
+        raise ValidationError(
+            "Payment quantity cannot exceed the ordered quantity on the purchase request."
+        )
+
+    if payment_release.payment_type == "advance":
+        return
+
+    if purchase_request.delivered_quantity <= 0:
+        raise ValidationError(
+            "Standard payments require a delivery record first. Use Advance Payment only when the supplier requires prepayment."
+        )
+
+    available_quantity = purchase_request.available_standard_payment_quantity
+    if available_quantity <= 0:
+        raise ValidationError(
+            "There is no delivered quantity left to pay against this purchase request."
+        )
+
+    if payment_release.payment_quantity > available_quantity:
+        raise ValidationError(
+            f"Only {available_quantity} delivered unit(s) are currently available for standard payment."
+        )
+
+    unit_price = purchase_request.unit_price
+    max_total = unit_price * Decimal(payment_release.payment_quantity)
+    if payment_release.total_price > max_total:
+        raise ValidationError(
+            f"Standard payment cannot exceed {purchase_request.currency} {max_total:.2f} for {payment_release.payment_quantity} delivered unit(s)."
+        )

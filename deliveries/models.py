@@ -40,13 +40,15 @@ class DeliverySubmission(models.Model):
         max_length=3,
         choices=settings.CURRENCY_CHOICES,
     )
+    delivered_quantity = models.PositiveIntegerField(default=1)
     total_price = models.DecimalField(max_digits=14, decimal_places=2)
+    notes = models.TextField(blank=True)
 
     # --- Workflow status ---
     status = models.CharField(
         max_length=20,
         choices=settings.DELIVERY_STATUS_CHOICES,
-        default="submitted",
+        default="fully_delivered",
     )
 
     # --- Timestamps ---
@@ -77,8 +79,20 @@ class DeliverySubmission(models.Model):
 
     @property
     def is_submitted(self) -> bool:
-        return self.status == "submitted"
+        return self.status in ("partially_delivered", "fully_delivered", "short_closed")
 
     @property
     def is_saved(self) -> bool:
         return self.status == "saved"
+
+    @property
+    def is_partially_delivered(self) -> bool:
+        return self.status == "partially_delivered"
+
+    @property
+    def is_fully_delivered(self) -> bool:
+        return self.status == "fully_delivered"
+
+    @property
+    def is_short_closed(self) -> bool:
+        return self.status == "short_closed"

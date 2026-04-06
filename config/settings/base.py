@@ -221,9 +221,24 @@ DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
 # ---------------------------------------------------------------------------
 
 CURRENCY_CHOICES = [
-    ("SGD", "SG$"),
-    ("USD", "US$"),
+    ("SGD", "SGD"),
+    ("USD", "USD"),
     ("EUR", "EUR"),
+    ("GBP", "GBP"),
+    ("JPY", "JPY"),
+    ("CNY", "CNY"),
+    ("HKD", "HKD"),
+    ("TWD", "TWD"),
+    ("MYR", "MYR"),
+    ("THB", "THB"),
+    ("INR", "INR"),
+    ("AUD", "AUD"),
+    ("CAD", "CAD"),
+    ("CHF", "CHF"),
+    ("SEK", "SEK"),
+    ("NOK", "NOK"),
+    ("DKK", "DKK"),
+    ("AED", "AED"),
 ]
 
 DEFAULT_CURRENCY = "SGD"
@@ -260,7 +275,9 @@ PAYMENT_STATUS_CHOICES = [
 
 # Delivery Submission statuses
 DELIVERY_STATUS_CHOICES = [
-    ("submitted", "Submitted"),
+    ("partially_delivered", "Partially Delivered"),
+    ("fully_delivered", "Fully Delivered"),
+    ("short_closed", "Short Closed"),
     ("saved", "Saved"),
 ]
 

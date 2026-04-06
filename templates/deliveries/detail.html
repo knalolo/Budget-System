@@ -1,7 +1,8 @@
 {% extends "base.html" %}
+{% load procurement_tags %}
 
 {% block title %}{{ submission.request_number }}{% endblock %}
-{% block page_title %}Delivery Submission Detail{% endblock %}
+{% block page_title %}Delivery Tracking Detail{% endblock %}
 
 {% block content %}
 <div class="max-w-3xl mx-auto space-y-6">
@@ -11,7 +12,7 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
         </svg>
-        Back to Deliveries
+        Back to Delivery Tracking
     </a>
 
     <!-- Header card -->
@@ -19,23 +20,17 @@
         <div class="flex items-start justify-between gap-4">
             <div>
                 <h2 class="text-xl font-semibold font-mono text-brand-700">{{ submission.request_number }}</h2>
-                <p class="text-sm text-gray-500 mt-1">Submitted {{ submission.created_at|date:"d M Y, H:i" }}</p>
+                <p class="text-sm text-gray-500 mt-1">Recorded {{ submission.created_at|date:"d M Y, H:i" }}</p>
             </div>
-            {% if submission.status == "submitted" %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-                Submitted
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-{{ submission.status|status_color }}-100 text-{{ submission.status|status_color }}-800">
+                {{ submission.get_status_display }}
             </span>
-            {% else %}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700">
-                Saved
-            </span>
-            {% endif %}
         </div>
     </div>
 
     <!-- Details card -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Submission Details</h3>
+        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Delivery Details</h3>
         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
             <div>
                 <dt class="text-gray-500">Requester</dt>
@@ -52,6 +47,10 @@
                 <dd class="font-medium text-gray-900 mt-0.5">{{ submission.get_currency_display }}</dd>
             </div>
             <div>
+                <dt class="text-gray-500">Delivered Quantity</dt>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.delivered_quantity }}</dd>
+            </div>
+            <div>
                 <dt class="text-gray-500">Total Price</dt>
                 <dd class="font-medium text-gray-900 mt-0.5">
                     {{ submission.currency }}&nbsp;{{ submission.total_price|floatformat:2 }}
@@ -64,9 +63,44 @@
                     {{ submission.purchase_request.request_number }}
                 </dd>
             </div>
+            <div>
+                <dt class="text-gray-500">Ordered Quantity</dt>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.purchase_request.ordered_quantity }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Outstanding Quantity</dt>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.purchase_request.remaining_quantity }}</dd>
+            </div>
+            <div>
+                <dt class="text-gray-500">Delivery Stage</dt>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.purchase_request.delivery_stage_display }}</dd>
+            </div>
+            {% endif %}
+            {% if submission.notes %}
+            <div class="sm:col-span-2">
+                <dt class="text-gray-500">Notes</dt>
+                <dd class="font-medium text-gray-900 mt-0.5 whitespace-pre-line">{{ submission.notes }}</dd>
+            </div>
             {% endif %}
         </dl>
     </div>
+
+    {% if can_create_payment_release %}
+    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5 flex items-center justify-between gap-4">
+        <div>
+            <h3 class="text-sm font-semibold text-emerald-900">Ready for Payment</h3>
+            <p class="mt-1 text-sm text-emerald-800">
+                Delivery evidence is now sufficient for the requester to create the linked Payment Release.
+            </p>
+        </div>
+        <a
+            href="{{ payment_release_create_url }}"
+            class="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors"
+        >
+            Create Payment Release
+        </a>
+    </div>
+    {% endif %}
 
     <!-- Attachments card -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">

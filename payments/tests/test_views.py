@@ -14,6 +14,8 @@ def _payment_release_payload(project, category, *, action="draft") -> dict:
         "description": "Advance payment for testing services",
         "vendor": "Playtest Vendor",
         "currency": "SGD",
+        "payment_type": "standard",
+        "payment_quantity": "1",
         "total_price": "500.00",
         "justification": "Needed to lock the test slot.",
         "po_number": "N/A",
@@ -41,6 +43,7 @@ class TestPaymentReleaseCreateView:
             description="Advance payment for testing services",
             vendor="Playtest Vendor",
             currency="SGD",
+            ordered_quantity=2,
             total_price="500.00",
             justification="Needed to lock the test slot.",
             po_required=False,
@@ -56,6 +59,7 @@ class TestPaymentReleaseCreateView:
         assert response.context["source_purchase_request"] == purchase_request
         assert response.context["form"].initial["vendor"] == purchase_request.vendor
         assert response.context["form"].initial["po_number"] == "N/A"
+        assert response.context["form"].initial["payment_quantity"] == 1
 
     def test_create_saves_uploaded_invoice(
         self,
@@ -104,6 +108,7 @@ class TestPaymentReleaseCreateView:
             description="Advance payment for testing services",
             vendor="Playtest Vendor",
             currency="SGD",
+            ordered_quantity=1,
             total_price="500.00",
             justification="Needed to lock the test slot.",
             po_required=False,
@@ -143,6 +148,7 @@ class TestPaymentReleaseCreateView:
             description="Advance payment for testing services",
             vendor="Playtest Vendor",
             currency="SGD",
+            ordered_quantity=1,
             total_price="500.00",
             justification="Needed to lock the test slot.",
             po_required=False,
@@ -191,6 +197,46 @@ class TestPaymentReleaseCreateView:
         attachment = payment.attachments.get()
         assert payment.status == "pending_pcm"
         assert attachment.file_type == "proforma_invoice"
+
+    def test_standard_payment_submit_requires_delivery_first(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        from orders.models import PurchaseRequest
+
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Advance payment for testing services",
+            vendor="Playtest Vendor",
+            currency="SGD",
+            ordered_quantity=5,
+            total_price="500.00",
+            justification="Needed to lock the test slot.",
+            po_required=False,
+            target_payment="Apr 2026",
+            status="ordered",
+        )
+
+        payload = _payment_release_payload(
+            sample_project,
+            sample_expense_category,
+            action="submit",
+        )
+        payload["purchase_request"] = purchase_request.pk
+
+        response = client.post(reverse("payments:create"), data=payload, follow=True)
+
+        assert response.status_code == 200
+        payment = PaymentRelease.objects.get(requester=regular_user)
+        assert payment.status == "draft"
+        messages = [message.message for message in response.context["messages"]]
+        assert any("delivery record first" in message for message in messages)
 
 
 @pytest.mark.django_db

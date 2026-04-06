@@ -12,6 +12,7 @@ class DeliverySubmissionFactory(factory.django.DjangoModelFactory):
     requester = factory.SubFactory(UserFactory)
     vendor = "Test Delivery Vendor"
     currency = "SGD"
+    delivered_quantity = 1
     total_price = factory.Sequence(lambda n: 50 + n)
-    status = "submitted"
+    status = "fully_delivered"
     purchase_request = None

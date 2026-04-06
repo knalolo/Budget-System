@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load procurement_tags %}
 
 {% block title %}{{ payment.request_number }} - Payment Release{% endblock %}
 {% block page_title %}Payment Release Detail{% endblock %}
@@ -51,6 +52,16 @@
             </div>
 
             <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Payment Type</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ payment.get_payment_type_display }}</dd>
+            </div>
+
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Quantity To Pay</dt>
+                <dd class="mt-1 text-sm text-gray-900">{{ payment.payment_quantity }}</dd>
+            </div>
+
+            <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">PO Number</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ payment.po_number }}</dd>
             </div>
@@ -97,6 +108,43 @@
         </div>
         {% endif %}
     </div>
+
+    {% if linked_purchase_request_summary %}
+    <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800">Linked Delivery Snapshot</h3>
+        </div>
+        <dl class="grid grid-cols-1 sm:grid-cols-4 gap-x-6 gap-y-4 px-6 py-4 text-sm">
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Ordered</dt>
+                <dd class="mt-1 text-gray-900">{{ linked_purchase_request_summary.ordered_quantity }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Delivered</dt>
+                <dd class="mt-1 text-gray-900">{{ linked_purchase_request_summary.delivered_quantity }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Outstanding</dt>
+                <dd class="mt-1 text-gray-900">{{ linked_purchase_request_summary.remaining_quantity }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Stage</dt>
+                <dd class="mt-1">
+                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-{{ linked_purchase_request_summary.delivery_stage_status|status_color }}-100 text-{{ linked_purchase_request_summary.delivery_stage_status|status_color }}-800">
+                        {{ linked_purchase_request_summary.delivery_stage_display }}
+                    </span>
+                </dd>
+            </div>
+        </dl>
+        <div class="px-6 pb-4 text-sm text-gray-600">
+            {% if payment.is_advance_payment %}
+            This payment was created as an advance payment. Delivery order follow-up is still required until the purchase request is fully delivered or short closed.
+            {% else %}
+            Standard payment is expected to stay within the delivered quantity shown above.
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     {% if can_approve %}
     <div

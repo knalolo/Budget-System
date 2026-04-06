@@ -80,8 +80,12 @@ class PaymentReleaseCreateView(View):
             return HttpResponseForbidden(
                 "You do not have permission to use this purchase request."
             )
+        requested_payment_type = _requested_payment_type(request, source_purchase_request)
         form = PaymentReleaseForm(
-            initial=_payment_release_initial_from_purchase_request(source_purchase_request)
+            initial=_payment_release_initial_from_purchase_request(
+                source_purchase_request,
+                requested_payment_type=requested_payment_type,
+            )
         )
         return _render_payment_create_form(
             request,
@@ -181,6 +185,7 @@ class PaymentReleaseDetailView(View):
             "can_approve": _can_approve(request.user, payment),
             "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
             "selected_attachment_type": "invoice",
+            "linked_purchase_request_summary": _purchase_request_summary(payment.purchase_request),
         }
         return render(request, self.template_name, context)
 
@@ -454,6 +459,7 @@ def _render_payment_create_form(
                 "invoice",
             ),
             "source_purchase_request": source_purchase_request,
+            "source_purchase_request_summary": _purchase_request_summary(source_purchase_request),
             "initial_po_mode": _payment_release_po_mode(source_purchase_request, form),
         },
     )
@@ -486,10 +492,25 @@ def _get_linkable_purchase_request(request: HttpRequest):
     return purchase_request
 
 
-def _payment_release_initial_from_purchase_request(purchase_request) -> dict:
+def _payment_release_initial_from_purchase_request(
+    purchase_request,
+    *,
+    requested_payment_type: str = "standard",
+) -> dict:
     """Build initial payment-release form values from a purchase request."""
     if purchase_request is None:
-        return {}
+        return {"payment_type": requested_payment_type}
+
+    if requested_payment_type == "advance":
+        payment_quantity = purchase_request.ordered_quantity
+        total_price = purchase_request.total_price
+    else:
+        payment_quantity = max(purchase_request.available_standard_payment_quantity, 1)
+        total_price = (
+            purchase_request.max_standard_payment_total
+            if purchase_request.available_standard_payment_quantity > 0
+            else purchase_request.total_price
+        )
 
     return {
         "expense_category": purchase_request.expense_category_id,
@@ -497,11 +518,43 @@ def _payment_release_initial_from_purchase_request(purchase_request) -> dict:
         "description": purchase_request.description,
         "vendor": purchase_request.vendor,
         "currency": purchase_request.currency,
-        "total_price": purchase_request.total_price,
+        "payment_type": requested_payment_type,
+        "payment_quantity": payment_quantity,
+        "total_price": total_price,
         "justification": purchase_request.justification,
         "po_number": "" if purchase_request.po_required else "N/A",
         "target_payment": purchase_request.target_payment,
     }
+
+
+def _purchase_request_summary(purchase_request) -> dict | None:
+    """Return delivery and payment guidance for a linked purchase request."""
+    if purchase_request is None:
+        return None
+
+    return {
+        "ordered_quantity": purchase_request.ordered_quantity,
+        "delivered_quantity": purchase_request.delivered_quantity,
+        "remaining_quantity": purchase_request.remaining_quantity,
+        "delivery_stage_status": purchase_request.delivery_stage_status,
+        "delivery_stage_display": purchase_request.delivery_stage_display,
+        "available_standard_payment_quantity": purchase_request.available_standard_payment_quantity,
+        "max_standard_payment_total": purchase_request.max_standard_payment_total,
+        "is_ready_for_payment": purchase_request.is_ready_for_payment,
+    }
+
+
+def _requested_payment_type(request: HttpRequest, purchase_request) -> str:
+    requested_payment_type = (
+        request.POST.get("payment_type")
+        or request.GET.get("payment_type")
+        or "standard"
+    )
+    if requested_payment_type not in ("standard", "advance"):
+        return "standard"
+    if purchase_request is None:
+        return "standard"
+    return requested_payment_type
 
 
 def _payment_release_po_mode(purchase_request, form: PaymentReleaseForm) -> str:

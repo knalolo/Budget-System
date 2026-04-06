@@ -42,6 +42,7 @@ class PurchaseRequestFactory(factory.django.DjangoModelFactory):
     description = "Test purchase request description"
     vendor = "Test Vendor Pte Ltd"
     currency = "SGD"
+    ordered_quantity = 1
     total_price = factory.Sequence(lambda n: 100 + n)
     justification = "Required for project work"
     po_required = False

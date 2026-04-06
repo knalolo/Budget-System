@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}New Delivery Submission{% endblock %}
-{% block page_title %}New Delivery Submission{% endblock %}
+{% block title %}New Delivery Record{% endblock %}
+{% block page_title %}New Delivery Record{% endblock %}
 
 {% block content %}
 <div class="max-w-2xl mx-auto">
@@ -12,10 +12,24 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
-            Back to Deliveries
+            Back to Delivery Tracking
         </a>
 
-        <h2 class="text-lg font-semibold text-gray-800">Submit Delivery / Sales Order Documents</h2>
+        <h2 class="text-lg font-semibold text-gray-800">Create Delivery / DO Record</h2>
+
+        {% if source_purchase_request %}
+        <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-900">
+            <p class="font-semibold">Tracking delivery for {{ source_purchase_request.request_number }}</p>
+            <p class="mt-1">
+                Ordered quantity: {{ source_purchase_request.ordered_quantity }}.
+                Delivered so far: {{ source_purchase_request.delivered_quantity }}.
+                Outstanding: {{ source_purchase_request.remaining_quantity }}.
+            </p>
+            <p class="mt-2 text-blue-800">
+                Record the actual delivered quantity here. If the supplier will not send the remaining balance, choose <strong>Short Closed</strong>.
+            </p>
+        </div>
+        {% endif %}
 
         {% if form.non_field_errors %}
         <div class="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-800">
@@ -32,6 +46,9 @@
             x-data="fileUpload()"
         >
             {% csrf_token %}
+            {% if source_purchase_request %}
+            <input type="hidden" name="purchase_request" value="{{ source_purchase_request.pk }}" />
+            {% endif %}
 
             <!-- ---- 1. File Upload (primary field) ---- -->
             <div>
@@ -108,7 +125,18 @@
                 {% endif %}
             </div>
 
-            <!-- ---- 4. Total Price ---- -->
+            <!-- ---- 4. Delivered Quantity ---- -->
+            <div>
+                <label for="{{ form.delivered_quantity.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Delivered Quantity <span class="text-red-500">*</span>
+                </label>
+                {{ form.delivered_quantity }}
+                {% if form.delivered_quantity.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.delivered_quantity.errors|join:", " }}</p>
+                {% endif %}
+            </div>
+
+            <!-- ---- 5. Total Price ---- -->
             <div>
                 <label for="{{ form.total_price.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
                     Total Price <span class="text-red-500">*</span>
@@ -116,6 +144,31 @@
                 {{ form.total_price }}
                 {% if form.total_price.errors %}
                 <p class="mt-1 text-xs text-red-600">{{ form.total_price.errors|join:", " }}</p>
+                {% endif %}
+            </div>
+
+            <!-- ---- 6. Delivery Outcome ---- -->
+            <div>
+                <label for="{{ form.status.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Delivery Outcome <span class="text-red-500">*</span>
+                </label>
+                {{ form.status }}
+                {% if form.status.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.status.errors|join:", " }}</p>
+                {% endif %}
+                <p class="mt-1 text-xs text-gray-500">
+                    Use <strong>Partially Delivered</strong> when more goods are still expected. Use <strong>Short Closed</strong> when the remaining balance will not be delivered and should not be paid.
+                </p>
+            </div>
+
+            <!-- ---- 7. Notes ---- -->
+            <div>
+                <label for="{{ form.notes.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                    Notes
+                </label>
+                {{ form.notes }}
+                {% if form.notes.errors %}
+                <p class="mt-1 text-xs text-red-600">{{ form.notes.errors|join:", " }}</p>
                 {% endif %}
             </div>
 

@@ -9,7 +9,7 @@ class TestDeliverySubmissionModel:
     def test_create_submission(self):
         ds = DeliverySubmissionFactory()
         assert ds.pk is not None
-        assert ds.status == "submitted"
+        assert ds.status == "fully_delivered"
 
     def test_auto_request_number_generated(self):
         ds = DeliverySubmissionFactory()
@@ -34,7 +34,7 @@ class TestDeliverySubmissionModel:
         assert "DelVendor" in str(ds)
 
     def test_is_submitted_property(self):
-        ds = DeliverySubmissionFactory(status="submitted")
+        ds = DeliverySubmissionFactory(status="partially_delivered")
         assert ds.is_submitted is True
         assert ds.is_saved is False
 
@@ -42,3 +42,12 @@ class TestDeliverySubmissionModel:
         ds = DeliverySubmissionFactory(status="saved")
         assert ds.is_saved is True
         assert ds.is_submitted is False
+
+    def test_delivery_status_properties(self):
+        partially_delivered = DeliverySubmissionFactory(status="partially_delivered")
+        fully_delivered = DeliverySubmissionFactory(status="fully_delivered")
+        short_closed = DeliverySubmissionFactory(status="short_closed")
+
+        assert partially_delivered.is_partially_delivered is True
+        assert fully_delivered.is_fully_delivered is True
+        assert short_closed.is_short_closed is True

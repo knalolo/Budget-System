@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 PURCHASE_REQUEST_NUMBER_RE = re.compile(r"^PR-(\d{8})-(\d{4})$")
+PAYMENT_TYPE_STANDARD = "standard"
+PAYMENT_TYPE_ADVANCE = "advance"
+PAYMENT_TYPE_CHOICES = [
+    (PAYMENT_TYPE_STANDARD, "Standard Payment"),
+    (PAYMENT_TYPE_ADVANCE, "Advance Payment"),
+]
 
 
 class PaymentRelease(models.Model):
@@ -51,6 +57,12 @@ class PaymentRelease(models.Model):
         max_length=3,
         choices=settings.CURRENCY_CHOICES,
     )
+    payment_type = models.CharField(
+        max_length=20,
+        choices=PAYMENT_TYPE_CHOICES,
+        default=PAYMENT_TYPE_STANDARD,
+    )
+    payment_quantity = models.PositiveIntegerField(default=1)
     total_price = models.DecimalField(max_digits=14, decimal_places=2)
     justification = models.TextField()
     po_number = models.CharField(
@@ -163,3 +175,7 @@ class PaymentRelease(models.Model):
     @property
     def can_be_deleted(self) -> bool:
         return self.status == "draft"
+
+    @property
+    def is_advance_payment(self) -> bool:
+        return self.payment_type == PAYMENT_TYPE_ADVANCE

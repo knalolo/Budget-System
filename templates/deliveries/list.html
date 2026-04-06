@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}Delivery Submissions{% endblock %}
-{% block page_title %}Delivery Submissions{% endblock %}
+{% block title %}Delivery Tracking{% endblock %}
+{% block page_title %}Delivery Tracking{% endblock %}
 
 {% block content %}
 <div class="space-y-4">
@@ -18,7 +18,9 @@
             />
             <select name="status" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500">
                 <option value="">All statuses</option>
-                <option value="submitted" {% if status_filter == "submitted" %}selected{% endif %}>Submitted</option>
+                <option value="partially_delivered" {% if status_filter == "partially_delivered" %}selected{% endif %}>Partially Delivered</option>
+                <option value="fully_delivered" {% if status_filter == "fully_delivered" %}selected{% endif %}>Fully Delivered</option>
+                <option value="short_closed" {% if status_filter == "short_closed" %}selected{% endif %}>Short Closed</option>
                 <option value="saved" {% if status_filter == "saved" %}selected{% endif %}>Saved</option>
             </select>
             <button type="submit" class="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-brand-700 transition-colors">
@@ -36,7 +38,7 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
             </svg>
-            New Submission
+            New Delivery Record
         </a>
     </div>
 

@@ -35,13 +35,43 @@ def create_delivery_submission(
     Returns:
         The saved DeliverySubmission instance.
     """
+    purchase_request = data.get("purchase_request")
+    delivered_quantity = data["delivered_quantity"]
+    status = data["status"]
+
+    if purchase_request is not None:
+        total_after_delivery = purchase_request.delivered_quantity + delivered_quantity
+        remaining_before_delivery = purchase_request.remaining_quantity
+
+        if delivered_quantity > remaining_before_delivery:
+            raise ValueError(
+                "Delivered quantity cannot exceed the remaining ordered quantity."
+            )
+
+        if status == "fully_delivered" and delivered_quantity != remaining_before_delivery:
+            raise ValueError(
+                "To mark the request as fully delivered, this delivery must clear the full remaining quantity."
+            )
+
+        if status == "partially_delivered" and delivered_quantity >= remaining_before_delivery:
+            raise ValueError(
+                "Use Fully Delivered or Short Closed when this delivery completes the remaining quantity."
+            )
+
+        if status == "short_closed" and total_after_delivery > purchase_request.ordered_quantity:
+            raise ValueError(
+                "Short-closed deliveries cannot exceed the ordered quantity."
+            )
+
     submission = DeliverySubmission(
         requester=user,
         vendor=data["vendor"],
         currency=data["currency"],
+        delivered_quantity=delivered_quantity,
         total_price=data["total_price"],
-        purchase_request=data.get("purchase_request"),
-        status="submitted",
+        purchase_request=purchase_request,
+        status=status,
+        notes=data.get("notes", ""),
     )
     submission.save()
 

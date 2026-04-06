@@ -1,6 +1,7 @@
 """Models for the orders app: Project, ExpenseCategory, and PurchaseRequest."""
 
 import logging
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -73,6 +74,7 @@ class PurchaseRequest(models.Model):
         max_length=3,
         choices=settings.CURRENCY_CHOICES,
     )
+    ordered_quantity = models.PositiveIntegerField(default=1)
     total_price = models.DecimalField(max_digits=14, decimal_places=2)
     justification = models.TextField()
     po_required = models.BooleanField(default=False)
@@ -201,3 +203,78 @@ class PurchaseRequest(models.Model):
                 threshold,
             )
             return self.po_required
+
+    @property
+    def unit_price(self) -> Decimal:
+        if self.ordered_quantity <= 0:
+            return Decimal("0.00")
+        return self.total_price / Decimal(self.ordered_quantity)
+
+    @property
+    def delivered_quantity(self) -> int:
+        delivered_total = self.delivery_submissions.aggregate(
+            total=models.Sum("delivered_quantity")
+        )["total"]
+        return int(delivered_total or 0)
+
+    @property
+    def has_short_close(self) -> bool:
+        return self.delivery_submissions.filter(status="short_closed").exists()
+
+    @property
+    def remaining_quantity(self) -> int:
+        if self.has_short_close:
+            return 0
+        return max(self.ordered_quantity - self.delivered_quantity, 0)
+
+    @property
+    def delivery_stage_status(self) -> str:
+        if self.status != "ordered":
+            return self.status
+        if self.has_short_close:
+            return "short_closed"
+        if self.delivered_quantity <= 0:
+            return "do_pending"
+        if self.remaining_quantity > 0:
+            return "partially_delivered"
+        if self.payment_releases.filter(
+            status__in=("pending_pcm", "pending_final", "approved")
+        ).exists():
+            return "payment_in_progress"
+        return "ready_for_payment"
+
+    @property
+    def delivery_stage_display(self) -> str:
+        labels = {
+            "do_pending": "DO Pending",
+            "partially_delivered": "Partially Delivered",
+            "ready_for_payment": "Ready for Payment",
+            "short_closed": "Short Closed",
+            "payment_in_progress": "Payment In Progress",
+        }
+        return labels.get(self.delivery_stage_status, self.get_status_display())
+
+    @property
+    def available_standard_payment_quantity(self) -> int:
+        requested_total = self.payment_releases.filter(
+            payment_type="standard",
+            status__in=("pending_pcm", "pending_final", "approved"),
+        ).aggregate(total=models.Sum("payment_quantity"))["total"]
+        requested_quantity = int(requested_total or 0)
+        return max(self.delivered_quantity - requested_quantity, 0)
+
+    @property
+    def max_standard_payment_total(self) -> Decimal:
+        return self.unit_price * Decimal(self.available_standard_payment_quantity)
+
+    @property
+    def is_ready_for_payment(self) -> bool:
+        return self.status == "ordered" and self.available_standard_payment_quantity > 0
+
+    @property
+    def has_delivery_records(self) -> bool:
+        return self.delivery_submissions.exists()
+
+    @property
+    def latest_delivery_submission(self):
+        return self.delivery_submissions.order_by("-created_at").first()

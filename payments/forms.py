@@ -18,6 +18,8 @@ class PaymentReleaseForm(forms.ModelForm):
             "description",
             "vendor",
             "currency",
+            "payment_type",
+            "payment_quantity",
             "total_price",
             "justification",
             "po_number",
@@ -29,6 +31,8 @@ class PaymentReleaseForm(forms.ModelForm):
             "expense_category": forms.Select(),
             "project": forms.Select(),
             "currency": forms.Select(),
+            "payment_type": forms.Select(),
+            "payment_quantity": forms.NumberInput(attrs={"min": 1}),
             "po_number": forms.TextInput(attrs={"placeholder": "N/A or PO-XXXX"}),
             "target_payment": forms.TextInput(attrs={"placeholder": "e.g. 2026-04-01"}),
         }
@@ -38,6 +42,12 @@ class PaymentReleaseForm(forms.ModelForm):
         if total_price is not None and total_price <= 0:
             raise forms.ValidationError("Total price must be greater than zero.")
         return total_price
+
+    def clean_payment_quantity(self):
+        payment_quantity = self.cleaned_data.get("payment_quantity")
+        if payment_quantity is not None and payment_quantity <= 0:
+            raise forms.ValidationError("Payment quantity must be at least 1.")
+        return payment_quantity
 
     def clean_po_number(self):
         value = self.cleaned_data.get("po_number", "").strip()

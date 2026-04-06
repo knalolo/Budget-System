@@ -5,8 +5,9 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.generic import DetailView, ListView
 
 from .forms import DeliverySubmissionForm
@@ -54,6 +55,11 @@ class DeliverySubmissionCreateView(LoginRequiredMixin, object):
 @login_required
 def delivery_submission_create(request):
     """Handle GET (render form) and POST (create submission) for delivery submissions."""
+    try:
+        source_purchase_request = _get_linkable_purchase_request(request)
+    except PermissionError:
+        return HttpResponseForbidden("You do not have permission to use this purchase request.")
+
     if request.method == "POST":
         form = DeliverySubmissionForm(request.POST)
         files = request.FILES.getlist("files")
@@ -64,7 +70,10 @@ def delivery_submission_create(request):
         if form.is_valid() and files:
             try:
                 submission = create_delivery_submission(
-                    data=form.cleaned_data,
+                    data={
+                        **form.cleaned_data,
+                        "purchase_request": source_purchase_request,
+                    },
                     user=request.user,
                     files=files,
                 )
@@ -80,12 +89,17 @@ def delivery_submission_create(request):
                     "An unexpected error occurred. Please try again.",
                 )
     else:
-        form = DeliverySubmissionForm()
+        form = DeliverySubmissionForm(
+            initial=_delivery_initial_from_purchase_request(source_purchase_request)
+        )
 
     return render(
         request,
         "deliveries/form.html",
-        {"form": form},
+        {
+            "form": form,
+            "source_purchase_request": source_purchase_request,
+        },
     )
 
 
@@ -100,6 +114,20 @@ class DeliverySubmissionDetailView(LoginRequiredMixin, DetailView):
         return DeliverySubmission.objects.select_related(
             "requester", "purchase_request"
         ).prefetch_related("attachments")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        submission = self.object
+        linked_purchase_request = submission.purchase_request
+        context["linked_purchase_request"] = linked_purchase_request
+        context["can_create_payment_release"] = bool(
+            linked_purchase_request and linked_purchase_request.is_ready_for_payment
+        )
+        if linked_purchase_request is not None:
+            context["payment_release_create_url"] = (
+                f"{reverse('payments:create')}?purchase_request={linked_purchase_request.pk}"
+            )
+        return context
 
 
 @login_required
@@ -141,3 +169,34 @@ def delivery_submission_upload(request, pk: int):
             "upload_errors": errors,
         },
     )
+
+
+def _get_linkable_purchase_request(request):
+    raw_purchase_request_id = request.POST.get("purchase_request") or request.GET.get("purchase_request")
+    if not raw_purchase_request_id:
+        return None
+
+    from orders.models import PurchaseRequest
+
+    purchase_request = get_object_or_404(
+        PurchaseRequest.objects.select_related("requester", "project", "expense_category"),
+        pk=raw_purchase_request_id,
+    )
+    if purchase_request.requester != request.user:
+        raise PermissionError
+    return purchase_request
+
+
+def _delivery_initial_from_purchase_request(purchase_request) -> dict:
+    if purchase_request is None:
+        return {"status": "partially_delivered"}
+
+    remaining_quantity = purchase_request.remaining_quantity or purchase_request.ordered_quantity
+    status = "fully_delivered" if remaining_quantity == purchase_request.ordered_quantity else "partially_delivered"
+    return {
+        "vendor": purchase_request.vendor,
+        "currency": purchase_request.currency,
+        "delivered_quantity": remaining_quantity,
+        "total_price": purchase_request.unit_price * remaining_quantity,
+        "status": status,
+    }

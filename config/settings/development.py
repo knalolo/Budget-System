@@ -43,7 +43,10 @@ DATABASES = {
 # Email — print to console
 # ---------------------------------------------------------------------------
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+if os.environ.get("DEV_EMAIL_USE_SMTP", "False") == "True":
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # ---------------------------------------------------------------------------
 # CORS — allow everything in development

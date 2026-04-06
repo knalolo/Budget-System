@@ -2,7 +2,6 @@
 
 import pytest
 from django.urls import reverse
-from django.utils import timezone
 
 from deliveries.tests.factories import DeliverySubmissionFactory
 from orders.tests.factories import PurchaseRequestFactory
@@ -11,15 +10,14 @@ from payments.tests.factories import PaymentReleaseFactory
 
 @pytest.mark.django_db
 class TestDashboardView:
-    def test_purchase_requests_tab_excludes_requests_with_payment_releases(
+    def test_purchase_requests_tab_excludes_ordered_requests_in_delivery_stage(
         self,
         client,
         regular_user,
     ):
         client.force_login(regular_user)
         visible_pr = PurchaseRequestFactory(requester=regular_user)
-        moved_pr = PurchaseRequestFactory(requester=regular_user)
-        PaymentReleaseFactory(requester=regular_user, purchase_request=moved_pr)
+        moved_pr = PurchaseRequestFactory(requester=regular_user, status="ordered")
 
         response = client.get(reverse("core:dashboard"))
 
@@ -28,69 +26,67 @@ class TestDashboardView:
         assert response.context["stats"]["dashboard_prs_count"] == 1
         assert response.context["stats"]["total_prs"] == 2
 
-    def test_payment_releases_tab_excludes_items_with_delivery_submissions(
+    def test_requester_cards_track_delivery_stage_and_ready_for_payment(
         self,
         client,
         regular_user,
     ):
         client.force_login(regular_user)
-        delivered_pr = PurchaseRequestFactory(requester=regular_user)
-        active_pr = PurchaseRequestFactory(requester=regular_user)
-        delivered_payment = PaymentReleaseFactory(
+        do_pending_pr = PurchaseRequestFactory(
             requester=regular_user,
-            purchase_request=delivered_pr,
+            status="ordered",
+            ordered_quantity=10,
         )
-        active_payment = PaymentReleaseFactory(
+        partial_pr = PurchaseRequestFactory(
             requester=regular_user,
-            purchase_request=active_pr,
+            status="ordered",
+            ordered_quantity=10,
         )
-        DeliverySubmissionFactory(requester=regular_user, purchase_request=delivered_pr)
+        ready_pr = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=10,
+        )
+        pending_payment_pr = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=10,
+        )
 
-        response = client.get(reverse("core:dashboard"))
-
-        assert response.status_code == 200
-        assert list(response.context["my_payment_releases"]) == [active_payment]
-        assert response.context["stats"]["dashboard_payments_count"] == 1
-        assert response.context["stats"]["total_payments"] == 2
-
-    def test_requester_summary_cards_track_pending_and_next_step_items(
-        self,
-        client,
-        regular_user,
-    ):
-        client.force_login(regular_user)
-
-        pending_pcm_pr = PurchaseRequestFactory(requester=regular_user, status="ordered")
-        pending_final_pr = PurchaseRequestFactory(requester=regular_user, status="ordered")
-        approved_payment_pr = PurchaseRequestFactory(requester=regular_user, status="ordered")
-
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=partial_pr,
+            delivered_quantity=4,
+            status="partially_delivered",
+        )
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=ready_pr,
+            delivered_quantity=10,
+            status="fully_delivered",
+        )
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=pending_payment_pr,
+            delivered_quantity=10,
+            status="fully_delivered",
+        )
         PaymentReleaseFactory(
             requester=regular_user,
-            purchase_request=pending_pcm_pr,
+            purchase_request=pending_payment_pr,
             status="pending_pcm",
-            currency="SGD",
-            total_price=100,
+            payment_type="standard",
+            payment_quantity=10,
+            total_price=1000,
         )
-        PaymentReleaseFactory(
-            requester=regular_user,
-            purchase_request=pending_final_pr,
-            status="pending_final",
-            currency="USD",
-            total_price=200,
-        )
-        approved_payment = PaymentReleaseFactory(
-            requester=regular_user,
-            purchase_request=approved_payment_pr,
-            status="approved",
-            currency="SGD",
-            total_price=300,
-        )
-        approved_payment.updated_at = timezone.now()
-        approved_payment.save(update_fields=["updated_at"])
 
         response = client.get(reverse("core:dashboard"))
 
         assert response.status_code == 200
-        assert response.context["stats"]["requester_pending_count"] == 2
-        assert response.context["stats"]["requester_next_step_count"] == 1
-        assert response.context["stats"]["approved_payment_spend_display"] == "SGD 300.00"
+        assert do_pending_pr in response.context["my_delivery_stage_requests"]
+        assert partial_pr in response.context["my_delivery_stage_requests"]
+        assert ready_pr in response.context["my_delivery_stage_requests"]
+        assert response.context["stats"]["requester_pending_count"] == 1
+        assert response.context["stats"]["requester_ready_for_payment_count"] == 1
+        assert response.context["stats"]["requester_do_pending_count"] == 1
+        assert response.context["stats"]["requester_partial_delivery_count"] == 1

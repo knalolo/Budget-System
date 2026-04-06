@@ -64,17 +64,44 @@
             </div>
             {% endif %}
 
+            <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-900">
+                <p class="font-semibold">Payment comes after delivery by default</p>
+                <p class="mt-1 text-amber-800">
+                    Standard payment should follow delivery tracking and DO evidence. Only use <strong>Advance Payment</strong> when the supplier requires prepayment, and continue following up for the delivery record afterward.
+                </p>
+            </div>
+
             {% if source_purchase_request %}
             <div class="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-4 text-sm text-indigo-900">
                 <p class="font-semibold">Creating Payment Release from {{ source_purchase_request.request_number }}</p>
                 <p class="mt-1 text-indigo-800">
                     The fields below were prefilled from the linked purchase request.
-                    {% if source_purchase_request.po_required %}
-                    Enter the actual PO number before submitting the payment release.
+                    {% if form.payment_type.value == "advance" %}
+                    This request is set to <strong>Advance Payment</strong>, so it may be submitted before delivery completes.
                     {% else %}
-                    Since this request does not require a PO, the PO number defaults to `N/A`.
+                    Standard payment follows delivery. The amount and quantity should stay within the delivered quantity.
                     {% endif %}
                 </p>
+                {% if source_purchase_request_summary %}
+                <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <div class="rounded-md bg-white/70 px-3 py-2">
+                        <p class="text-xs uppercase tracking-wide text-indigo-500">Ordered</p>
+                        <p class="mt-1 font-semibold">{{ source_purchase_request_summary.ordered_quantity }}</p>
+                    </div>
+                    <div class="rounded-md bg-white/70 px-3 py-2">
+                        <p class="text-xs uppercase tracking-wide text-indigo-500">Delivered</p>
+                        <p class="mt-1 font-semibold">{{ source_purchase_request_summary.delivered_quantity }}</p>
+                    </div>
+                    <div class="rounded-md bg-white/70 px-3 py-2">
+                        <p class="text-xs uppercase tracking-wide text-indigo-500">Outstanding</p>
+                        <p class="mt-1 font-semibold">{{ source_purchase_request_summary.remaining_quantity }}</p>
+                    </div>
+                    <div class="rounded-md bg-white/70 px-3 py-2">
+                        <p class="text-xs uppercase tracking-wide text-indigo-500">Stage</p>
+                        <p class="mt-1 font-semibold">{{ source_purchase_request_summary.delivery_stage_display }}</p>
+                    </div>
+                </div>
+                {% endif %}
             </div>
             {% endif %}
 
@@ -130,12 +157,43 @@
                     {% endif %}
                 </div>
                 <div>
+                    <label for="{{ form.payment_type.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        Payment Type <span class="text-red-500">*</span>
+                    </label>
+                    {{ form.payment_type }}
+                    {% if form.payment_type.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.payment_type.errors.0 }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                    <label for="{{ form.payment_quantity.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        Quantity To Pay <span class="text-red-500">*</span>
+                    </label>
+                    {{ form.payment_quantity }}
+                    {% if form.payment_quantity.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.payment_quantity.errors.0 }}</p>
+                    {% endif %}
+                    {% if source_purchase_request_summary %}
+                    <p class="mt-1 text-xs text-gray-500">
+                        Standard payment currently available for {{ source_purchase_request_summary.available_standard_payment_quantity }} delivered unit(s).
+                    </p>
+                    {% endif %}
+                </div>
+                <div>
                     <label for="{{ form.total_price.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
                         Total Price <span class="text-red-500">*</span>
                     </label>
                     {{ form.total_price }}
                     {% if form.total_price.errors %}
                     <p class="mt-1 text-xs text-red-600">{{ form.total_price.errors.0 }}</p>
+                    {% endif %}
+                    {% if source_purchase_request_summary %}
+                    <p class="mt-1 text-xs text-gray-500">
+                        Standard payment is capped at {{ form.currency.value|default:"SGD" }} {{ source_purchase_request_summary.max_standard_payment_total|floatformat:2 }} based on delivered quantity.
+                    </p>
                     {% endif %}
                 </div>
             </div>

@@ -19,6 +19,8 @@ class PaymentReleaseFactory(factory.django.DjangoModelFactory):
     description = "Test payment release description"
     vendor = "Test Payment Vendor Pte Ltd"
     currency = "SGD"
+    payment_type = "standard"
+    payment_quantity = 1
     total_price = factory.Sequence(lambda n: 200 + n)
     justification = "Invoice payment for delivered goods"
     po_number = "N/A"

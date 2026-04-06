@@ -25,8 +25,13 @@ _STATUS_COLOR_MAP: dict[str, str] = {
     "po_sent": "blue",
     "ordered": "indigo",
     "completed": "teal",
+    "do_pending": "slate",
+    "partially_delivered": "amber",
+    "fully_delivered": "green",
+    "ready_for_payment": "emerald",
+    "short_closed": "rose",
+    "payment_in_progress": "violet",
     # Delivery statuses
-    "submitted": "blue",
     "saved": "gray",
     # Email log statuses
     "pending": "yellow",
@@ -61,6 +66,21 @@ _CURRENCY_SYMBOL_MAP: dict[str, str] = {
     "SGD": "SG$",
     "USD": "US$",
     "EUR": "EUR",
+    "GBP": "£",
+    "JPY": "¥",
+    "CNY": "¥",
+    "HKD": "HK$",
+    "TWD": "NT$",
+    "MYR": "RM",
+    "THB": "฿",
+    "INR": "₹",
+    "AUD": "A$",
+    "CAD": "C$",
+    "CHF": "CHF",
+    "SEK": "SEK",
+    "NOK": "NOK",
+    "DKK": "DKK",
+    "AED": "AED",
 }
 
 
