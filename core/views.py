@@ -6,6 +6,7 @@ from datetime import date
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.db.models import Exists, OuterRef, Q, Sum
+from django.urls import reverse
 from django.views.generic import TemplateView
 
 logger = logging.getLogger(__name__)
@@ -174,6 +175,284 @@ def _requester_partial_delivery_count(user) -> int:
     )
 
 
+def _requester_do_still_required_payments(user):
+    from payments.models import PaymentRelease
+
+    payments = (
+        PaymentRelease.objects.filter(
+            requester=user,
+            status="approved",
+            payment_type="advance",
+            purchase_request__isnull=False,
+        )
+        .select_related("purchase_request", "project")
+        .order_by("-updated_at")
+    )
+    return [
+        payment
+        for payment in payments
+        if payment.do_follow_up_required
+    ]
+
+
+def _build_requester_action_items(user):
+    action_items = []
+    covered_purchase_request_ids = set()
+
+    def _pr_detail_url(purchase_request):
+        return reverse("orders:purchase-request-detail", args=[purchase_request.pk])
+
+    def _delivery_create_url(purchase_request):
+        return f"{reverse('deliveries:create')}?purchase_request={purchase_request.pk}"
+
+    def _delivery_detail_url(delivery_submission):
+        return reverse("deliveries:detail", args=[delivery_submission.pk])
+
+    def _payment_create_url(purchase_request):
+        return f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+
+    def _advance_payment_create_url(purchase_request):
+        return (
+            f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+            "&payment_type=advance"
+        )
+
+    def _payment_detail_url(payment):
+        return reverse("payments:detail", args=[payment.pk])
+
+    def _payment_edit_url(payment):
+        return reverse("payments:update", args=[payment.pk])
+
+    for purchase_request in (
+        _dashboard_purchase_requests_query(user)
+        .filter(status="draft")
+        .select_related("project")
+        .order_by("-updated_at")
+    ):
+        action_items.append(
+            {
+                "kind": "purchase_request",
+                "label": "Complete Draft PR",
+                "title": purchase_request.request_number,
+                "subtitle": f"{purchase_request.vendor} · {purchase_request.project.mc_number}",
+                "detail": "This purchase request is still in draft. Complete it and submit for approval when ready.",
+                "object": purchase_request,
+                "priority": 0,
+                "primary_text": "Open PR",
+                "primary_url": _pr_detail_url(purchase_request),
+            }
+        )
+
+    for payment in (
+        _dashboard_payment_releases_query(user)
+        .filter(status="draft")
+        .select_related("project", "purchase_request")
+        .order_by("-updated_at")
+    ):
+        subtitle = (
+            f"{payment.vendor} · {payment.project.mc_number}"
+            if payment.project_id
+            else payment.vendor
+        )
+        action_items.append(
+            {
+                "kind": "payment",
+                "label": "Complete Payment Draft",
+                "title": payment.request_number,
+                "subtitle": subtitle,
+                "detail": "This payment release is still in draft. Review it and submit for approval when ready.",
+                "object": payment,
+                "priority": 1,
+                "primary_text": "Open Payment",
+                "primary_url": _payment_edit_url(payment),
+            }
+        )
+
+    for payment in _requester_do_still_required_payments(user):
+        if payment.purchase_request_id:
+            covered_purchase_request_ids.add(payment.purchase_request_id)
+        latest_delivery = payment.purchase_request.latest_delivery_submission
+        action_items.append(
+            {
+                "kind": "payment",
+                "label": "DO Still Required",
+                "title": payment.request_number,
+                "subtitle": f"{payment.vendor} · {payment.project.mc_number}",
+                "detail": (
+                    f"Advance payment approved. Goods recieve is still outstanding: "
+                    f"{payment.purchase_request.delivered_quantity}/{payment.purchase_request.ordered_quantity} received."
+                ),
+                "object": payment,
+                "priority": 2,
+                "primary_text": "Open Goods recieve" if latest_delivery else "Create Goods recieve",
+                "primary_url": (
+                    _delivery_detail_url(latest_delivery)
+                    if latest_delivery
+                    else _delivery_create_url(payment.purchase_request)
+                ),
+                "secondary_text": "Open Payment",
+                "secondary_url": _payment_detail_url(payment),
+            }
+        )
+
+    for purchase_request in (
+        _dashboard_purchase_requests_query(user)
+        .filter(status__in=("approved", "po_sent"))
+        .select_related("project")
+        .order_by("-updated_at")
+    ):
+        if purchase_request.status == "approved" and purchase_request.po_required:
+            label = "Choose Next Step"
+            detail = (
+                "Approval is complete. Continue with the standard path by marking the PO as sent, "
+                "or create an advance payment if the supplier requires prepayment."
+            )
+            primary_text = "Mark PO Sent"
+            primary_url = reverse(
+                "orders:purchase-request-mark-po-sent",
+                args=[purchase_request.pk],
+            )
+        else:
+            label = "Choose Next Step"
+            detail = (
+                "Approval is complete. Continue with the standard path by opening the Goods recieve form, "
+                "or request an advance payment first."
+            )
+            primary_text = "Track Goods recieve"
+            primary_url = _delivery_create_url(purchase_request)
+
+        action_items.append(
+            {
+                "kind": "purchase_request",
+                "label": label,
+                "title": purchase_request.request_number,
+                "subtitle": f"{purchase_request.vendor} · {purchase_request.project.mc_number}",
+                "detail": detail,
+                "object": purchase_request,
+                "priority": 3,
+                "primary_text": primary_text,
+                "primary_url": primary_url,
+                "secondary_text": "Request Advance Payment",
+                "secondary_url": _advance_payment_create_url(purchase_request),
+                "tertiary_text": "Open PR",
+                "tertiary_url": _pr_detail_url(purchase_request),
+            }
+        )
+
+    for purchase_request in _dashboard_delivery_stage_query(user):
+        if purchase_request.pk in covered_purchase_request_ids:
+            continue
+        if purchase_request.is_ready_for_payment and purchase_request.remaining_quantity == 0:
+            action_items.append(
+                {
+                    "kind": "purchase_request",
+                    "label": "Ready For Payment",
+                    "title": purchase_request.request_number,
+                    "subtitle": f"{purchase_request.vendor} · {purchase_request.project.mc_number}",
+                    "detail": "Goods recieve is complete. You can create the payment release now.",
+                    "object": purchase_request,
+                    "priority": 4,
+                    "primary_text": "Create Payment",
+                    "primary_url": _payment_create_url(purchase_request),
+                    "secondary_text": "Open PR",
+                    "secondary_url": _pr_detail_url(purchase_request),
+                }
+            )
+        elif purchase_request.delivered_quantity == 0:
+            latest_delivery = purchase_request.latest_delivery_submission
+            action_items.append(
+                {
+                    "kind": "purchase_request",
+                    "label": "Create Goods recieve",
+                    "title": purchase_request.request_number,
+                    "subtitle": f"{purchase_request.vendor} · {purchase_request.project.mc_number}",
+                    "detail": "No Goods recieve has been recorded yet. Follow up and submit DO once goods arrive.",
+                    "object": purchase_request,
+                    "priority": 5,
+                    "primary_text": "Open Goods recieve" if latest_delivery else "Create Goods recieve",
+                    "primary_url": (
+                        _delivery_detail_url(latest_delivery)
+                        if latest_delivery
+                        else _delivery_create_url(purchase_request)
+                    ),
+                    "secondary_text": "Open PR",
+                    "secondary_url": _pr_detail_url(purchase_request),
+                }
+            )
+        elif purchase_request.remaining_quantity > 0:
+            latest_delivery = purchase_request.latest_delivery_submission
+            action_items.append(
+                {
+                    "kind": "purchase_request",
+                    "label": "Partial Delivery Follow-up",
+                    "title": purchase_request.request_number,
+                    "subtitle": f"{purchase_request.vendor} · {purchase_request.project.mc_number}",
+                    "detail": (
+                        f"Received {purchase_request.delivered_quantity}/{purchase_request.ordered_quantity}. "
+                        f"Keep tracking the remaining quantity."
+                    ),
+                    "object": purchase_request,
+                    "priority": 6,
+                    "primary_text": "Open Goods recieve" if latest_delivery else "Create Goods recieve",
+                    "primary_url": (
+                        _delivery_detail_url(latest_delivery)
+                        if latest_delivery
+                        else _delivery_create_url(purchase_request)
+                    ),
+                    "secondary_text": "Open PR",
+                    "secondary_url": _pr_detail_url(purchase_request),
+                }
+            )
+
+    return sorted(
+        action_items,
+        key=lambda item: (
+            item["priority"],
+            -item["object"].updated_at.timestamp(),
+        ),
+    )
+
+
+def _build_requester_waiting_items(user):
+    waiting_items = []
+
+    for purchase_request in (
+        _dashboard_purchase_requests_query(user)
+        .filter(status__in=_PENDING_STATUSES)
+        .select_related("project")
+        .order_by("-updated_at")
+    ):
+        waiting_items.append(
+            {
+                "kind": "purchase_request",
+                "label": purchase_request.get_status_display(),
+                "title": purchase_request.request_number,
+                "subtitle": f"{purchase_request.vendor} · {purchase_request.project.mc_number}",
+                "detail": "Waiting for PCM / Final approval before it can move to the next step.",
+                "object": purchase_request,
+            }
+        )
+
+    for payment in (
+        _dashboard_payment_releases_query(user)
+        .filter(status__in=_PENDING_STATUSES)
+        .select_related("project", "purchase_request")
+        .order_by("-updated_at")
+    ):
+        waiting_items.append(
+            {
+                "kind": "payment",
+                "label": payment.get_status_display(),
+                "title": payment.request_number,
+                "subtitle": f"{payment.vendor} · {payment.project.mc_number}",
+                "detail": "Waiting for PCM / Final approval before payment can proceed.",
+                "object": payment,
+            }
+        )
+
+    return sorted(waiting_items, key=lambda item: -item["object"].updated_at.timestamp())
+
+
 class DashboardView(LoginRequiredMixin, TemplateView):
     """Main dashboard landing page."""
 
@@ -207,7 +486,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         )
         payment_pending = (
             payment_pending_qs
-            .select_related("requester", "project")
+            .select_related("requester", "project", "purchase_request")
             .order_by("-created_at")[:20]
         )
 
@@ -242,6 +521,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         requester_ready_for_payment_count = _requester_ready_for_payment_count(user)
         requester_do_pending_count = _requester_do_pending_count(user)
         requester_partial_delivery_count = _requester_partial_delivery_count(user)
+        requester_do_still_required_payments = _requester_do_still_required_payments(user)
+        requester_action_items = _build_requester_action_items(user)
+        requester_waiting_items = _build_requester_waiting_items(user)
 
         pr_spend_by_currency = _approved_pr_spend_this_month(user)
         payment_spend_by_currency = _approved_payment_spend_this_month(user)
@@ -265,6 +547,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             "requester_ready_for_payment_count": requester_ready_for_payment_count,
             "requester_do_pending_count": requester_do_pending_count,
             "requester_partial_delivery_count": requester_partial_delivery_count,
+            "requester_do_still_required_count": len(requester_do_still_required_payments),
             "approved_payment_spend_display": approved_payment_spend_display,
             "approved_payment_spend_by_currency": payment_spend_by_currency,
         }
@@ -283,6 +566,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 "stats": stats,
                 "is_approver": is_approver,
                 "user_role": user_role,
+                "requester_do_still_required_payments": requester_do_still_required_payments[:5],
+                "requester_action_items": requester_action_items[:8],
+                "requester_waiting_items": requester_waiting_items[:8],
             }
         )
         return context

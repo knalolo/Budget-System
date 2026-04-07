@@ -40,6 +40,11 @@ def create_delivery_submission(
     status = data["status"]
 
     if purchase_request is not None:
+        if purchase_request.status in ("approved", "po_sent"):
+            from orders.services import mark_ordered
+
+            purchase_request = mark_ordered(purchase_request)
+
         total_after_delivery = purchase_request.delivered_quantity + delivered_quantity
         remaining_before_delivery = purchase_request.remaining_quantity
 

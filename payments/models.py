@@ -179,3 +179,58 @@ class PaymentRelease(models.Model):
     @property
     def is_advance_payment(self) -> bool:
         return self.payment_type == PAYMENT_TYPE_ADVANCE
+
+    @property
+    def has_goods_recieve(self) -> bool:
+        if not self.purchase_request_id or not self.purchase_request:
+            return False
+        return self.purchase_request.delivered_quantity > 0
+
+    @property
+    def goods_recieve_progress_status(self) -> str:
+        if not self.purchase_request_id or not self.purchase_request:
+            return "unlinked"
+        if self.is_advance_payment and self.purchase_request.delivered_quantity <= 0:
+            return "advance_without_goods"
+        if self.purchase_request.has_short_close:
+            return "short_closed"
+        if self.purchase_request.delivered_quantity <= 0:
+            return "goods_pending"
+        if self.purchase_request.remaining_quantity > 0:
+            return "partially_received"
+        return "goods_received"
+
+    @property
+    def goods_recieve_progress_label(self) -> str:
+        labels = {
+            "advance_without_goods": "Advance Payment • No Goods recieve",
+            "goods_pending": "No Goods recieve Yet",
+            "partially_received": "Partially Received",
+            "goods_received": "Goods recieved",
+            "short_closed": "Short Closed",
+            "unlinked": "Manual Payment Link",
+        }
+        return labels.get(self.goods_recieve_progress_status, "Goods recieve")
+
+    @property
+    def goods_recieve_progress_badge_classes(self) -> str:
+        badge_map = {
+            "advance_without_goods": "bg-amber-100 text-amber-900 ring-amber-600/20",
+            "goods_pending": "bg-rose-100 text-rose-800 ring-rose-600/20",
+            "partially_received": "bg-sky-100 text-sky-800 ring-sky-600/20",
+            "goods_received": "bg-emerald-100 text-emerald-800 ring-emerald-600/20",
+            "short_closed": "bg-slate-200 text-slate-800 ring-slate-500/20",
+            "unlinked": "bg-gray-100 text-gray-700 ring-gray-500/20",
+        }
+        return badge_map.get(
+            self.goods_recieve_progress_status,
+            "bg-gray-100 text-gray-700 ring-gray-500/20",
+        )
+
+    @property
+    def do_follow_up_required(self) -> bool:
+        if not self.is_advance_payment or not self.is_approved:
+            return False
+        if not self.purchase_request_id or not self.purchase_request:
+            return False
+        return self.purchase_request.remaining_quantity > 0

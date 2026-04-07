@@ -237,6 +237,11 @@ class PurchaseRequest(models.Model):
             return "do_pending"
         if self.remaining_quantity > 0:
             return "partially_delivered"
+        if (
+            self.remaining_payable_total <= Decimal("0.00")
+            and self.payment_releases.filter(status="approved").exists()
+        ):
+            return "completed"
         if self.payment_releases.filter(
             status__in=("pending_pcm", "pending_final", "approved")
         ).exists():
@@ -246,11 +251,12 @@ class PurchaseRequest(models.Model):
     @property
     def delivery_stage_display(self) -> str:
         labels = {
-            "do_pending": "DO Pending",
+            "do_pending": "Goods recieve Pending",
             "partially_delivered": "Partially Delivered",
             "ready_for_payment": "Ready for Payment",
             "short_closed": "Short Closed",
             "payment_in_progress": "Payment In Progress",
+            "completed": "Completed",
         }
         return labels.get(self.delivery_stage_status, self.get_status_display())
 
@@ -268,8 +274,23 @@ class PurchaseRequest(models.Model):
         return self.unit_price * Decimal(self.available_standard_payment_quantity)
 
     @property
+    def active_payment_total(self) -> Decimal:
+        requested_total = self.payment_releases.filter(
+            status__in=("pending_pcm", "pending_final", "approved"),
+        ).aggregate(total=models.Sum("total_price"))["total"]
+        return requested_total or Decimal("0.00")
+
+    @property
+    def remaining_payable_total(self) -> Decimal:
+        return max(self.total_price - self.active_payment_total, Decimal("0.00"))
+
+    @property
     def is_ready_for_payment(self) -> bool:
-        return self.status == "ordered" and self.available_standard_payment_quantity > 0
+        return (
+            self.status == "ordered"
+            and self.available_standard_payment_quantity > 0
+            and self.remaining_payable_total > Decimal("0.00")
+        )
 
     @property
     def has_delivery_records(self) -> bool:

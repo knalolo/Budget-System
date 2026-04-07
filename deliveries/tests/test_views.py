@@ -1,0 +1,133 @@
+"""Template-view tests for delivery submissions."""
+
+import pytest
+from django.urls import reverse
+
+from deliveries.tests.factories import DeliverySubmissionFactory
+from orders.tests.factories import PurchaseRequestFactory, UserFactory
+from payments.tests.factories import PaymentReleaseFactory
+
+
+@pytest.mark.django_db
+class TestDeliverySubmissionDeleteView:
+    def test_requester_can_delete_own_delivery_submission(self, client, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=20,
+            total_price=200,
+        )
+        submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=10,
+            total_price=100,
+            status="partially_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        client.force_login(regular_user)
+
+        response = client.post(reverse("deliveries:delete", args=[submission.pk]))
+
+        assert response.status_code == 302
+        purchase_request.refresh_from_db()
+        assert purchase_request.delivered_quantity == 0
+        assert purchase_request.remaining_quantity == 20
+
+    def test_other_user_cannot_delete_delivery_submission(self, client, regular_user):
+        other_user = UserFactory()
+        submission = DeliverySubmissionFactory(requester=other_user)
+        client.force_login(regular_user)
+
+        response = client.post(reverse("deliveries:delete", args=[submission.pk]))
+
+        assert response.status_code == 403
+
+
+@pytest.mark.django_db
+class TestDeliverySubmissionListView:
+    def test_list_shows_quantity_and_value_progress(self, client, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=20,
+            total_price=100,
+            currency="SGD",
+        )
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=10,
+            total_price=100,
+            status="partially_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("deliveries:list"))
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "10 / 20" in content
+        assert "SGD 50.00 / SGD 100.00" in content
+
+    def test_list_keeps_plain_values_for_fully_delivered_rows(self, client, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=20,
+            total_price=100,
+            currency="SGD",
+        )
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=20,
+            total_price=100,
+            status="fully_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("deliveries:list"))
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "20 / 20" not in content
+        assert "SGD 100.00 / SGD 100.00" not in content
+
+    def test_requester_cannot_delete_after_payment_enters_approval_flow(self, client, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=20,
+            total_price=200,
+        )
+        submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=10,
+            total_price=100,
+            status="partially_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            status="pending_pcm",
+            payment_type="standard",
+            payment_quantity=10,
+            total_price=100,
+            vendor=purchase_request.vendor,
+        )
+        client.force_login(regular_user)
+
+        response = client.post(reverse("deliveries:delete", args=[submission.pk]))
+
+        assert response.status_code == 403

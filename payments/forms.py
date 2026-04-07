@@ -1,5 +1,7 @@
 """Forms for the payments app."""
 
+from datetime import date, datetime
+
 from django import forms
 
 from .models import PaymentRelease
@@ -9,6 +11,17 @@ PO_NUMBER_NA = "N/A"
 
 class PaymentReleaseForm(forms.ModelForm):
     """Form for creating and editing a PaymentRelease."""
+
+    target_payment = forms.DateField(
+        widget=forms.DateInput(
+            attrs={
+                "type": "date",
+                "class": "block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500",
+            },
+            format="%Y-%m-%d",
+        ),
+        input_formats=["%Y-%m-%d"],
+    )
 
     class Meta:
         model = PaymentRelease
@@ -34,8 +47,19 @@ class PaymentReleaseForm(forms.ModelForm):
             "payment_type": forms.Select(),
             "payment_quantity": forms.NumberInput(attrs={"min": 1}),
             "po_number": forms.TextInput(attrs={"placeholder": "N/A or PO-XXXX"}),
-            "target_payment": forms.TextInput(attrs={"placeholder": "e.g. 2026-04-01"}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        target_payment = self.initial.get("target_payment")
+        if isinstance(target_payment, str):
+            self.initial["target_payment"] = self._parse_target_payment(target_payment)
+
+    def clean_target_payment(self):
+        target_payment = self.cleaned_data.get("target_payment")
+        if isinstance(target_payment, date):
+            return target_payment.isoformat()
+        return target_payment
 
     def clean_total_price(self):
         total_price = self.cleaned_data.get("total_price")
@@ -56,3 +80,15 @@ class PaymentReleaseForm(forms.ModelForm):
                 "PO number is required. Enter 'N/A' if not applicable."
             )
         return value
+
+    @staticmethod
+    def _parse_target_payment(raw_value: str):
+        raw_value = (raw_value or "").strip()
+        if not raw_value:
+            return raw_value
+        for input_format in ("%Y-%m-%d", "%d %b %Y", "%d-%b-%Y", "%m/%d/%Y"):
+            try:
+                return datetime.strptime(raw_value, input_format).date()
+            except ValueError:
+                continue
+        return raw_value

@@ -7,6 +7,7 @@
                 <th class="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Ref. No.</th>
                 <th class="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Vendor</th>
                 <th class="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Project</th>
+                <th class="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Goods recieve</th>
                 <th class="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                 <th class="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Status</th>
                 <th class="px-4 py-3 text-left font-medium text-gray-500 uppercase tracking-wider">Submitted</th>
@@ -23,19 +24,40 @@
                 </td>
                 <td class="px-4 py-3 text-gray-700">{{ payment.vendor }}</td>
                 <td class="px-4 py-3 text-gray-600">{{ payment.project.mc_number }}</td>
+                <td class="px-4 py-3">
+                    <div class="flex flex-col items-start gap-1.5">
+                        <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset {{ payment.goods_recieve_progress_badge_classes }}">
+                            {{ payment.goods_recieve_progress_label }}
+                        </span>
+                        <span class="text-xs text-gray-500">
+                            {% if payment.is_advance_payment %}
+                            Supplier asked for prepayment
+                            {% elif payment.purchase_request %}
+                            {{ payment.purchase_request.delivered_quantity }}/{{ payment.purchase_request.ordered_quantity }} received
+                            {% else %}
+                            No linked purchase request
+                            {% endif %}
+                        </span>
+                    </div>
+                </td>
                 <td class="px-4 py-3 text-gray-700 font-medium">
                     {{ payment.get_currency_display }} {{ payment.total_price|floatformat:2 }}
                 </td>
                 <td class="px-4 py-3">
-                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
-                        {% if payment.status == 'draft' %}bg-gray-100 text-gray-700
-                        {% elif payment.status == 'pending_pcm' %}bg-yellow-100 text-yellow-800
-                        {% elif payment.status == 'pending_final' %}bg-blue-100 text-blue-800
-                        {% elif payment.status == 'approved' %}bg-green-100 text-green-800
-                        {% elif payment.status == 'rejected' %}bg-red-100 text-red-800
-                        {% else %}bg-gray-100 text-gray-700{% endif %}">
-                        {{ payment.get_status_display }}
-                    </span>
+                    <div class="flex flex-col items-start gap-1.5">
+                        <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                            {% if payment.status == 'draft' %}bg-gray-100 text-gray-700
+                            {% elif payment.status == 'pending_pcm' %}bg-yellow-100 text-yellow-800
+                            {% elif payment.status == 'pending_final' %}bg-blue-100 text-blue-800
+                            {% elif payment.status == 'approved' %}bg-green-100 text-green-800
+                            {% elif payment.status == 'rejected' %}bg-red-100 text-red-800
+                            {% else %}bg-gray-100 text-gray-700{% endif %}">
+                            {{ payment.get_status_display }}
+                        </span>
+                        <span class="text-xs {% if payment.is_advance_payment %}text-amber-700{% else %}text-gray-500{% endif %}">
+                            {{ payment.get_payment_type_display }}
+                        </span>
+                    </div>
                 </td>
                 <td class="px-4 py-3 text-gray-500">{{ payment.created_at|date:"d M Y" }}</td>
                 <td class="px-4 py-3">

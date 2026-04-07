@@ -90,3 +90,197 @@ class TestDashboardView:
         assert response.context["stats"]["requester_ready_for_payment_count"] == 1
         assert response.context["stats"]["requester_do_pending_count"] == 1
         assert response.context["stats"]["requester_partial_delivery_count"] == 1
+
+    def test_pcm_pending_approval_list_marks_advance_payment_without_goods_recieve(
+        self,
+        client,
+        pcm_approver,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            status="ordered",
+            ordered_quantity=8,
+        )
+        PaymentReleaseFactory(
+            requester=purchase_request.requester,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            payment_quantity=8,
+            total_price=800,
+            status="pending_pcm",
+            vendor=purchase_request.vendor,
+        )
+        client.force_login(pcm_approver)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "Advance Payment" in content
+        assert "No Goods recieve" in content
+
+    def test_requester_dashboard_highlights_approved_advance_payments_still_needing_do(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=20,
+        )
+        PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            payment_quantity=20,
+            total_price=1000,
+            status="approved",
+            vendor=purchase_request.vendor,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        assert response.context["stats"]["requester_do_still_required_count"] == 1
+        assert len(response.context["requester_action_items"]) == 1
+        content = response.content.decode()
+        assert "Your Next Actions" in content
+        assert "Advance payment approved. Goods recieve is still outstanding" in content
+        assert "Create Goods recieve" in content
+
+    def test_requester_dashboard_does_not_offer_ready_for_payment_after_full_advance_payment(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=20,
+            total_price=1000,
+        )
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=20,
+            status="fully_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            total_price=1000,
+        )
+        PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            payment_quantity=20,
+            total_price=1000,
+            status="approved",
+            vendor=purchase_request.vendor,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        assert response.context["requester_action_items"] == []
+        content = response.content.decode()
+        assert "Ready For Payment" not in content
+
+    def test_requester_dashboard_shows_approved_pr_as_next_action_before_ordering(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="approved",
+            ordered_quantity=2,
+            po_required=False,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        action_items = response.context["requester_action_items"]
+        assert len(action_items) == 1
+        assert action_items[0]["title"] == purchase_request.request_number
+        assert action_items[0]["label"] == "Choose Next Step"
+        content = response.content.decode()
+        assert "Track Goods recieve" in content
+        assert "Request Advance Payment" in content
+        assert "Open PR" in content
+
+    def test_requester_dashboard_shows_payment_draft_as_next_action(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=5,
+        )
+        PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            status="draft",
+            vendor=purchase_request.vendor,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "Complete Payment Draft" in content
+        assert "This payment release is still in draft." in content
+
+    def test_goods_recieve_panel_marks_fully_paid_and_fully_delivered_request_as_completed(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=20,
+            total_price=1000,
+        )
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=20,
+            status="fully_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            total_price=1000,
+        )
+        PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            payment_quantity=20,
+            total_price=1000,
+            status="approved",
+            vendor=purchase_request.vendor,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "Completed" in content
+        assert "Payment In Progress" not in content

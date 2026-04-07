@@ -65,6 +65,64 @@
             </div>
             {% endif %}
 
+            {% if already_signed_in_user %}
+            <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You are currently signed in as <strong>{{ already_signed_in_user.get_full_name|default:already_signed_in_user.username }}</strong>.
+                Sign in below to switch to another account.
+            </div>
+            {% endif %}
+
+            <div class="space-y-4">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+                        Local Login
+                    </p>
+                    <form method="post" action="{% url 'accounts:login' %}" class="space-y-3">
+                        {% csrf_token %}
+                        <input type="hidden" name="login_method" value="local" />
+                        <div>
+                            <label for="identifier" class="block text-sm font-medium text-gray-700 mb-1">
+                                Username or email
+                            </label>
+                            <input
+                                id="identifier"
+                                name="identifier"
+                                type="text"
+                                autocomplete="username"
+                                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                placeholder="Enter username or email"
+                            />
+                        </div>
+                        <div>
+                            <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+                                Password
+                            </label>
+                            <input
+                                id="password"
+                                name="password"
+                                type="password"
+                                autocomplete="current-password"
+                                class="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                                placeholder="Enter password"
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            class="w-full rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                        >
+                            Sign in with username or email
+                        </button>
+                    </form>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <div class="h-px flex-1 bg-gray-200"></div>
+                    <span class="text-xs font-medium uppercase tracking-wider text-gray-400">or</span>
+                    <div class="h-px flex-1 bg-gray-200"></div>
+                </div>
+            </div>
+
+            {% if sso_enabled %}
             <!-- Sign in with Microsoft button -->
             <form method="post" action="{% url 'accounts:login' %}">
                 {% csrf_token %}
@@ -82,6 +140,7 @@
                     Sign in with Microsoft 365
                 </button>
             </form>
+            {% endif %}
 
             {% if dev_users or debug %}
             <!-- -------------------------------------------------------- -->

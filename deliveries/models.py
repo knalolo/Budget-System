@@ -1,6 +1,7 @@
 """Models for the deliveries app: DeliverySubmission."""
 
 import logging
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -96,3 +97,41 @@ class DeliverySubmission(models.Model):
     @property
     def is_short_closed(self) -> bool:
         return self.status == "short_closed"
+
+    @property
+    def requester_can_delete(self) -> bool:
+        """
+        Allow requester-side deletion only before approvers have acted on any
+        linked payment release for the same purchase request.
+        """
+        if not self.purchase_request_id:
+            return True
+
+        return not self.purchase_request.payment_releases.exclude(
+            status="draft"
+        ).exists()
+
+    @property
+    def delivery_quantity_progress(self) -> str:
+        if not self.purchase_request_id or not self.purchase_request:
+            return str(self.delivered_quantity)
+        if not self.is_partially_delivered:
+            return str(self.delivered_quantity)
+        return f"{self.delivered_quantity} / {self.purchase_request.ordered_quantity}"
+
+    @property
+    def delivery_value(self) -> Decimal:
+        if not self.purchase_request_id or not self.purchase_request:
+            return self.total_price
+        return self.purchase_request.unit_price * Decimal(self.delivered_quantity)
+
+    @property
+    def delivery_value_progress(self) -> str:
+        if not self.purchase_request_id or not self.purchase_request:
+            return f"{self.currency} {self.total_price:.2f}"
+        if not self.is_partially_delivered:
+            return f"{self.currency} {self.total_price:.2f}"
+        return (
+            f"{self.currency} {self.delivery_value:.2f} / "
+            f"{self.currency} {self.purchase_request.total_price:.2f}"
+        )

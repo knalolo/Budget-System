@@ -51,3 +51,43 @@ class TestDeliverySubmissionModel:
         assert partially_delivered.is_partially_delivered is True
         assert fully_delivered.is_fully_delivered is True
         assert short_closed.is_short_closed is True
+
+    def test_progress_properties_use_linked_purchase_request(self):
+        from orders.tests.factories import PurchaseRequestFactory
+
+        purchase_request = PurchaseRequestFactory(
+            ordered_quantity=20,
+            total_price=100,
+            currency="SGD",
+            status="ordered",
+        )
+        ds = DeliverySubmissionFactory(
+            purchase_request=purchase_request,
+            delivered_quantity=10,
+            total_price=100,
+            currency="SGD",
+            status="partially_delivered",
+        )
+
+        assert ds.delivery_quantity_progress == "10 / 20"
+        assert ds.delivery_value_progress == "SGD 50.00 / SGD 100.00"
+
+    def test_progress_properties_show_plain_values_when_not_partially_delivered(self):
+        from orders.tests.factories import PurchaseRequestFactory
+
+        purchase_request = PurchaseRequestFactory(
+            ordered_quantity=20,
+            total_price=100,
+            currency="SGD",
+            status="ordered",
+        )
+        ds = DeliverySubmissionFactory(
+            purchase_request=purchase_request,
+            delivered_quantity=20,
+            total_price=100,
+            currency="SGD",
+            status="fully_delivered",
+        )
+
+        assert ds.delivery_quantity_progress == "20"
+        assert ds.delivery_value_progress == "SGD 100.00"

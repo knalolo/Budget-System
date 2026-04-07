@@ -2,7 +2,7 @@
 {% load procurement_tags %}
 
 {% block title %}{{ submission.request_number }}{% endblock %}
-{% block page_title %}Delivery Tracking Detail{% endblock %}
+{% block page_title %}Goods recieve Detail{% endblock %}
 
 {% block content %}
 <div class="max-w-3xl mx-auto space-y-6">
@@ -12,7 +12,7 @@
         <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
         </svg>
-        Back to Delivery Tracking
+        Back to Goods recieve
     </a>
 
     <!-- Header card -->
@@ -22,15 +22,25 @@
                 <h2 class="text-xl font-semibold font-mono text-brand-700">{{ submission.request_number }}</h2>
                 <p class="text-sm text-gray-500 mt-1">Recorded {{ submission.created_at|date:"d M Y, H:i" }}</p>
             </div>
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-{{ submission.status|status_color }}-100 text-{{ submission.status|status_color }}-800">
-                {{ submission.get_status_display }}
-            </span>
+            <div class="flex items-center gap-3">
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-{{ submission.status|status_color }}-100 text-{{ submission.status|status_color }}-800">
+                    {{ submission.get_status_display }}
+                </span>
+                {% if can_delete %}
+                <form method="post" action="{% url 'deliveries:delete' submission.pk %}" onsubmit="return window.confirm('Delete this Goods recieve record? This cannot be undone.');">
+                    {% csrf_token %}
+                    <button type="submit" class="inline-flex items-center rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition-colors">
+                        Delete Record
+                    </button>
+                </form>
+                {% endif %}
+            </div>
         </div>
     </div>
 
     <!-- Details card -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Delivery Details</h3>
+        <h3 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Goods recieve Details</h3>
         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 text-sm">
             <div>
                 <dt class="text-gray-500">Requester</dt>
@@ -48,12 +58,12 @@
             </div>
             <div>
                 <dt class="text-gray-500">Delivered Quantity</dt>
-                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.delivered_quantity }}</dd>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.delivery_quantity_progress }}</dd>
             </div>
             <div>
-                <dt class="text-gray-500">Total Price</dt>
+                <dt class="text-gray-500">Value Progress</dt>
                 <dd class="font-medium text-gray-900 mt-0.5">
-                    {{ submission.currency }}&nbsp;{{ submission.total_price|floatformat:2 }}
+                    {{ submission.delivery_value_progress }}
                 </dd>
             </div>
             {% if submission.purchase_request %}
@@ -99,6 +109,14 @@
         >
             Create Payment Release
         </a>
+    </div>
+    {% endif %}
+
+    {% if submission.requester == request.user and not can_delete %}
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <p class="text-sm text-amber-900">
+            This Goods recieve record is locked because the linked payment flow has already been seen or processed by PCM / Final.
+        </p>
     </div>
     {% endif %}
 

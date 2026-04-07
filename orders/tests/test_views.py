@@ -18,7 +18,7 @@ def _purchase_request_payload(project, category, *, action="draft") -> dict:
         "total_price": "450.00",
         "justification": "Needed for prototype validation.",
         "po_required": "False",
-        "target_payment": "Jan 2026",
+        "target_payment": "2026-01-15",
         "action": action,
     }
 
@@ -120,7 +120,7 @@ class TestPurchaseRequestUploadView:
             total_price="100.00",
             justification="Lab usage",
             po_required=False,
-            target_payment="30 days",
+            target_payment="2026-01-15",
             status="draft",
         )
 
@@ -165,7 +165,7 @@ class TestPurchaseRequestUploadView:
             total_price="100.00",
             justification="Lab usage",
             po_required=False,
-            target_payment="30 days",
+            target_payment="2026-01-15",
             status="draft",
         )
 
@@ -208,7 +208,7 @@ class TestPurchaseRequestOrderWorkflowView:
             total_price="450.00",
             justification="Needed for prototype validation.",
             po_required=False,
-            target_payment="Jan 2026",
+            target_payment="2026-01-15",
             status="approved",
         )
 
@@ -238,7 +238,7 @@ class TestPurchaseRequestOrderWorkflowView:
             total_price="1450.00",
             justification="Needed for prototype validation.",
             po_required=True,
-            target_payment="Jan 2026",
+            target_payment="2026-01-15",
             status="approved",
         )
 

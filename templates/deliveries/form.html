@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}New Delivery Record{% endblock %}
-{% block page_title %}New Delivery Record{% endblock %}
+{% block title %}New Goods recieve Record{% endblock %}
+{% block page_title %}New Goods recieve Record{% endblock %}
 
 {% block content %}
 <div class="max-w-2xl mx-auto">
@@ -12,21 +12,21 @@
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
-            Back to Delivery Tracking
+            Back to Goods recieve
         </a>
 
-        <h2 class="text-lg font-semibold text-gray-800">Create Delivery / DO Record</h2>
+        <h2 class="text-lg font-semibold text-gray-800">Create Goods recieve / DO Record</h2>
 
         {% if source_purchase_request %}
         <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-900">
-            <p class="font-semibold">Tracking delivery for {{ source_purchase_request.request_number }}</p>
+            <p class="font-semibold">Tracking goods recieve for {{ source_purchase_request.request_number }}</p>
             <p class="mt-1">
                 Ordered quantity: {{ source_purchase_request.ordered_quantity }}.
                 Delivered so far: {{ source_purchase_request.delivered_quantity }}.
                 Outstanding: {{ source_purchase_request.remaining_quantity }}.
             </p>
             <p class="mt-2 text-blue-800">
-                Record the actual delivered quantity here. If the supplier will not send the remaining balance, choose <strong>Short Closed</strong>.
+                Record the actual goods recieve quantity here. If the supplier will not send the remaining balance, choose <strong>Short Closed</strong>.
             </p>
         </div>
         {% endif %}

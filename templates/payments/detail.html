@@ -27,6 +27,53 @@
             {% include "payments/_detail_status.html" %}
         </div>
 
+        <div class="px-6 py-4 border-b border-gray-100">
+            <div class="flex flex-col gap-3 rounded-xl border px-4 py-4
+                {% if payment.goods_recieve_progress_status == 'advance_without_goods' %}border-amber-200 bg-amber-50
+                {% elif payment.goods_recieve_progress_status == 'goods_received' %}border-emerald-200 bg-emerald-50
+                {% elif payment.goods_recieve_progress_status == 'partially_received' %}border-sky-200 bg-sky-50
+                {% elif payment.goods_recieve_progress_status == 'short_closed' %}border-slate-300 bg-slate-50
+                {% else %}border-rose-200 bg-rose-50{% endif %}">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset {{ payment.goods_recieve_progress_badge_classes }}">
+                        {{ payment.goods_recieve_progress_label }}
+                    </span>
+                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium {% if payment.is_advance_payment %}bg-amber-100 text-amber-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+                        {{ payment.get_payment_type_display }}
+                    </span>
+                </div>
+
+                {% if payment.goods_recieve_progress_status == 'advance_without_goods' %}
+                <p class="text-sm text-amber-900">
+                    This is a prepayment exception. No Goods recieve has been submitted yet.
+                    {% if payment.status == 'pending_pcm' %}
+                    PCM should confirm the reason for paying in advance and make sure DO follow-up is still required.
+                    {% elif payment.status == 'pending_final' %}
+                    Final review should confirm that this advance payment exception is acceptable and that DO follow-up is still required.
+                    {% else %}
+                    Please review it as an advance payment case and make sure DO follow-up is still required.
+                    {% endif %}
+                </p>
+                {% elif payment.goods_recieve_progress_status == 'goods_received' %}
+                <p class="text-sm text-emerald-900">
+                    Goods recieve has been completed for this purchase request. This payment is backed by delivered goods.
+                </p>
+                {% elif payment.goods_recieve_progress_status == 'partially_received' %}
+                <p class="text-sm text-sky-900">
+                    Goods recieve is only partial right now. Review the delivered and outstanding quantities before approving the payment.
+                </p>
+                {% elif payment.goods_recieve_progress_status == 'short_closed' %}
+                <p class="text-sm text-slate-800">
+                    The remaining quantity was short closed. This payment should only cover the received or accepted quantity.
+                </p>
+                {% else %}
+                <p class="text-sm text-rose-900">
+                    No Goods recieve evidence is linked yet. Standard payments normally should not proceed until goods recieve is recorded.
+                </p>
+                {% endif %}
+            </div>
+        </div>
+
         <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 px-6 py-6">
 
             <div>
@@ -60,6 +107,15 @@
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Quantity To Pay</dt>
                 <dd class="mt-1 text-sm text-gray-900">{{ payment.payment_quantity }}</dd>
             </div>
+
+            {% if payment.purchase_request %}
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Goods recieve</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {{ payment.purchase_request.delivered_quantity }} / {{ payment.purchase_request.ordered_quantity }}
+                </dd>
+            </div>
+            {% endif %}
 
             <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">PO Number</dt>

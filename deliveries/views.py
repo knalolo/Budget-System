@@ -79,7 +79,7 @@ def delivery_submission_create(request):
                 )
                 messages.success(
                     request,
-                    f"Delivery submission {submission.request_number} created successfully.",
+                    f"Goods recieve record {submission.request_number} created successfully.",
                 )
                 return redirect("deliveries:detail", pk=submission.pk)
             except Exception:
@@ -120,6 +120,10 @@ class DeliverySubmissionDetailView(LoginRequiredMixin, DetailView):
         submission = self.object
         linked_purchase_request = submission.purchase_request
         context["linked_purchase_request"] = linked_purchase_request
+        context["can_delete"] = (
+            submission.requester == self.request.user
+            and submission.requester_can_delete
+        )
         context["can_create_payment_release"] = bool(
             linked_purchase_request and linked_purchase_request.is_ready_for_payment
         )
@@ -169,6 +173,33 @@ def delivery_submission_upload(request, pk: int):
             "upload_errors": errors,
         },
     )
+
+
+@login_required
+def delivery_submission_delete(request, pk: int):
+    """Delete a delivery submission created by the current requester."""
+    submission = get_object_or_404(DeliverySubmission, pk=pk)
+
+    if request.method != "POST":
+        return redirect("deliveries:detail", pk=pk)
+
+    if submission.requester != request.user:
+        return HttpResponseForbidden("You do not have permission to delete this goods recieve record.")
+
+    if not submission.requester_can_delete:
+        return HttpResponseForbidden(
+            "This goods recieve record can no longer be deleted because PCM / Final have already acted on the linked payment flow."
+        )
+
+    request_number = submission.request_number
+    linked_purchase_request_id = submission.purchase_request_id
+    submission.delete()
+
+    messages.success(request, f"Goods recieve record {request_number} deleted.")
+
+    if linked_purchase_request_id:
+        return redirect("orders:purchase-request-detail", pk=linked_purchase_request_id)
+    return redirect("deliveries:list")
 
 
 def _get_linkable_purchase_request(request):

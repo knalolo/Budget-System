@@ -43,7 +43,7 @@ class PaymentReleaseListView(View):
 
     def get(self, request: HttpRequest) -> HttpResponse:
         qs = PaymentRelease.objects.select_related(
-            "requester", "project", "expense_category"
+            "requester", "project", "expense_category", "purchase_request"
         ).order_by("-created_at")
 
         # Non-approvers see only their own records
@@ -383,7 +383,7 @@ def upload_view(request: HttpRequest, pk: int) -> HttpResponse:
 def list_table_partial(request: HttpRequest) -> HttpResponse:
     """Return the payments table partial for HTMX refresh."""
     qs = PaymentRelease.objects.select_related(
-        "requester", "project", "expense_category"
+        "requester", "project", "expense_category", "purchase_request"
     ).order_by("-created_at")
 
     role = _get_role(request.user)
@@ -507,9 +507,12 @@ def _payment_release_initial_from_purchase_request(
     else:
         payment_quantity = max(purchase_request.available_standard_payment_quantity, 1)
         total_price = (
-            purchase_request.max_standard_payment_total
+            min(
+                purchase_request.max_standard_payment_total,
+                purchase_request.remaining_payable_total,
+            )
             if purchase_request.available_standard_payment_quantity > 0
-            else purchase_request.total_price
+            else purchase_request.remaining_payable_total
         )
 
     return {

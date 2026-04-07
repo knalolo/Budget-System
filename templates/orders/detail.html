@@ -60,12 +60,18 @@
                 {% elif purchase_request.status == "approved" %}
                     {# Post-approval actions #}
                     {% if not purchase_request.po_required %}
-                    <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
-                        {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
-                            Mark as Ordered &amp; Track Delivery
-                        </button>
-                    </form>
+                    <a
+                        href="{{ delivery_submission_create_url }}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
+                    >
+                        Track Goods recieve
+                    </a>
+                    <a
+                        href="{{ advance_payment_create_url }}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 transition-colors"
+                    >
+                        Request Advance Payment
+                    </a>
                     {% else %}
                     <form method="post" action="{% url 'orders:purchase-request-mark-po-sent' purchase_request.pk %}">
                         {% csrf_token %}
@@ -76,26 +82,32 @@
                     {% endif %}
 
                 {% elif purchase_request.status == "po_sent" %}
-                    <form method="post" action="{% url 'orders:purchase-request-mark-ordered' purchase_request.pk %}">
-                        {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors">
-                            Mark as Ordered &amp; Track Delivery
-                        </button>
-                    </form>
+                    <a
+                        href="{{ delivery_submission_create_url }}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
+                    >
+                        Track Goods recieve
+                    </a>
+                    <a
+                        href="{{ advance_payment_create_url }}"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 transition-colors"
+                    >
+                        Request Advance Payment
+                    </a>
                 {% elif purchase_request.status == "ordered" %}
                     {% if has_delivery_submission %}
                     <a
                         href="{% url 'deliveries:detail' latest_delivery_submission.pk %}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
                     >
-                        View Delivery Record
+                        View Goods recieve Record
                     </a>
                     {% else %}
                     <a
                         href="{{ delivery_submission_create_url }}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors"
                     >
-                        Create Delivery Record
+                        Create Goods recieve Record
                     </a>
                     {% endif %}
 
@@ -213,7 +225,7 @@
 
             {% if purchase_request.status == "ordered" %}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Delivery &amp; Payment Tracking</h3>
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Goods recieve &amp; Payment Tracking</h3>
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4 text-sm">
                     <div>
                         <dt class="font-medium text-gray-500">Ordered</dt>
@@ -237,13 +249,13 @@
 
                 <div class="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
                     {% if purchase_request.delivered_quantity == 0 %}
-                    Delivery must be recorded before standard payment can start. Use advance payment only when the supplier requires prepayment.
+                    Goods recieve must be recorded before standard payment can start. Use advance payment only when the supplier requires prepayment.
                     {% elif purchase_request.remaining_quantity > 0 %}
                     This request is only partially delivered. Standard payment is limited to the delivered quantity, and the remaining units still require DO follow-up.
                     {% elif purchase_request.has_short_close %}
                     This request was short closed. The remaining quantity will not be delivered or paid.
                     {% else %}
-                    Delivery is complete. The requester can move on to Payment Release.
+                    Goods recieve is complete. The requester can move on to Payment Release.
                     {% endif %}
                 </div>
             </div>
