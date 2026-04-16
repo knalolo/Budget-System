@@ -135,3 +135,77 @@ class DeliverySubmission(models.Model):
             f"{self.currency} {self.delivery_value:.2f} / "
             f"{self.currency} {self.purchase_request.total_price:.2f}"
         )
+
+    @property
+    def display_line_items(self):
+        line_items = list(self.line_items.all())
+        if line_items:
+            return line_items
+
+        if self.purchase_request_id and self.purchase_request:
+            return [
+                {
+                    "sequence": 1,
+                    "product": self.purchase_request.description,
+                    "ordered_quantity": self.purchase_request.ordered_quantity,
+                    "delivered_quantity": self.delivered_quantity,
+                    "unit_price": self.purchase_request.unit_price,
+                    "total_price": self.total_price,
+                    "currency": self.currency,
+                    "status": self.status,
+                }
+            ]
+
+        return [
+            {
+                "sequence": 1,
+                "product": self.vendor,
+                "ordered_quantity": self.delivered_quantity,
+                "delivered_quantity": self.delivered_quantity,
+                "unit_price": Decimal("0.00"),
+                "total_price": self.total_price,
+                "currency": self.currency,
+                "status": self.status,
+            }
+        ]
+
+
+class DeliverySubmissionLineItem(models.Model):
+    """Individual delivered line items for a goods receive record."""
+
+    delivery_submission = models.ForeignKey(
+        DeliverySubmission,
+        on_delete=models.CASCADE,
+        related_name="line_items",
+    )
+    purchase_request_line_item = models.ForeignKey(
+        "orders.PurchaseRequestLineItem",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="delivery_line_items",
+    )
+    sequence = models.PositiveIntegerField(default=1)
+    product = models.CharField(max_length=255)
+    ordered_quantity = models.PositiveIntegerField(default=1)
+    delivered_quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=14, decimal_places=2)
+    total_price = models.DecimalField(max_digits=14, decimal_places=2)
+    currency = models.CharField(
+        max_length=3,
+        choices=settings.CURRENCY_CHOICES,
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=(
+            ("partially_delivered", "Partially Delivered"),
+            ("fully_delivered", "Fully Delivered"),
+        ),
+        default="fully_delivered",
+    )
+
+    class Meta:
+        ordering = ["sequence", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.delivery_submission.request_number} - {self.product}"

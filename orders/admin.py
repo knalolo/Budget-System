@@ -2,7 +2,7 @@
 
 from django.contrib import admin
 
-from .models import ExpenseCategory, Project, PurchaseRequest
+from .models import ExpenseCategory, Project, PurchaseRequest, PurchaseRequestLineItem
 
 
 @admin.register(Project)
@@ -21,6 +21,11 @@ class ExpenseCategoryAdmin(admin.ModelAdmin):
     ordering = ["name"]
 
 
+class PurchaseRequestLineItemInline(admin.TabularInline):
+    model = PurchaseRequestLineItem
+    extra = 0
+
+
 @admin.register(PurchaseRequest)
 class PurchaseRequestAdmin(admin.ModelAdmin):
     list_display = [
@@ -35,3 +40,4 @@ class PurchaseRequestAdmin(admin.ModelAdmin):
     list_filter = ["status", "currency", "project", "expense_category"]
     search_fields = ["request_number", "description", "vendor"]
     readonly_fields = ["request_number", "created_at", "updated_at"]
+    inlines = [PurchaseRequestLineItemInline]

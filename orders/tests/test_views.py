@@ -1,5 +1,7 @@
 """View tests for the purchase request HTML workflow."""
 
+import json
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
@@ -93,6 +95,55 @@ class TestPurchaseRequestCreateView:
         attachment = purchase_request.attachments.get()
         assert purchase_request.status == "pending_pcm"
         assert attachment.file_type == "new_order_list"
+
+    def test_create_with_multiple_line_items_aggregates_totals_and_saves_rows(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        client.force_login(regular_user)
+
+        payload = {
+            "expense_category": sample_expense_category.pk,
+            "project": sample_project.pk,
+            "vendor": "Acme Components",
+            "justification": "Needed for prototype validation.",
+            "po_required": "False",
+            "target_payment": "2026-01-15",
+            "action": "draft",
+            "line_items_json": json.dumps(
+                [
+                    {
+                        "sequence": 1,
+                        "product": "Sensor head",
+                        "quantity": 2,
+                        "unit_price": "100.00",
+                        "currency": "SGD",
+                    },
+                    {
+                        "sequence": 2,
+                        "product": "Control board",
+                        "quantity": 3,
+                        "unit_price": "50.00",
+                        "currency": "SGD",
+                    },
+                ]
+            ),
+        }
+
+        response = client.post(
+            reverse("orders:purchase-request-create"),
+            data=payload,
+        )
+
+        assert response.status_code == 302
+        purchase_request = PurchaseRequest.objects.get(requester=regular_user)
+        assert purchase_request.ordered_quantity == 5
+        assert str(purchase_request.total_price) == "350.00"
+        assert purchase_request.currency == "SGD"
+        assert purchase_request.line_items.count() == 2
 
 
 @pytest.mark.django_db

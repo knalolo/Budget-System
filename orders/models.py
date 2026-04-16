@@ -299,3 +299,44 @@ class PurchaseRequest(models.Model):
     @property
     def latest_delivery_submission(self):
         return self.delivery_submissions.order_by("-created_at").first()
+
+    @property
+    def display_line_items(self):
+        line_items = list(self.line_items.all())
+        if line_items:
+            return line_items
+        return [
+            {
+                "sequence": 1,
+                "product": self.description,
+                "quantity": self.ordered_quantity,
+                "unit_price": self.unit_price,
+                "total_price": self.total_price,
+                "currency": self.currency,
+            }
+        ]
+
+
+class PurchaseRequestLineItem(models.Model):
+    """Individual line items belonging to a purchase request."""
+
+    purchase_request = models.ForeignKey(
+        PurchaseRequest,
+        on_delete=models.CASCADE,
+        related_name="line_items",
+    )
+    sequence = models.PositiveIntegerField(default=1)
+    product = models.CharField(max_length=255)
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=14, decimal_places=2)
+    total_price = models.DecimalField(max_digits=14, decimal_places=2)
+    currency = models.CharField(
+        max_length=3,
+        choices=settings.CURRENCY_CHOICES,
+    )
+
+    class Meta:
+        ordering = ["sequence", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.purchase_request.request_number} - {self.product}"

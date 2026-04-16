@@ -61,7 +61,10 @@ def delivery_submission_create(request):
         return HttpResponseForbidden("You do not have permission to use this purchase request.")
 
     if request.method == "POST":
-        form = DeliverySubmissionForm(request.POST)
+        form = DeliverySubmissionForm(
+            request.POST,
+            source_purchase_request=source_purchase_request,
+        )
         files = request.FILES.getlist("files")
 
         if not files:
@@ -72,15 +75,13 @@ def delivery_submission_create(request):
                 submission = create_delivery_submission(
                     data={
                         **form.cleaned_data,
+                        "line_items": form.parsed_line_items,
                         "purchase_request": source_purchase_request,
                     },
                     user=request.user,
                     files=files,
                 )
-                messages.success(
-                    request,
-                    f"Goods recieve record {submission.request_number} created successfully.",
-                )
+                messages.success(request, f"Goods recieve record {submission.request_number} created successfully.")
                 return redirect("deliveries:detail", pk=submission.pk)
             except Exception:
                 logger.exception("Failed to create delivery submission.")
@@ -90,7 +91,8 @@ def delivery_submission_create(request):
                 )
     else:
         form = DeliverySubmissionForm(
-            initial=_delivery_initial_from_purchase_request(source_purchase_request)
+            initial=_delivery_initial_from_purchase_request(source_purchase_request),
+            source_purchase_request=source_purchase_request,
         )
 
     return render(
@@ -223,11 +225,10 @@ def _delivery_initial_from_purchase_request(purchase_request) -> dict:
         return {"status": "partially_delivered"}
 
     remaining_quantity = purchase_request.remaining_quantity or purchase_request.ordered_quantity
-    status = "fully_delivered" if remaining_quantity == purchase_request.ordered_quantity else "partially_delivered"
     return {
         "vendor": purchase_request.vendor,
         "currency": purchase_request.currency,
         "delivered_quantity": remaining_quantity,
         "total_price": purchase_request.unit_price * remaining_quantity,
-        "status": status,
+        "status": "fully_delivered",
     }

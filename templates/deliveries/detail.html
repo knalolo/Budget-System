@@ -95,6 +95,49 @@
         </dl>
     </div>
 
+    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+        <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+            <h3 class="text-sm font-semibold text-gray-900">Goods recieve Line Items</h3>
+            <span class="text-xs text-gray-400">{{ submission.display_line_items|length }} item{{ submission.display_line_items|length|pluralize }}</span>
+        </div>
+        <div class="overflow-x-auto rounded-lg border border-gray-200">
+            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                <thead class="bg-gray-50">
+                    <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                        <th class="px-4 py-3">S/N</th>
+                        <th class="px-4 py-3">Product</th>
+                        <th class="px-4 py-3">Quantity</th>
+                        <th class="px-4 py-3">Unit Price</th>
+                        <th class="px-4 py-3">Currency</th>
+                        <th class="px-4 py-3">Actual Delivered</th>
+                        <th class="px-4 py-3">Total Price</th>
+                        <th class="px-4 py-3">Delivery Outcome</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200 bg-white">
+                    {% for line_item in submission.display_line_items %}
+                    <tr>
+                        <td class="px-4 py-3 text-gray-700">{{ line_item.sequence }}</td>
+                        <td class="px-4 py-3 text-gray-900">{{ line_item.product }}</td>
+                        <td class="px-4 py-3 text-gray-900">{{ line_item.ordered_quantity }}</td>
+                        <td class="px-4 py-3 text-gray-900">{{ line_item.currency|currency_symbol }} {{ line_item.unit_price|floatformat:2 }}</td>
+                        <td class="px-4 py-3 text-gray-900">{{ line_item.currency }}</td>
+                        <td class="px-4 py-3 text-gray-900">{{ line_item.delivered_quantity }}</td>
+                        <td class="px-4 py-3 text-gray-900">{{ line_item.currency|currency_symbol }} {{ line_item.total_price|floatformat:2 }}</td>
+                        <td class="px-4 py-3 text-gray-900">
+                            {% if line_item.status == "fully_delivered" %}
+                            Fully Delivered
+                            {% else %}
+                            Partially Delivered
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
     {% if can_create_payment_release %}
     <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-5 flex items-center justify-between gap-4">
         <div>

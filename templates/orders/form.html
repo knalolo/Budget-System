@@ -6,24 +6,108 @@
 
 {% block content %}
 <div
-    class="max-w-3xl mx-auto"
+    class="max-w-5xl mx-auto"
     x-data="{
-        currency: '{{ form.currency.value|default:'SGD' }}',
-        totalPrice: '{{ form.total_price.value|default:'' }}',
-        poRequired: '{{ form.po_required.value|default:'' }}',
+        initialLineItemsRaw: '{{ form.line_items_json.value|default:''|escapejs }}',
+        lineItems: [],
         existingAttachmentCount: {% if purchase_request %}{{ purchase_request.attachments.count }}{% else %}0{% endif %},
         attachmentFileCount: 0,
         selectedAttachmentNames: [],
         thresholds: { SGD: 1300, USD: 900, EUR: 800 },
+        blankLineItem(currency='SGD') {
+            return {
+                product: '',
+                quantity: 1,
+                unit_price: '',
+                total_price: '',
+                currency: currency,
+            };
+        },
+        normalizeLineItem(item, index) {
+            return {
+                product: item.product || '',
+                quantity: parseInt(item.quantity || 1, 10) > 0 ? parseInt(item.quantity || 1, 10) : 1,
+                unit_price: item.unit_price === null || item.unit_price === undefined ? '' : String(item.unit_price),
+                total_price: item.total_price === null || item.total_price === undefined ? '' : String(item.total_price),
+                currency: item.currency || 'SGD',
+                sequence: index + 1,
+            };
+        },
+        recalculateItem(item) {
+            const quantity = parseFloat(item.quantity);
+            const unitPrice = parseFloat(item.unit_price);
+            if (isNaN(quantity) || isNaN(unitPrice) || quantity <= 0 || unitPrice <= 0) {
+                item.total_price = '';
+                return;
+            }
+            item.total_price = (quantity * unitPrice).toFixed(2);
+        },
         get poWarning() {
-            const threshold = this.thresholds[this.currency];
-            if (!threshold || !this.totalPrice) return '';
-            const price = parseFloat(this.totalPrice);
+            const currency = this.lineItems.length ? this.lineItems[0].currency : 'SGD';
+            const threshold = this.thresholds[currency];
+            const total = this.computedTotalPrice;
+            if (!threshold || !total) return '';
+            const price = parseFloat(total);
             if (isNaN(price)) return '';
             if (price >= threshold) {
-                return 'PO is required for amounts over ' + this.currency + ' ' + threshold.toLocaleString() + '.';
+                return 'PO is required for amounts over ' + currency + ' ' + threshold.toLocaleString() + '.';
             }
             return '';
+        },
+        get computedTotalPrice() {
+            const total = this.lineItems.reduce((sum, item) => {
+                const value = parseFloat(item.total_price);
+                return sum + (isNaN(value) ? 0 : value);
+            }, 0);
+            if (total <= 0) {
+                return '';
+            }
+            return total.toFixed(2);
+        },
+        get computedQuantity() {
+            return this.lineItems.reduce((sum, item) => {
+                const value = parseInt(item.quantity || 0, 10);
+                return sum + (isNaN(value) ? 0 : value);
+            }, 0);
+        },
+        get computedDescription() {
+            return this.lineItems
+                .map(item => (item.product || '').trim())
+                .filter(Boolean)
+                .join('; ');
+        },
+        addRow() {
+            const currency = this.lineItems.length ? this.lineItems[0].currency : 'SGD';
+            this.lineItems.push(this.blankLineItem(currency));
+            this.syncLineItems();
+        },
+        removeRow(index) {
+            if (this.lineItems.length === 1) {
+                this.lineItems = [this.blankLineItem()];
+            } else {
+                this.lineItems.splice(index, 1);
+            }
+            this.syncLineItems();
+        },
+        recalculateAndSync(item) {
+            this.recalculateItem(item);
+            this.syncLineItems();
+        },
+        syncLineItems() {
+            this.lineItems = this.lineItems.map((item, index) => this.normalizeLineItem(item, index));
+            this.lineItems.forEach(item => this.recalculateItem(item));
+            this.$refs.lineItemsJson.value = JSON.stringify(this.lineItems.map((item, index) => ({
+                sequence: index + 1,
+                product: item.product,
+                quantity: item.quantity,
+                unit_price: item.unit_price,
+                total_price: item.total_price,
+                currency: item.currency,
+            })));
+            this.$refs.hiddenDescription.value = this.computedDescription;
+            this.$refs.hiddenQuantity.value = this.computedQuantity > 0 ? this.computedQuantity : '';
+            this.$refs.hiddenTotalPrice.value = this.computedTotalPrice;
+            this.$refs.hiddenCurrency.value = this.lineItems.length ? this.lineItems[0].currency : 'SGD';
         },
         hasAnyAttachments() {
             return this.existingAttachmentCount > 0 || this.attachmentFileCount > 0;
@@ -34,6 +118,7 @@
             this.selectedAttachmentNames = files.map(file => file.name);
         },
         confirmSubmitWithoutAttachments(event) {
+            this.syncLineItems();
             const action = event.submitter ? event.submitter.value : 'draft';
             if (action !== 'submit' || this.hasAnyAttachments()) {
                 return;
@@ -44,12 +129,31 @@
             if (!confirmed) {
                 event.preventDefault();
             }
+        },
+        init() {
+            try {
+                const parsed = this.initialLineItemsRaw ? JSON.parse(this.initialLineItemsRaw) : [];
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    this.lineItems = parsed.map((item, index) => this.normalizeLineItem(item, index));
+                } else {
+                    this.lineItems = [this.blankLineItem()];
+                }
+            } catch (error) {
+                this.lineItems = [this.blankLineItem()];
+            }
+            this.syncLineItems();
         }
     }"
+    x-init="init()"
 >
 
     <form method="post" enctype="multipart/form-data" id="pr-form" @submit="confirmSubmitWithoutAttachments($event)">
         {% csrf_token %}
+        <input type="hidden" name="{{ form.description.html_name }}" x-ref="hiddenDescription" value="{{ form.description.value|default:'' }}">
+        <input type="hidden" name="{{ form.ordered_quantity.html_name }}" x-ref="hiddenQuantity" value="{{ form.ordered_quantity.value|default:'' }}">
+        <input type="hidden" name="{{ form.total_price.html_name }}" x-ref="hiddenTotalPrice" value="{{ form.total_price.value|default:'' }}">
+        <input type="hidden" name="{{ form.currency.html_name }}" x-ref="hiddenCurrency" value="{{ form.currency.value|default:'SGD' }}">
+        <input type="hidden" name="line_items_json" x-ref="lineItemsJson" value="{{ form.line_items_json.value|default:'' }}">
 
         <div class="space-y-6">
 
@@ -121,114 +225,115 @@
                 </div>
             </div>
 
-            {# Section 2: Request Details #}
-            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Request Details</h3>
-                <div class="space-y-5">
-
-                    {# Description #}
-                    <div>
-                        <label for="{{ form.description.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                            Description <span class="text-red-500">*</span>
-                        </label>
-                        <textarea
-                            name="{{ form.description.html_name }}"
-                            id="{{ form.description.id_for_label }}"
-                            rows="4"
-                            placeholder="Describe what you are purchasing..."
-                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.description.errors %}border-red-300{% endif %}"
-                        >{{ form.description.value|default:"" }}</textarea>
-                        {% if form.description.errors %}
-                        <p class="mt-1 text-xs text-red-600">{{ form.description.errors|join:", " }}</p>
-                        {% endif %}
-                    </div>
-
-                    {# Vendor #}
-                    <div>
-                        <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                            Vendor <span class="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            name="{{ form.vendor.html_name }}"
-                            id="{{ form.vendor.id_for_label }}"
-                            value="{{ form.vendor.value|default:'' }}"
-                            placeholder="Vendor name or company"
-                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.vendor.errors %}border-red-300{% endif %}"
-                        />
-                        {% if form.vendor.errors %}
-                        <p class="mt-1 text-xs text-red-600">{{ form.vendor.errors|join:", " }}</p>
-                        {% endif %}
-                    </div>
-
-                </div>
-            </div>
-
-            {# Section 3: Financial Info #}
+            {# Section 2: Financial Info #}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
                 <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Financial Information</h3>
                 <div class="space-y-5">
 
-                    {# Currency + Quantity + Total Price #}
-                    <div class="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                        <div>
-                            <label for="{{ form.currency.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                                Currency <span class="text-red-500">*</span>
-                            </label>
-                            <select
-                                name="{{ form.currency.html_name }}"
-                                id="{{ form.currency.id_for_label }}"
-                                x-model="currency"
-                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.currency.errors %}border-red-300{% endif %}"
-                            >
-                                {% for val, label in form.currency.field.choices %}
-                                <option value="{{ val }}" {% if form.currency.value == val %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                            {% if form.currency.errors %}
-                            <p class="mt-1 text-xs text-red-600">{{ form.currency.errors|join:", " }}</p>
-                            {% endif %}
-                        </div>
-
-                        <div>
-                            <label for="{{ form.ordered_quantity.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                                Ordered Quantity <span class="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="number"
-                                name="{{ form.ordered_quantity.html_name }}"
-                                id="{{ form.ordered_quantity.id_for_label }}"
-                                value="{{ form.ordered_quantity.value|default:'1' }}"
-                                step="1"
-                                min="1"
-                                placeholder="1"
-                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.ordered_quantity.errors %}border-red-300{% endif %}"
-                            />
-                            {% if form.ordered_quantity.errors %}
-                            <p class="mt-1 text-xs text-red-600">{{ form.ordered_quantity.errors|join:", " }}</p>
-                            {% endif %}
-                        </div>
-
-                        <div>
-                            <label for="{{ form.total_price.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                                Total Price <span class="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="number"
-                                name="{{ form.total_price.html_name }}"
-                                id="{{ form.total_price.id_for_label }}"
-                                value="{{ form.total_price.value|default:'' }}"
-                                step="0.01"
-                                min="0.01"
-                                placeholder="0.00"
-                                x-model="totalPrice"
-                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.total_price.errors %}border-red-300{% endif %}"
-                            />
-                            {% if form.total_price.errors %}
-                            <p class="mt-1 text-xs text-red-600">{{ form.total_price.errors|join:", " }}</p>
-                            {% endif %}
-                        </div>
+                    <div class="flex items-center justify-between">
+                        <p class="text-sm text-gray-500">Add one row per product or service line.</p>
+                        <button
+                            type="button"
+                            @click="addRow()"
+                            class="inline-flex items-center gap-2 rounded-md bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100 transition-colors"
+                        >
+                            <span class="text-base leading-none">+</span>
+                            Add Row
+                        </button>
                     </div>
+
+                    <div class="overflow-x-auto rounded-lg border border-gray-200">
+                        <table class="min-w-full divide-y divide-gray-200 text-sm">
+                            <thead class="bg-gray-50">
+                                <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                    <th class="px-4 py-3">S/N</th>
+                                    <th class="px-4 py-3">Product</th>
+                                    <th class="px-4 py-3">Quantity</th>
+                                    <th class="px-4 py-3">Unit Price</th>
+                                    <th class="px-4 py-3">Total Price</th>
+                                    <th class="px-4 py-3">Currency</th>
+                                    <th class="px-4 py-3 w-20">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200 bg-white align-top">
+                                <template x-for="(item, index) in lineItems" :key="index">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium text-gray-700" x-text="index + 1"></td>
+                                    <td class="px-4 py-3 min-w-[16rem]">
+                                        <input
+                                            type="text"
+                                            x-model="item.product"
+                                            @input="syncLineItems()"
+                                            placeholder="Product name"
+                                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                        />
+                                    </td>
+                                    <td class="px-4 py-3 min-w-[7rem]">
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="1"
+                                            placeholder="1"
+                                            x-model="item.quantity"
+                                            @input="recalculateAndSync(item)"
+                                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                        />
+                                    </td>
+                                    <td class="px-4 py-3 min-w-[8rem]">
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0.01"
+                                            placeholder="0.00"
+                                            x-model="item.unit_price"
+                                            @input="recalculateAndSync(item)"
+                                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                        />
+                                    </td>
+                                    <td class="px-4 py-3 min-w-[8rem]">
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0.01"
+                                            placeholder="0.00"
+                                            x-model="item.total_price"
+                                            readonly
+                                            class="block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-sm text-gray-700 px-3 py-2 border"
+                                        />
+                                    </td>
+                                    <td class="px-4 py-3 min-w-[7rem]">
+                                        <select
+                                            x-model="item.currency"
+                                            @change="syncLineItems()"
+                                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                        >
+                                            {% for val, label in form.currency.field.choices %}
+                                            <option value="{{ val }}">{{ label }}</option>
+                                            {% endfor %}
+                                        </select>                                    
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <button
+                                            type="button"
+                                            @click="removeRow(index)"
+                                            class="inline-flex items-center rounded-md px-2.5 py-2 text-sm font-semibold text-red-600 ring-1 ring-inset ring-red-200 hover:bg-red-50 transition-colors"
+                                        >
+                                            Remove
+                                        </button>
+                                    </td>
+                                </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {% if form.currency.errors or form.ordered_quantity.errors or form.total_price.errors %}
+                    <div class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                        {% if form.currency.errors %}<p>{{ form.currency.errors|join:", " }}</p>{% endif %}
+                        {% if form.ordered_quantity.errors %}<p>{{ form.ordered_quantity.errors|join:", " }}</p>{% endif %}
+                        {% if form.total_price.errors %}<p>{{ form.total_price.errors|join:", " }}</p>{% endif %}
+                    </div>
+                    {% endif %}
 
                     {# PO threshold warning #}
                     <div
@@ -242,21 +347,39 @@
                         <span x-text="poWarning"></span>
                     </div>
 
-                    {# Justification #}
-                    <div>
-                        <label for="{{ form.justification.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                            Justification <span class="text-red-500">*</span>
-                        </label>
-                        <textarea
-                            name="{{ form.justification.html_name }}"
-                            id="{{ form.justification.id_for_label }}"
-                            rows="4"
-                            placeholder="Explain why this purchase is needed..."
-                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.justification.errors %}border-red-300{% endif %}"
-                        >{{ form.justification.value|default:"" }}</textarea>
-                        {% if form.justification.errors %}
-                        <p class="mt-1 text-xs text-red-600">{{ form.justification.errors|join:", " }}</p>
-                        {% endif %}
+                    <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                        <div>
+                            <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                                Vendor <span class="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                name="{{ form.vendor.html_name }}"
+                                id="{{ form.vendor.id_for_label }}"
+                                value="{{ form.vendor.value|default:'' }}"
+                                placeholder="Vendor name"
+                                class="block w-full max-w-sm rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.vendor.errors %}border-red-300{% endif %}"
+                            />
+                            {% if form.vendor.errors %}
+                            <p class="mt-1 text-xs text-red-600">{{ form.vendor.errors|join:", " }}</p>
+                            {% endif %}
+                        </div>
+
+                        <div class="lg:col-span-1">
+                            <label for="{{ form.justification.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                                Justification <span class="text-red-500">*</span>
+                            </label>
+                            <textarea
+                                name="{{ form.justification.html_name }}"
+                                id="{{ form.justification.id_for_label }}"
+                                rows="3"
+                                placeholder="Explain why this purchase is needed..."
+                                class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.justification.errors %}border-red-300{% endif %}"
+                            >{{ form.justification.value|default:"" }}</textarea>
+                            {% if form.justification.errors %}
+                            <p class="mt-1 text-xs text-red-600">{{ form.justification.errors|join:", " }}</p>
+                            {% endif %}
+                        </div>
                     </div>
 
                     {# PO Required #}

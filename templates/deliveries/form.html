@@ -4,10 +4,115 @@
 {% block page_title %}New Goods recieve Record{% endblock %}
 
 {% block content %}
-<div class="max-w-2xl mx-auto">
+<div
+    class="max-w-5xl mx-auto"
+    x-data="{
+        initialLineItemsRaw: '{{ form.line_items_json.value|default:''|escapejs }}',
+        lineItems: [],
+        blankLineItem(currency='SGD') {
+            return {
+                purchase_request_line_item_id: '',
+                product: '',
+                ordered_quantity: 1,
+                delivered_quantity: 1,
+                unit_price: '',
+                total_price: '',
+                currency: currency,
+                status: 'fully_delivered',
+            };
+        },
+        normalizeLineItem(item, index) {
+            return {
+                purchase_request_line_item_id: item.purchase_request_line_item_id || '',
+                product: item.product || '',
+                ordered_quantity: parseInt(item.ordered_quantity || 1, 10) > 0 ? parseInt(item.ordered_quantity || 1, 10) : 1,
+                delivered_quantity: parseInt(item.delivered_quantity || 1, 10) > 0 ? parseInt(item.delivered_quantity || 1, 10) : 1,
+                unit_price: item.unit_price === null || item.unit_price === undefined ? '' : String(item.unit_price),
+                total_price: item.total_price === null || item.total_price === undefined ? '' : String(item.total_price),
+                currency: item.currency || 'SGD',
+                status: item.status || 'fully_delivered',
+                sequence: index + 1,
+            };
+        },
+        recalculateItem(item) {
+            const delivered = parseFloat(item.delivered_quantity);
+            const unitPrice = parseFloat(item.unit_price);
+            if (isNaN(delivered) || isNaN(unitPrice) || delivered <= 0 || unitPrice <= 0) {
+                item.total_price = '';
+                return;
+            }
+            item.total_price = (delivered * unitPrice).toFixed(2);
+        },
+        addRow() {
+            const currency = this.lineItems.length ? this.lineItems[0].currency : 'SGD';
+            this.lineItems.push(this.blankLineItem(currency));
+            this.syncLineItems();
+        },
+        removeRow(index) {
+            if (this.lineItems.length === 1) {
+                this.lineItems = [this.blankLineItem()];
+            } else {
+                this.lineItems.splice(index, 1);
+            }
+            this.syncLineItems();
+        },
+        recalculateAndSync(item) {
+            this.recalculateItem(item);
+            this.syncLineItems();
+        },
+        syncLineItems() {
+            this.lineItems = this.lineItems.map((item, index) => this.normalizeLineItem(item, index));
+            this.lineItems.forEach(item => {
+                if (item.delivered_quantity > item.ordered_quantity) {
+                    item.delivered_quantity = item.ordered_quantity;
+                }
+                if (item.status === 'fully_delivered') {
+                    item.delivered_quantity = item.ordered_quantity;
+                }
+                this.recalculateItem(item);
+            });
+            this.$refs.lineItemsJson.value = JSON.stringify(this.lineItems.map((item, index) => ({
+                sequence: index + 1,
+                purchase_request_line_item_id: item.purchase_request_line_item_id,
+                product: item.product,
+                ordered_quantity: item.ordered_quantity,
+                delivered_quantity: item.delivered_quantity,
+                unit_price: item.unit_price,
+                total_price: item.total_price,
+                currency: item.currency,
+                status: item.status,
+            })));
+            this.$refs.hiddenCurrency.value = this.lineItems.length ? this.lineItems[0].currency : 'SGD';
+            this.$refs.hiddenDeliveredQuantity.value = this.lineItems.reduce((sum, item) => {
+                const value = parseInt(item.delivered_quantity || 0, 10);
+                return sum + (isNaN(value) ? 0 : value);
+            }, 0);
+            this.$refs.hiddenTotalPrice.value = this.lineItems.reduce((sum, item) => {
+                const value = parseFloat(item.total_price);
+                return sum + (isNaN(value) ? 0 : value);
+            }, 0).toFixed(2);
+            this.$refs.hiddenStatus.value = this.lineItems.every(item => item.status === 'fully_delivered')
+                ? 'fully_delivered'
+                : 'partially_delivered';
+        },
+        init() {
+            try {
+                const parsed = this.initialLineItemsRaw ? JSON.parse(this.initialLineItemsRaw) : [];
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    this.lineItems = parsed.map((item, index) => this.normalizeLineItem(item, index));
+                } else {
+                    this.lineItems = [this.blankLineItem()];
+                }
+            } catch (error) {
+                this.lineItems = [this.blankLineItem()];
+            }
+            this.syncLineItems();
+        }
+    }"
+    x-init="init()"
+>
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 space-y-6">
 
-        <!-- Back link -->
         <a href="{% url 'deliveries:list' %}" class="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-800 transition-colors">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -19,14 +124,11 @@
 
         {% if source_purchase_request %}
         <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-900">
-            <p class="font-semibold">Tracking goods recieve for {{ source_purchase_request.request_number }}</p>
+            <p class="font-semibold">Linked Purchase Request: {{ source_purchase_request.request_number }}</p>
             <p class="mt-1">
                 Ordered quantity: {{ source_purchase_request.ordered_quantity }}.
                 Delivered so far: {{ source_purchase_request.delivered_quantity }}.
                 Outstanding: {{ source_purchase_request.remaining_quantity }}.
-            </p>
-            <p class="mt-2 text-blue-800">
-                Record the actual goods recieve quantity here. If the supplier will not send the remaining balance, choose <strong>Short Closed</strong>.
             </p>
         </div>
         {% endif %}
@@ -39,18 +141,17 @@
         </div>
         {% endif %}
 
-        <form
-            method="post"
-            enctype="multipart/form-data"
-            class="space-y-5"
-            x-data="fileUpload()"
-        >
+        <form method="post" enctype="multipart/form-data" class="space-y-5" x-data="fileUpload()">
             {% csrf_token %}
             {% if source_purchase_request %}
             <input type="hidden" name="purchase_request" value="{{ source_purchase_request.pk }}" />
             {% endif %}
+            <input type="hidden" name="{{ form.currency.html_name }}" x-ref="hiddenCurrency" value="{{ form.currency.value|default:'SGD' }}">
+            <input type="hidden" name="{{ form.delivered_quantity.html_name }}" x-ref="hiddenDeliveredQuantity" value="{{ form.delivered_quantity.value|default:'' }}">
+            <input type="hidden" name="{{ form.total_price.html_name }}" x-ref="hiddenTotalPrice" value="{{ form.total_price.value|default:'' }}">
+            <input type="hidden" name="{{ form.status.html_name }}" x-ref="hiddenStatus" value="{{ form.status.value|default:'partially_delivered' }}">
+            <input type="hidden" name="line_items_json" x-ref="lineItemsJson" value="{{ form.line_items_json.value|default:'' }}">
 
-            <!-- ---- 1. File Upload (primary field) ---- -->
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">
                     DO / SO Documents <span class="text-red-500">*</span>
@@ -81,7 +182,6 @@
                     <p class="text-xs text-gray-400 mt-1">PDF, Word, Excel, JPG, PNG (max 1 GB each)</p>
                 </div>
 
-                <!-- File list preview -->
                 <template x-if="selectedFiles.length > 0">
                     <ul class="mt-3 space-y-2">
                         <template x-for="(file, idx) in selectedFiles" :key="idx">
@@ -103,76 +203,149 @@
                 </template>
             </div>
 
-            <!-- ---- 2. Vendor ---- -->
-            <div>
-                <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                    Vendor <span class="text-red-500">*</span>
-                </label>
-                {{ form.vendor }}
-                {% if form.vendor.errors %}
-                <p class="mt-1 text-xs text-red-600">{{ form.vendor.errors|join:", " }}</p>
+            <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+                <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
+                    <h3 class="text-sm font-semibold text-gray-900">Goods recieve Line Items</h3>
+                    <button
+                        type="button"
+                        @click="addRow()"
+                        class="inline-flex items-center gap-2 rounded-md bg-brand-50 px-3 py-2 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100 transition-colors"
+                    >
+                        <span class="text-base leading-none">+</span>
+                        Add Row
+                    </button>
+                </div>
+
+                <div class="overflow-x-auto rounded-lg border border-gray-200">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <th class="px-4 py-3">S/N</th>
+                                <th class="px-4 py-3">Product</th>
+                                <th class="px-4 py-3">Quantity</th>
+                                <th class="px-4 py-3">Unit Price</th>
+                                <th class="px-4 py-3">Total Price</th>
+                                <th class="px-4 py-3">Currency</th>
+                                <th class="px-4 py-3">Actual Delivered</th>
+                                <th class="px-4 py-3">Delivery Outcome</th>
+                                <th class="px-4 py-3 w-20">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 bg-white align-top">
+                            <template x-for="(item, index) in lineItems" :key="index">
+                            <tr>
+                                <td class="px-4 py-3 font-medium text-gray-700" x-text="index + 1"></td>
+                                <td class="px-4 py-3 min-w-[15rem]">
+                                    <input
+                                        type="text"
+                                        x-model="item.product"
+                                        @input="syncLineItems()"
+                                        placeholder="Product name"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                    />
+                                </td>
+                                <td class="px-4 py-3 min-w-[7rem]">
+                                    <input
+                                        type="number"
+                                        x-model="item.ordered_quantity"
+                                        readonly
+                                        class="block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-sm text-gray-700 px-3 py-2 border"
+                                    />
+                                </td>
+                                <td class="px-4 py-3 min-w-[8rem]">
+                                    <input
+                                        type="number"
+                                        x-model="item.unit_price"
+                                        readonly
+                                        class="block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-sm text-gray-700 px-3 py-2 border"
+                                    />
+                                </td>
+                                <td class="px-4 py-3 min-w-[8rem]">
+                                    <input
+                                        type="number"
+                                        x-model="item.total_price"
+                                        readonly
+                                        class="block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-sm text-gray-700 px-3 py-2 border"
+                                    />
+                                </td>
+                                <td class="px-4 py-3 min-w-[7rem]">
+                                    <select
+                                        x-model="item.currency"
+                                        @change="syncLineItems()"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                    >
+                                        {% for val, label in form.currency.field.choices %}
+                                        <option value="{{ val }}">{{ label }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </td>
+                                <td class="px-4 py-3 min-w-[8rem]">
+                                    <input
+                                        type="number"
+                                        step="1"
+                                        min="1"
+                                        :max="item.ordered_quantity"
+                                        x-model="item.delivered_quantity"
+                                        @input="recalculateAndSync(item)"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                    />
+                                </td>
+                                <td class="px-4 py-3 min-w-[11rem]">
+                                    <select
+                                        x-model="item.status"
+                                        @change="syncLineItems()"
+                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                    >
+                                        <option value="partially_delivered">Partially Delivered</option>
+                                        <option value="fully_delivered">Fully Delivered</option>
+                                    </select>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <button
+                                        type="button"
+                                        @click="removeRow(index)"
+                                        class="inline-flex items-center rounded-md px-2.5 py-2 text-sm font-semibold text-red-600 ring-1 ring-inset ring-red-200 hover:bg-red-50 transition-colors"
+                                    >
+                                        Remove
+                                    </button>
+                                </td>
+                            </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if form.currency.errors or form.delivered_quantity.errors or form.total_price.errors or form.status.errors %}
+                <div class="mt-4 rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+                    {% if form.currency.errors %}<p>{{ form.currency.errors|join:", " }}</p>{% endif %}
+                    {% if form.delivered_quantity.errors %}<p>{{ form.delivered_quantity.errors|join:", " }}</p>{% endif %}
+                    {% if form.total_price.errors %}<p>{{ form.total_price.errors|join:", " }}</p>{% endif %}
+                    {% if form.status.errors %}<p>{{ form.status.errors|join:", " }}</p>{% endif %}
+                </div>
                 {% endif %}
             </div>
 
-            <!-- ---- 3. Currency ---- -->
-            <div>
-                <label for="{{ form.currency.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                    Currency <span class="text-red-500">*</span>
-                </label>
-                {{ form.currency }}
-                {% if form.currency.errors %}
-                <p class="mt-1 text-xs text-red-600">{{ form.currency.errors|join:", " }}</p>
-                {% endif %}
+            <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <div>
+                    <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        Vendor <span class="text-red-500">*</span>
+                    </label>
+                    {{ form.vendor }}
+                    {% if form.vendor.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.vendor.errors|join:", " }}</p>
+                    {% endif %}
+                </div>
+                <div>
+                    <label for="{{ form.notes.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                        Notes
+                    </label>
+                    {{ form.notes }}
+                    {% if form.notes.errors %}
+                    <p class="mt-1 text-xs text-red-600">{{ form.notes.errors|join:", " }}</p>
+                    {% endif %}
+                </div>
             </div>
 
-            <!-- ---- 4. Delivered Quantity ---- -->
-            <div>
-                <label for="{{ form.delivered_quantity.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                    Delivered Quantity <span class="text-red-500">*</span>
-                </label>
-                {{ form.delivered_quantity }}
-                {% if form.delivered_quantity.errors %}
-                <p class="mt-1 text-xs text-red-600">{{ form.delivered_quantity.errors|join:", " }}</p>
-                {% endif %}
-            </div>
-
-            <!-- ---- 5. Total Price ---- -->
-            <div>
-                <label for="{{ form.total_price.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                    Total Price <span class="text-red-500">*</span>
-                </label>
-                {{ form.total_price }}
-                {% if form.total_price.errors %}
-                <p class="mt-1 text-xs text-red-600">{{ form.total_price.errors|join:", " }}</p>
-                {% endif %}
-            </div>
-
-            <!-- ---- 6. Delivery Outcome ---- -->
-            <div>
-                <label for="{{ form.status.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                    Delivery Outcome <span class="text-red-500">*</span>
-                </label>
-                {{ form.status }}
-                {% if form.status.errors %}
-                <p class="mt-1 text-xs text-red-600">{{ form.status.errors|join:", " }}</p>
-                {% endif %}
-                <p class="mt-1 text-xs text-gray-500">
-                    Use <strong>Partially Delivered</strong> when more goods are still expected. Use <strong>Short Closed</strong> when the remaining balance will not be delivered and should not be paid.
-                </p>
-            </div>
-
-            <!-- ---- 7. Notes ---- -->
-            <div>
-                <label for="{{ form.notes.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                    Notes
-                </label>
-                {{ form.notes }}
-                {% if form.notes.errors %}
-                <p class="mt-1 text-xs text-red-600">{{ form.notes.errors|join:", " }}</p>
-                {% endif %}
-            </div>
-
-            <!-- ---- Submit ---- -->
             <div class="pt-2 flex items-center gap-3">
                 <button
                     type="submit"
@@ -220,10 +393,10 @@ function fileUpload() {
 </script>
 
 <style>
-/* Style Django form widgets to match the design system */
 form input[type="text"],
 form input[type="number"],
-form select {
+form select,
+form textarea {
     width: 100%;
     border: 1px solid #d1d5db;
     border-radius: 0.5rem;
@@ -234,7 +407,8 @@ form select {
 }
 form input[type="text"]:focus,
 form input[type="number"]:focus,
-form select:focus {
+form select:focus,
+form textarea:focus {
     border-color: #3b82f6;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
 }

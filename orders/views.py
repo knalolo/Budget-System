@@ -121,6 +121,7 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
         instance.requester = self.request.user
         instance.status = "draft"
         instance.save()
+        form.save_line_items(instance)
 
         _save_purchase_request_attachments(
             purchase_request=instance,
@@ -221,7 +222,9 @@ class PurchaseRequestUpdateView(LoginRequiredMixin, UpdateView):
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
-        instance = form.save()
+        instance = form.save(commit=False)
+        instance.save()
+        form.save_line_items(instance)
         action = self.request.POST.get("action", "draft")
         if action == "submit":
             try:
