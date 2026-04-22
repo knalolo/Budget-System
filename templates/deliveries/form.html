@@ -130,6 +130,11 @@
                 Delivered so far: {{ source_purchase_request.delivered_quantity }}.
                 Outstanding: {{ source_purchase_request.remaining_quantity }}.
             </p>
+            <p class="mt-2">
+                Product details are synced from the purchase request. Upload the DO / SO document, then fill in only
+                <span class="font-semibold">Actual Received</span> and
+                <span class="font-semibold">Delivery Outcome</span>.
+            </p>
         </div>
         {% endif %}
 
@@ -145,6 +150,7 @@
             {% csrf_token %}
             {% if source_purchase_request %}
             <input type="hidden" name="purchase_request" value="{{ source_purchase_request.pk }}" />
+            <input type="hidden" name="{{ form.vendor.html_name }}" value="{{ source_purchase_request.vendor }}" />
             {% endif %}
             <input type="hidden" name="{{ form.currency.html_name }}" x-ref="hiddenCurrency" value="{{ form.currency.value|default:'SGD' }}">
             <input type="hidden" name="{{ form.delivered_quantity.html_name }}" x-ref="hiddenDeliveredQuantity" value="{{ form.delivered_quantity.value|default:'' }}">
@@ -206,6 +212,9 @@
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
                 <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
                     <h3 class="text-sm font-semibold text-gray-900">Goods recieve Line Items</h3>
+                    {% if source_purchase_request %}
+                    <span class="text-sm text-gray-500">Synced from {{ source_purchase_request.request_number }}</span>
+                    {% else %}
                     <button
                         type="button"
                         @click="addRow()"
@@ -214,6 +223,7 @@
                         <span class="text-base leading-none">+</span>
                         Add Row
                     </button>
+                    {% endif %}
                 </div>
 
                 <div class="overflow-x-auto rounded-lg border border-gray-200">
@@ -222,13 +232,15 @@
                             <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                                 <th class="px-4 py-3">S/N</th>
                                 <th class="px-4 py-3">Product</th>
-                                <th class="px-4 py-3">Quantity</th>
+                                <th class="px-4 py-3">Ordered Qty</th>
                                 <th class="px-4 py-3">Unit Price</th>
                                 <th class="px-4 py-3">Total Price</th>
                                 <th class="px-4 py-3">Currency</th>
-                                <th class="px-4 py-3">Actual Delivered</th>
-                                <th class="px-4 py-3">Delivery Outcome</th>
+                                <th class="px-4 py-3 text-red-600">Actual Received *</th>
+                                <th class="px-4 py-3 text-red-600">Delivery Outcome *</th>
+                                {% if not source_purchase_request %}
                                 <th class="px-4 py-3 w-20">Action</th>
+                                {% endif %}
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 bg-white align-top">
@@ -236,6 +248,9 @@
                             <tr>
                                 <td class="px-4 py-3 font-medium text-gray-700" x-text="index + 1"></td>
                                 <td class="px-4 py-3 min-w-[15rem]">
+                                    {% if source_purchase_request %}
+                                    <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900" x-text="item.product || '-'"></div>
+                                    {% else %}
                                     <input
                                         type="text"
                                         x-model="item.product"
@@ -243,6 +258,7 @@
                                         placeholder="Product name"
                                         class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
                                     />
+                                    {% endif %}
                                 </td>
                                 <td class="px-4 py-3 min-w-[7rem]">
                                     <input
@@ -269,6 +285,9 @@
                                     />
                                 </td>
                                 <td class="px-4 py-3 min-w-[7rem]">
+                                    {% if source_purchase_request %}
+                                    <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900" x-text="item.currency || '-'"></div>
+                                    {% else %}
                                     <select
                                         x-model="item.currency"
                                         @change="syncLineItems()"
@@ -278,6 +297,7 @@
                                         <option value="{{ val }}">{{ label }}</option>
                                         {% endfor %}
                                     </select>
+                                    {% endif %}
                                 </td>
                                 <td class="px-4 py-3 min-w-[8rem]">
                                     <input
@@ -300,6 +320,7 @@
                                         <option value="fully_delivered">Fully Delivered</option>
                                     </select>
                                 </td>
+                                {% if not source_purchase_request %}
                                 <td class="px-4 py-3">
                                     <button
                                         type="button"
@@ -309,6 +330,7 @@
                                         Remove
                                     </button>
                                 </td>
+                                {% endif %}
                             </tr>
                             </template>
                         </tbody>
@@ -325,6 +347,24 @@
                 {% endif %}
             </div>
 
+            {% if source_purchase_request %}
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-4 text-sm text-gray-700">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Vendor</p>
+                        <p class="mt-1 font-medium text-gray-900">{{ source_purchase_request.vendor }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Purchase Request Total</p>
+                        <p class="mt-1 font-medium text-gray-900">{{ source_purchase_request.currency }} {{ source_purchase_request.total_price|floatformat:2 }}</p>
+                    </div>
+                    <div>
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Outstanding Qty</p>
+                        <p class="mt-1 font-medium text-gray-900">{{ source_purchase_request.remaining_quantity }}</p>
+                    </div>
+                </div>
+            </div>
+            {% else %}
             <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
                 <div>
                     <label for="{{ form.vendor.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
@@ -345,6 +385,7 @@
                     {% endif %}
                 </div>
             </div>
+            {% endif %}
 
             <div class="pt-2 flex items-center gap-3">
                 <button

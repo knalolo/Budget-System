@@ -64,6 +64,9 @@
             }
             return total.toFixed(2);
         },
+        get computedCurrency() {
+            return this.lineItems.length ? this.lineItems[0].currency : 'SGD';
+        },
         get computedQuantity() {
             return this.lineItems.reduce((sum, item) => {
                 const value = parseInt(item.quantity || 0, 10);
@@ -363,6 +366,14 @@
                             {% if form.vendor.errors %}
                             <p class="mt-1 text-xs text-red-600">{{ form.vendor.errors|join:", " }}</p>
                             {% endif %}
+                            <div class="mt-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-3">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">Grand Total</p>
+                                <p class="mt-1 text-lg font-semibold text-gray-900">
+                                    <span x-text="computedCurrency"></span>
+                                    <span x-text="computedTotalPrice || '0.00'"></span>
+                                </p>
+                                <p class="mt-1 text-xs text-gray-500">Sum of all product line totals.</p>
+                            </div>
                         </div>
 
                         <div class="lg:col-span-1">
