@@ -20,7 +20,7 @@ class AssetRegistrationForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["payment_release"].label_from_instance = (
-            lambda payment_release: f"{payment_release.request_number} - {payment_release.vendor}"
+            lambda payment_release: f"{payment_release.workflow_number} - {payment_release.vendor}"
         )
 
     class Meta:

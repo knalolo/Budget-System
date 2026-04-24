@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 
-from core.services.request_number_service import generate_request_number
+from core.services.request_number_service import generate_request_number, to_workflow_number
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +122,13 @@ class PaymentRelease(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.request_number} - {self.vendor}"
+        return f"{self.workflow_number} - {self.vendor}"
+
+    @property
+    def workflow_number(self) -> str:
+        if self.purchase_request_id and self.purchase_request:
+            return self.purchase_request.workflow_number
+        return to_workflow_number(self.request_number)
 
     # ------------------------------------------------------------------
     # Save override – auto-generate request_number

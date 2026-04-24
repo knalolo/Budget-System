@@ -111,7 +111,11 @@ def _build_request_context(request_obj, now_str: str = "") -> dict[str, Any]:
     project = getattr(request_obj, "project", None)
 
     ctx: dict[str, Any] = {
-        "request_number": getattr(request_obj, "request_number", ""),
+        "request_number": getattr(
+            request_obj,
+            "workflow_number",
+            getattr(request_obj, "request_number", ""),
+        ),
         "requester_name": requester_name,
         "vendor": getattr(request_obj, "vendor", ""),
         "currency": getattr(request_obj, "currency", ""),
@@ -250,7 +254,11 @@ def notify_submission(request_obj, request_type: str) -> EmailNotificationLog | 
     request_type_display = (
         "Purchase Request" if request_type == "purchase_request" else "Payment Release"
     )
-    request_number = getattr(request_obj, "request_number", "")
+    request_number = getattr(
+        request_obj,
+        "workflow_number",
+        getattr(request_obj, "request_number", ""),
+    )
 
     subject = f"[Procurement] {request_type_display} {request_number} requires your approval"
     context = _build_request_context(request_obj)
@@ -287,7 +295,11 @@ def notify_pcm_approved(request_obj, request_type: str) -> EmailNotificationLog 
     request_type_display = (
         "Purchase Request" if request_type == "purchase_request" else "Payment Release"
     )
-    request_number = getattr(request_obj, "request_number", "")
+    request_number = getattr(
+        request_obj,
+        "workflow_number",
+        getattr(request_obj, "request_number", ""),
+    )
 
     subject = f"[Procurement] {request_type_display} {request_number} requires your approval"
     context = _build_request_context(request_obj)
@@ -324,7 +336,11 @@ def notify_final_approved(request_obj, request_type: str) -> EmailNotificationLo
         cc_keys.append(_CFG_JOLLY_EMAIL)
     cc = _build_cc(cc_keys)
 
-    request_number = getattr(request_obj, "request_number", "")
+    request_number = getattr(
+        request_obj,
+        "workflow_number",
+        getattr(request_obj, "request_number", ""),
+    )
     context = _build_request_context(request_obj)
 
     if request_type == "purchase_request":
@@ -356,7 +372,11 @@ def notify_rejected(request_obj, request_type: str) -> EmailNotificationLog | No
         The EmailNotificationLog entry.
     """
     recipients = _requester_email(request_obj)
-    request_number = getattr(request_obj, "request_number", "")
+    request_number = getattr(
+        request_obj,
+        "workflow_number",
+        getattr(request_obj, "request_number", ""),
+    )
     context = _build_request_context(request_obj)
 
     # Determine the rejection comment from the most recent rejection decision.
@@ -395,7 +415,11 @@ def notify_delivery_submitted(submission) -> EmailNotificationLog | None:
     recipients = _requester_email(submission)
     cc = _build_cc([_CFG_JESS_EMAIL])
 
-    request_number = getattr(submission, "request_number", "")
+    request_number = getattr(
+        submission,
+        "workflow_number",
+        getattr(submission, "request_number", ""),
+    )
     context = _build_request_context(submission)
 
     subject = f"[Procurement] DO/SO Submission {request_number}"

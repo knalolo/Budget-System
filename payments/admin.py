@@ -7,7 +7,7 @@ from .models import PaymentRelease
 @admin.register(PaymentRelease)
 class PaymentReleaseAdmin(admin.ModelAdmin):
     list_display = [
-        "request_number",
+        "workflow_number_display",
         "vendor",
         "requester",
         "project",
@@ -18,8 +18,9 @@ class PaymentReleaseAdmin(admin.ModelAdmin):
     ]
     list_filter = ["status", "currency", "project"]
     search_fields = ["request_number", "vendor", "requester__username", "description"]
+    exclude = ["request_number"]
     readonly_fields = [
-        "request_number",
+        "workflow_number_display",
         "created_at",
         "updated_at",
         "pcm_decided_at",
@@ -28,7 +29,7 @@ class PaymentReleaseAdmin(admin.ModelAdmin):
     fieldsets = [
         (
             "Identity",
-            {"fields": ["request_number", "purchase_request", "requester"]},
+            {"fields": ["workflow_number_display", "purchase_request", "requester"]},
         ),
         (
             "Request Details",
@@ -77,3 +78,7 @@ class PaymentReleaseAdmin(admin.ModelAdmin):
             {"fields": ["created_at", "updated_at"]},
         ),
     ]
+
+    @admin.display(description="Request No.")
+    def workflow_number_display(self, obj):
+        return obj.workflow_number

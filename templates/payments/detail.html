@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load procurement_tags %}
 
-{% block title %}{{ payment.request_number }} - Payment Release{% endblock %}
+{% block title %}{{ payment.workflow_number }} - Payment Release{% endblock %}
 {% block page_title %}Payment Release Detail{% endblock %}
 
 {% block content %}
@@ -17,7 +17,7 @@
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h2 class="text-lg font-semibold text-gray-900 font-mono">{{ payment.request_number }}</h2>
+                <h2 class="text-lg font-semibold text-gray-900 font-mono">{{ payment.workflow_number }}</h2>
                 <p class="text-sm text-gray-500 mt-0.5">
                     Submitted by {{ payment.requester.get_full_name|default:payment.requester.username }}
                     on {{ payment.created_at|date:"d M Y H:i" }}
@@ -56,11 +56,11 @@
                 </p>
                 {% elif payment.goods_recieve_progress_status == 'goods_received' %}
                 <p class="text-sm text-emerald-900">
-                    Goods recieve has been completed for this purchase request. This payment is backed by delivered goods.
+                    Goods recieve has been completed for this purchase request. This payment is backed by cumulative delivered line-item value.
                 </p>
                 {% elif payment.goods_recieve_progress_status == 'partially_received' %}
                 <p class="text-sm text-sky-900">
-                    Goods recieve is only partial right now. Review the delivered and outstanding quantities before approving the payment.
+                    Goods recieve is only partial right now. Review the delivered units and cumulative delivered line-item value before approving the payment.
                 </p>
                 {% elif payment.goods_recieve_progress_status == 'short_closed' %}
                 <p class="text-sm text-slate-800">
@@ -129,10 +129,10 @@
 
             {% if payment.purchase_request %}
             <div>
-                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Linked Purchase Request</dt>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Request No.</dt>
                 <dd class="mt-1 text-sm text-brand-600">
                     <a href="{% url 'orders:purchase-request-detail' pk=payment.purchase_request.pk %}" class="hover:underline">
-                        {{ payment.purchase_request.request_number }}
+                        {{ payment.purchase_request.workflow_number }}
                     </a>
                 </dd>
             </div>
@@ -170,7 +170,7 @@
         <div class="px-6 py-4 border-b border-gray-100">
             <h3 class="text-base font-semibold text-gray-800">Linked Delivery Snapshot</h3>
         </div>
-        <dl class="grid grid-cols-1 sm:grid-cols-4 gap-x-6 gap-y-4 px-6 py-4 text-sm">
+        <dl class="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-4 px-6 py-4 text-sm">
             <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Ordered</dt>
                 <dd class="mt-1 text-gray-900">{{ linked_purchase_request_summary.ordered_quantity }}</dd>
@@ -180,8 +180,16 @@
                 <dd class="mt-1 text-gray-900">{{ linked_purchase_request_summary.delivered_quantity }}</dd>
             </div>
             <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Delivered Goods Value</dt>
+                <dd class="mt-1 text-gray-900">{{ payment.get_currency_display }} {{ linked_purchase_request_summary.delivered_total_value|floatformat:2 }}</dd>
+            </div>
+            <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Outstanding</dt>
                 <dd class="mt-1 text-gray-900">{{ linked_purchase_request_summary.remaining_quantity }}</dd>
+            </div>
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Available To Pay</dt>
+                <dd class="mt-1 text-gray-900">{{ payment.get_currency_display }} {{ linked_purchase_request_summary.max_standard_payment_total|floatformat:2 }}</dd>
             </div>
             <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Stage</dt>
@@ -196,7 +204,7 @@
             {% if payment.is_advance_payment %}
             This payment was created as an advance payment. Delivery order follow-up is still required until the purchase request is fully delivered or short closed.
             {% else %}
-            Standard payment is expected to stay within the delivered quantity shown above.
+            Standard payment is expected to stay within the delivered quantity and cumulative delivered line-item value shown above.
             {% endif %}
         </div>
     </div>
@@ -347,6 +355,7 @@
 
             {% include "payments/_attachments_list.html" with attachments=payment.attachments.all %}
 
+            {% if can_manage_payment %}
             <form
                 method="post"
                 action="{% url 'payments:upload' pk=payment.pk %}"
@@ -399,6 +408,7 @@
                     Upload
                 </button>
             </form>
+            {% endif %}
             <p class="text-xs text-gray-400">
                 Official Invoice is preferred. Proforma Invoice is acceptable for advance or down payment purposes. PO documents are not accepted here.
             </p>

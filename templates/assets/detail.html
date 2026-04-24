@@ -34,7 +34,7 @@
                     <dd class="text-gray-900">
                         {% if registration.payment_release %}
                             <a href="{% url 'payments:detail' registration.payment_release.pk %}" class="text-brand-600 hover:underline">
-                                {{ registration.payment_release.request_number }}
+                                {{ registration.payment_release.workflow_number }}
                             </a>
                         {% else %}
                             <span class="text-gray-400">None</span>
@@ -45,7 +45,7 @@
                     <dd class="text-gray-900">
                         {% if registration.linked_purchase_request %}
                             <a href="{% url 'orders:purchase-request-detail' registration.linked_purchase_request.pk %}" class="text-brand-600 hover:underline">
-                                {{ registration.linked_purchase_request.request_number }}
+                                {{ registration.linked_purchase_request.workflow_number }}
                             </a>
                         {% else %}
                             <span class="text-gray-400">None</span>

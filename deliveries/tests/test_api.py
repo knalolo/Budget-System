@@ -16,7 +16,9 @@ def _create_payload():
     return {
         "vendor": "Delivery Vendor",
         "currency": "SGD",
+        "delivered_quantity": "1",
         "total_price": "200.00",
+        "status": "fully_delivered",
     }
 
 
@@ -52,7 +54,7 @@ class TestCreateDeliverySubmission:
         payload = _create_payload()
         resp = api_client.post(_BASE, data=payload)
         assert resp.status_code == 201
-        assert resp.data["status"] == "submitted"
+        assert resp.data["status"] == "fully_delivered"
 
     def test_create_assigns_requester(self, api_client, regular_user):
         payload = _create_payload()
@@ -78,7 +80,7 @@ class TestCreateDeliverySubmission:
         payload = _create_payload()
         resp = api_client.post(_BASE, data=payload)
         assert resp.status_code == 201
-        assert resp.data["request_number"].startswith("DO-")
+        assert resp.data["request_number"].startswith("REQ-")
 
 
 # ---------------------------------------------------------------------------

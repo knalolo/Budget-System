@@ -16,6 +16,17 @@ class TestPaymentReleaseModel:
         assert pr.request_number
         assert pr.request_number.startswith("RP-")
 
+    def test_workflow_number_uses_linked_purchase_request(self):
+        from orders.tests.factories import PurchaseRequestFactory
+
+        purchase_request = PurchaseRequestFactory(request_number="PR-20260423-0002")
+        payment = PaymentReleaseFactory(
+            purchase_request=purchase_request,
+            request_number="RP-20260423-0001",
+        )
+
+        assert payment.workflow_number == "REQ-20260423-0002"
+
     def test_request_number_sequential(self):
         pr1 = PaymentReleaseFactory()
         pr2 = PaymentReleaseFactory()

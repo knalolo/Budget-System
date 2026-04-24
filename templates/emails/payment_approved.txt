@@ -4,7 +4,7 @@ Your Payment Release has been APPROVED.
 
 PAYMENT DETAILS
 ---------------
-Request Number : {{ request_number }}
+Request No.    : {{ request_number }}
 Vendor         : {{ vendor }}
 Amount         : {{ currency }} {{ amount }}
 Description    : {{ description }}

@@ -2,7 +2,9 @@
 import pytest
 from django.core.exceptions import ValidationError
 
+from deliveries.models import DeliverySubmissionLineItem
 from deliveries.tests.factories import DeliverySubmissionFactory
+from orders.models import PurchaseRequestLineItem
 from orders.tests.factories import PurchaseRequestFactory, UserFactory
 from payments.services import (
     approve_payment_release,
@@ -99,6 +101,80 @@ class TestSubmitPaymentRelease:
 
         updated = submit_payment_release(payment_release)
         assert updated.status == "pending_pcm"
+
+    def test_standard_payment_uses_delivered_line_item_value_cap(self):
+        purchase_request = PurchaseRequestFactory(
+            status="ordered",
+            ordered_quantity=20,
+            total_price=995,
+            currency="SGD",
+        )
+        line_item_1 = PurchaseRequestLineItem.objects.create(
+            purchase_request=purchase_request,
+            sequence=1,
+            product="AAA",
+            quantity=5,
+            unit_price="100.00",
+            total_price="500.00",
+            currency="SGD",
+        )
+        line_item_2 = PurchaseRequestLineItem.objects.create(
+            purchase_request=purchase_request,
+            sequence=2,
+            product="BBB",
+            quantity=15,
+            unit_price="33.00",
+            total_price="495.00",
+            currency="SGD",
+        )
+        submission = DeliverySubmissionFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            delivered_quantity=19,
+            total_price=962,
+            status="partially_delivered",
+        )
+        DeliverySubmissionLineItem.objects.create(
+            delivery_submission=submission,
+            purchase_request_line_item=line_item_1,
+            sequence=1,
+            product="AAA",
+            ordered_quantity=5,
+            delivered_quantity=5,
+            unit_price="100.00",
+            total_price="500.00",
+            currency="SGD",
+            status="fully_delivered",
+        )
+        DeliverySubmissionLineItem.objects.create(
+            delivery_submission=submission,
+            purchase_request_line_item=line_item_2,
+            sequence=2,
+            product="BBB",
+            ordered_quantity=15,
+            delivered_quantity=14,
+            unit_price="33.00",
+            total_price="462.00",
+            currency="SGD",
+            status="partially_delivered",
+        )
+        payment_release = PaymentReleaseFactory(
+            status="draft",
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="standard",
+            payment_quantity=19,
+            total_price=963,
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+
+        with pytest.raises(ValidationError, match="SGD 962.00"):
+            submit_payment_release(payment_release)
 
 
 @pytest.mark.django_db

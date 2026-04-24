@@ -177,7 +177,7 @@ class MyRequestsView(APIView):
         def _pr_item(pr):
             return {
                 "id": pr.pk,
-                "request_number": pr.request_number,
+                "request_number": pr.workflow_number,
                 "vendor": pr.vendor,
                 "currency": pr.currency,
                 "total_price": str(pr.total_price),
@@ -189,7 +189,7 @@ class MyRequestsView(APIView):
         def _payment_item(p):
             return {
                 "id": p.pk,
-                "request_number": p.request_number,
+                "request_number": p.workflow_number,
                 "vendor": p.vendor,
                 "currency": p.currency,
                 "total_price": str(p.total_price),
@@ -201,7 +201,7 @@ class MyRequestsView(APIView):
         def _delivery_item(d):
             return {
                 "id": d.pk,
-                "request_number": d.request_number,
+                "request_number": d.workflow_number,
                 "vendor": d.vendor,
                 "currency": d.currency,
                 "total_price": str(d.total_price),
@@ -266,7 +266,7 @@ class PendingApprovalsView(APIView):
             return {
                 "type": "PR",
                 "id": pr.pk,
-                "request_number": pr.request_number,
+                "request_number": pr.workflow_number,
                 "requester": pr.requester.get_full_name() or pr.requester.username,
                 "vendor": pr.vendor,
                 "currency": pr.currency,
@@ -281,7 +281,7 @@ class PendingApprovalsView(APIView):
             return {
                 "type": "Payment",
                 "id": p.pk,
-                "request_number": p.request_number,
+                "request_number": p.workflow_number,
                 "requester": p.requester.get_full_name() or p.requester.username,
                 "vendor": p.vendor,
                 "currency": p.currency,

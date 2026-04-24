@@ -4,7 +4,7 @@ A {{ request_type_display }} has been submitted and requires your approval.
 
 REQUEST DETAILS
 ---------------
-Request Number : {{ request_number }}
+Request No.    : {{ request_number }}
 Requester      : {{ requester_name }}
 Vendor         : {{ vendor }}
 Amount         : {{ currency }} {{ amount }}

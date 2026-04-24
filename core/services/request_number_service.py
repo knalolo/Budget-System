@@ -16,6 +16,7 @@ from datetime import date
 
 
 _SEQUENCE_RE = re.compile(r"-(\d{4})$")
+_REQUEST_NUMBER_RE = re.compile(r"^[A-Z]+-(\d{8})-(\d{4})$")
 
 # Registry of (app_label, model_name) tuples that have a request_number field.
 # Models register themselves or we query dynamically.
@@ -35,6 +36,30 @@ def generate_request_number(prefix: str, *, reference_date: date | None = None) 
 
     next_seq = _next_sequence(like_pattern)
     return f"{prefix_clean}-{date_str}-{next_seq:04d}"
+
+
+def to_workflow_number(request_number: str | None) -> str:
+    """Return the public workflow number shown across PR, goods, and payment."""
+    if not request_number:
+        return ""
+
+    match = _REQUEST_NUMBER_RE.match(str(request_number))
+    if not match:
+        return str(request_number)
+
+    return f"REQ-{match.group(1)}-{match.group(2)}"
+
+
+def to_internal_number(workflow_number: str | None, prefix: str) -> str:
+    """Convert a public REQ number back to a specific internal prefix for searching."""
+    if not workflow_number:
+        return ""
+
+    match = _REQUEST_NUMBER_RE.match(str(workflow_number))
+    if not match:
+        return str(workflow_number)
+
+    return f"{prefix.upper().strip()}-{match.group(1)}-{match.group(2)}"
 
 
 def _next_sequence(like_pattern: str) -> int:

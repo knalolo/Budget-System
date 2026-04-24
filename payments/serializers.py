@@ -37,6 +37,7 @@ class _AttachmentSerializer(serializers.ModelSerializer):
 class PaymentReleaseListSerializer(serializers.ModelSerializer):
     """Minimal fields for list views and embedded representations."""
 
+    request_number = serializers.CharField(source="workflow_number", read_only=True)
     requester_username = serializers.CharField(
         source="requester.username",
         read_only=True,
@@ -82,6 +83,7 @@ class PaymentReleaseListSerializer(serializers.ModelSerializer):
 class PaymentReleaseDetailSerializer(serializers.ModelSerializer):
     """Full representation including approval fields, attachments, and logs."""
 
+    request_number = serializers.CharField(source="workflow_number", read_only=True)
     requester_username = serializers.CharField(
         source="requester.username",
         read_only=True,

@@ -15,6 +15,8 @@ from .models import DeliverySubmission
 from .services import create_delivery_submission
 
 logger = logging.getLogger(__name__)
+VIEW_ALL_ROLES = {"pcm_approver", "final_approver", "admin"}
+APPROVAL_ONLY_ROLES = {"pcm_approver", "final_approver"}
 
 
 class DeliverySubmissionListView(LoginRequiredMixin, ListView):
@@ -29,8 +31,11 @@ class DeliverySubmissionListView(LoginRequiredMixin, ListView):
         qs = (
             DeliverySubmission.objects.select_related("requester")
             .prefetch_related("attachments")
-            .all()
         )
+        if _user_can_view_all_submissions(self.request.user):
+            qs = qs.all()
+        else:
+            qs = qs.filter(requester=self.request.user)
         vendor = self.request.GET.get("vendor", "").strip()
         status_filter = self.request.GET.get("status", "").strip()
         if vendor:
@@ -43,6 +48,7 @@ class DeliverySubmissionListView(LoginRequiredMixin, ListView):
         ctx = super().get_context_data(**kwargs)
         ctx["vendor_filter"] = self.request.GET.get("vendor", "")
         ctx["status_filter"] = self.request.GET.get("status", "")
+        ctx["can_create_delivery_submission"] = not _is_approval_only_role(self.request.user)
         return ctx
 
 
@@ -55,6 +61,8 @@ class DeliverySubmissionCreateView(LoginRequiredMixin, object):
 @login_required
 def delivery_submission_create(request):
     """Handle GET (render form) and POST (create submission) for delivery submissions."""
+    if _is_approval_only_role(request.user):
+        return HttpResponseForbidden("PCM / Final approvers cannot create goods recieve records.")
     try:
         source_purchase_request = _get_linkable_purchase_request(request)
     except PermissionError:
@@ -81,7 +89,7 @@ def delivery_submission_create(request):
                     user=request.user,
                     files=files,
                 )
-                messages.success(request, f"Goods recieve record {submission.request_number} created successfully.")
+                messages.success(request, f"Goods recieve record {submission.workflow_number} created successfully.")
                 return redirect("deliveries:detail", pk=submission.pk)
             except Exception:
                 logger.exception("Failed to create delivery submission.")
@@ -113,21 +121,28 @@ class DeliverySubmissionDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "submission"
 
     def get_queryset(self):
-        return DeliverySubmission.objects.select_related(
+        qs = DeliverySubmission.objects.select_related(
             "requester", "purchase_request"
         ).prefetch_related("attachments")
+        if _user_can_view_all_submissions(self.request.user):
+            return qs
+        return qs.filter(requester=self.request.user)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         submission = self.object
         linked_purchase_request = submission.purchase_request
+        can_manage_submission = _can_manage_submission(self.request.user, submission)
         context["linked_purchase_request"] = linked_purchase_request
         context["can_delete"] = (
             submission.requester == self.request.user
             and submission.requester_can_delete
         )
+        context["can_manage_submission"] = can_manage_submission
         context["can_create_payment_release"] = bool(
-            linked_purchase_request and linked_purchase_request.is_ready_for_payment
+            can_manage_submission
+            and linked_purchase_request
+            and linked_purchase_request.is_ready_for_payment
         )
         if linked_purchase_request is not None:
             context["payment_release_create_url"] = (
@@ -145,6 +160,8 @@ def delivery_submission_upload(request, pk: int):
     Returns a rendered partial of the updated attachment list.
     """
     submission = get_object_or_404(DeliverySubmission, pk=pk)
+    if not _can_manage_submission(request.user, submission):
+        return HttpResponseForbidden("Only the requester or admin can upload goods recieve attachments.")
     files = request.FILES.getlist("files")
 
     errors: list[str] = []
@@ -193,7 +210,7 @@ def delivery_submission_delete(request, pk: int):
             "This goods recieve record can no longer be deleted because PCM / Final have already acted on the linked payment flow."
         )
 
-    request_number = submission.request_number
+    request_number = submission.workflow_number
     linked_purchase_request_id = submission.purchase_request_id
     submission.delete()
 
@@ -215,9 +232,32 @@ def _get_linkable_purchase_request(request):
         PurchaseRequest.objects.select_related("requester", "project", "expense_category"),
         pk=raw_purchase_request_id,
     )
-    if purchase_request.requester != request.user:
+    if purchase_request.requester != request.user and not _is_admin(request.user):
         raise PermissionError
     return purchase_request
+
+
+def _get_role(user) -> str:
+    try:
+        return user.profile.role
+    except AttributeError:
+        return "requester"
+
+
+def _is_admin(user) -> bool:
+    return _get_role(user) == "admin"
+
+
+def _is_approval_only_role(user) -> bool:
+    return _get_role(user) in APPROVAL_ONLY_ROLES
+
+
+def _user_can_view_all_submissions(user) -> bool:
+    return _get_role(user) in VIEW_ALL_ROLES
+
+
+def _can_manage_submission(user, submission: DeliverySubmission) -> bool:
+    return submission.requester == user or _is_admin(user)
 
 
 def _delivery_initial_from_purchase_request(purchase_request) -> dict:

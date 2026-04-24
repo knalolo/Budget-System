@@ -8,6 +8,8 @@ from django.core.exceptions import ValidationError
 
 from core.services.request_number_service import (
     generate_request_number,
+    to_internal_number,
+    to_workflow_number,
     _extract_max_sequence,
 )
 from core.services.file_service import save_attachment, validate_file
@@ -42,6 +44,15 @@ class TestRequestNumberGeneration:
     def test_prefix_is_uppercased(self):
         number = generate_request_number("pr", reference_date=date(2099, 2, 1))
         assert number.startswith("PR-")
+
+    def test_public_workflow_number_uses_req_prefix(self):
+        assert to_workflow_number("PR-20260423-0002") == "REQ-20260423-0002"
+        assert to_workflow_number("DO-20260423-0002") == "REQ-20260423-0002"
+        assert to_workflow_number("RP-20260423-0002") == "REQ-20260423-0002"
+
+    def test_public_workflow_number_can_be_mapped_for_internal_search(self):
+        assert to_internal_number("REQ-20260423-0002", "PR") == "PR-20260423-0002"
+        assert to_internal_number("REQ-20260423-0002", "rp") == "RP-20260423-0002"
 
 
 class TestExtractMaxSequence:

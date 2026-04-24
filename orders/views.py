@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import ValidationError
+from django.db.models import Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
@@ -14,6 +15,7 @@ from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
 from approvals.services import can_user_approve, get_approval_history
 from core.services.file_service import save_attachment, validate_file
+from core.services.request_number_service import to_internal_number
 
 from .forms import PurchaseRequestForm
 from .models import Project, PurchaseRequest
@@ -37,6 +39,8 @@ PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES = {
     "quotation": "Quotation",
     "new_order_list": "New Order List",
 }
+VIEW_ALL_ROLES = {"pcm_approver", "final_approver", "admin"}
+APPROVAL_ONLY_ROLES = {"pcm_approver", "final_approver"}
 
 
 # ---------------------------------------------------------------------------
@@ -62,6 +66,8 @@ class PurchaseRequestListView(LoginRequiredMixin, ListView):
             qs = PurchaseRequest.objects.filter(
                 status__in=PENDING_APPROVAL_STATUSES
             )
+        elif _user_can_view_all_purchase_requests(self.request.user):
+            qs = PurchaseRequest.objects.all()
         else:
             qs = PurchaseRequest.objects.filter(requester=self.request.user)
 
@@ -70,12 +76,12 @@ class PurchaseRequestListView(LoginRequiredMixin, ListView):
         if project_filter:
             qs = qs.filter(project_id=project_filter)
         if search:
+            internal_search = to_internal_number(search, "PR")
             qs = qs.filter(
-                vendor__icontains=search
-            ) | qs.filter(
-                description__icontains=search
-            ) | qs.filter(
-                request_number__icontains=search
+                Q(vendor__icontains=search)
+                | Q(description__icontains=search)
+                | Q(request_number__icontains=search)
+                | Q(request_number__icontains=internal_search)
             )
 
         return qs.select_related("requester", "project", "expense_category").order_by(
@@ -90,6 +96,10 @@ class PurchaseRequestListView(LoginRequiredMixin, ListView):
         context["search"] = self.request.GET.get("q", "")
         context["projects"] = Project.objects.filter(is_active=True)
         context["status_choices"] = PurchaseRequest._meta.get_field("status").choices
+        context["can_create_purchase_request"] = not _is_approval_only_role(self.request.user)
+        context["requests_tab_label"] = (
+            "All Requests" if _user_can_view_all_purchase_requests(self.request.user) else "My Requests"
+        )
         return context
 
 
@@ -104,6 +114,11 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
     model = PurchaseRequest
     form_class = PurchaseRequestForm
     template_name = "orders/form.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        if _is_approval_only_role(request.user):
+            return HttpResponse("PCM / Final approvers cannot create purchase requests.", status=403)
+        return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
         uploaded_files = self.request.FILES.getlist("attachment_files")
@@ -136,7 +151,7 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
                 instance = submit_purchase_request(instance)
                 messages.success(
                     self.request,
-                    f"Purchase request {instance.request_number} submitted for approval.",
+                    f"Purchase request {instance.workflow_number} submitted for approval.",
                 )
             except ValidationError as exc:
                 messages.warning(
@@ -144,7 +159,7 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
                     f"Saved as draft. Could not submit: {exc.message}",
                 )
         else:
-            messages.success(self.request, f"Purchase request {instance.request_number} created as draft.")
+            messages.success(self.request, f"Purchase request {instance.workflow_number} created as draft.")
 
         return redirect("orders:purchase-request-detail", pk=instance.pk)
 
@@ -172,15 +187,23 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
     template_name = "orders/detail.html"
     context_object_name = "purchase_request"
 
+    def get_queryset(self):
+        qs = PurchaseRequest.objects.select_related("requester", "project", "expense_category")
+        if _user_can_view_all_purchase_requests(self.request.user):
+            return qs
+        return qs.filter(requester=self.request.user)
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         pr = self.object
+        can_manage_request = _can_manage_purchase_request(self.request.user, pr)
         approval_history = get_approval_history(pr).select_related("action_by")
         can_approve, _ = can_user_approve(pr, self.request.user)
         latest_payment_release = pr.payment_releases.order_by("-created_at").first()
         has_standard_payment_release = pr.payment_releases.filter(payment_type="standard").exists()
         context["approval_history"] = approval_history
         context["can_approve"] = can_approve
+        context["can_manage_request"] = can_manage_request
         context["attachments"] = pr.attachments.select_related("uploaded_by")
         context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
         context["selected_attachment_type"] = "quotation"
@@ -216,6 +239,8 @@ class PurchaseRequestUpdateView(LoginRequiredMixin, UpdateView):
 
     def dispatch(self, request, *args, **kwargs):
         pr = get_object_or_404(PurchaseRequest, pk=kwargs["pk"])
+        if not _can_manage_purchase_request(request.user, pr):
+            return HttpResponse("You do not have permission to edit this purchase request.", status=403)
         if not pr.can_be_edited:
             messages.error(request, "Only draft purchase requests can be edited.")
             return redirect("orders:purchase-request-detail", pk=pr.pk)
@@ -231,7 +256,7 @@ class PurchaseRequestUpdateView(LoginRequiredMixin, UpdateView):
                 instance = submit_purchase_request(instance)
                 messages.success(
                     self.request,
-                    f"Purchase request {instance.request_number} submitted for approval.",
+                    f"Purchase request {instance.workflow_number} submitted for approval.",
                 )
             except ValidationError as exc:
                 messages.warning(
@@ -239,12 +264,12 @@ class PurchaseRequestUpdateView(LoginRequiredMixin, UpdateView):
                     f"Saved. Could not submit: {exc.message}",
                 )
         else:
-            messages.success(self.request, f"Purchase request {instance.request_number} saved.")
+            messages.success(self.request, f"Purchase request {instance.workflow_number} saved.")
         return redirect("orders:purchase-request-detail", pk=instance.pk)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["page_title"] = f"Edit {self.object.request_number}"
+        context["page_title"] = f"Edit {self.object.workflow_number}"
         context["is_create"] = False
         context["purchase_request"] = self.object
         context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
@@ -266,12 +291,14 @@ def purchase_request_submit(request, pk):
     pr = get_object_or_404(PurchaseRequest, pk=pk)
     if request.method != "POST":
         return redirect("orders:purchase-request-detail", pk=pk)
+    if not _can_manage_purchase_request(request.user, pr):
+        return HttpResponse("Only the requester or admin can submit this purchase request.", status=403)
 
     try:
         updated_pr = submit_purchase_request(pr)
         messages.success(
             request,
-            f"Purchase request {updated_pr.request_number} submitted for approval.",
+            f"Purchase request {updated_pr.workflow_number} submitted for approval.",
         )
     except ValidationError as exc:
         messages.error(request, str(exc.message))
@@ -301,7 +328,7 @@ def purchase_request_approve(request, pk):
         updated_pr = approve_purchase_request(pr, request.user, comment)
         messages.success(
             request,
-            f"Purchase request {updated_pr.request_number} approved.",
+            f"Purchase request {updated_pr.workflow_number} approved.",
         )
     except ValidationError as exc:
         messages.error(request, str(exc.message))
@@ -331,7 +358,7 @@ def purchase_request_reject(request, pk):
         updated_pr = reject_purchase_request(pr, request.user, comment)
         messages.success(
             request,
-            f"Purchase request {updated_pr.request_number} rejected.",
+            f"Purchase request {updated_pr.workflow_number} rejected.",
         )
     except ValidationError as exc:
         messages.error(request, str(exc.message))
@@ -347,12 +374,14 @@ def purchase_request_mark_po_sent(request, pk):
     pr = get_object_or_404(PurchaseRequest, pk=pk)
     if request.method != "POST":
         return redirect("orders:purchase-request-detail", pk=pk)
+    if not _can_manage_purchase_request(request.user, pr):
+        return HttpResponse("Only the requester or admin can update this purchase request.", status=403)
 
     try:
         updated_pr = mark_po_sent(pr)
         messages.success(
             request,
-            f"Purchase request {updated_pr.request_number} marked as PO sent.",
+            f"Purchase request {updated_pr.workflow_number} marked as PO sent.",
         )
     except ValidationError as exc:
         messages.error(request, str(exc.message))
@@ -368,13 +397,15 @@ def purchase_request_mark_ordered(request, pk):
     pr = get_object_or_404(PurchaseRequest, pk=pk)
     if request.method != "POST":
         return redirect("orders:purchase-request-detail", pk=pk)
+    if not _can_manage_purchase_request(request.user, pr):
+        return HttpResponse("Only the requester or admin can update this purchase request.", status=403)
 
     try:
         updated_pr = mark_ordered(pr)
         messages.success(
             request,
             (
-                f"Purchase request {updated_pr.request_number} marked as ordered. "
+                f"Purchase request {updated_pr.workflow_number} marked as ordered. "
                 "Continue by tracking delivery before payment."
             ),
         )
@@ -398,6 +429,8 @@ def purchase_request_upload(request, pk):
     pr = get_object_or_404(PurchaseRequest, pk=pk)
     if request.method != "POST":
         return HttpResponse(status=405)
+    if not _can_manage_purchase_request(request.user, pr):
+        return HttpResponse("Only the requester or admin can upload purchase request attachments.", status=403)
 
     uploaded_file = request.FILES.get("file")
     if not uploaded_file:
@@ -438,6 +471,25 @@ def _htmx_detail_redirect(request, pk: int) -> HttpResponse:
     response = HttpResponse(status=204)
     response["HX-Redirect"] = reverse_lazy("orders:purchase-request-detail", kwargs={"pk": pk})
     return response
+
+
+def _get_role(user) -> str:
+    try:
+        return user.profile.role
+    except AttributeError:
+        return "requester"
+
+
+def _is_approval_only_role(user) -> bool:
+    return _get_role(user) in APPROVAL_ONLY_ROLES
+
+
+def _user_can_view_all_purchase_requests(user) -> bool:
+    return _get_role(user) in VIEW_ALL_ROLES
+
+
+def _can_manage_purchase_request(user, purchase_request: PurchaseRequest) -> bool:
+    return purchase_request.requester == user or _get_role(user) == "admin"
 
 
 def _clean_purchase_request_attachment_type(raw_value: str) -> str:

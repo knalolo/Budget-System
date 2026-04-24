@@ -24,6 +24,7 @@
                 </select>
             </form>
         </div>
+        {% if can_create_payment_release %}
         <a
             href="{% url 'payments:create' %}"
             class="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
@@ -33,6 +34,7 @@
             </svg>
             New Payment Release
         </a>
+        {% endif %}
     </div>
 
     <!-- Table -->

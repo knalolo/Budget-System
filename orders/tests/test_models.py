@@ -75,6 +75,10 @@ class TestPurchaseRequestModel:
         assert pr.request_number
         assert pr.request_number.startswith("PR-")
 
+    def test_workflow_number_uses_public_req_prefix(self):
+        pr = PurchaseRequestFactory(request_number="PR-20260423-0002")
+        assert pr.workflow_number == "REQ-20260423-0002"
+
     def test_request_number_sequential(self):
         """Two PRs on the same day get consecutive sequence numbers."""
         pr1 = PurchaseRequestFactory()

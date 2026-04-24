@@ -147,6 +147,7 @@ class TestRetrievePurchaseRequest:
         resp = api_client.get(_detail(pr.pk))
         assert resp.status_code == 200
         assert "request_number" in resp.data
+        assert resp.data["request_number"] == pr.workflow_number
         assert "status" in resp.data
         assert "vendor" in resp.data
 

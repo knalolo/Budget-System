@@ -29,7 +29,7 @@ class PurchaseRequestLineItemInline(admin.TabularInline):
 @admin.register(PurchaseRequest)
 class PurchaseRequestAdmin(admin.ModelAdmin):
     list_display = [
-        "request_number",
+        "workflow_number_display",
         "requester",
         "vendor",
         "currency",
@@ -39,5 +39,10 @@ class PurchaseRequestAdmin(admin.ModelAdmin):
     ]
     list_filter = ["status", "currency", "project", "expense_category"]
     search_fields = ["request_number", "description", "vendor"]
-    readonly_fields = ["request_number", "created_at", "updated_at"]
+    readonly_fields = ["workflow_number_display", "created_at", "updated_at"]
+    exclude = ["request_number"]
     inlines = [PurchaseRequestLineItemInline]
+
+    @admin.display(description="Request No.")
+    def workflow_number_display(self, obj):
+        return obj.workflow_number

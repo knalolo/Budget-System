@@ -4,8 +4,10 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
+from deliveries.models import DeliverySubmissionLineItem
 from deliveries.tests.factories import DeliverySubmissionFactory
-from orders.tests.factories import PurchaseRequestFactory
+from orders.models import PurchaseRequestLineItem
+from orders.tests.factories import PurchaseRequestFactory, UserFactory
 from payments.models import PaymentRelease
 from payments.tests.factories import PaymentReleaseFactory
 
@@ -29,6 +31,22 @@ def _payment_release_payload(project, category, *, action="draft") -> dict:
 
 @pytest.mark.django_db
 class TestPaymentReleaseCreateView:
+    def test_pcm_approver_cannot_open_create_page(self, client, pcm_approver):
+        client.force_login(pcm_approver)
+
+        response = client.get(reverse("payments:create"))
+
+        assert response.status_code == 403
+
+    def test_requester_cannot_view_another_users_payment_detail(self, client, regular_user):
+        other_user = UserFactory()
+        payment = PaymentReleaseFactory(requester=other_user)
+        client.force_login(regular_user)
+
+        response = client.get(reverse("payments:detail", args=[payment.pk]))
+
+        assert response.status_code == 403
+
     def test_get_prefills_from_linked_purchase_request(
         self,
         client,
@@ -63,6 +81,88 @@ class TestPaymentReleaseCreateView:
         assert response.context["form"].initial["vendor"] == purchase_request.vendor
         assert response.context["form"].initial["po_number"] == "N/A"
         assert response.context["form"].initial["payment_quantity"] == 1
+
+    def test_get_prefills_standard_payment_from_delivered_line_item_value(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="ordered",
+            ordered_quantity=20,
+            total_price=995,
+            currency="SGD",
+            vendor="Coway",
+        )
+        line_item_1 = PurchaseRequestLineItem.objects.create(
+            purchase_request=purchase_request,
+            sequence=1,
+            product="AAA",
+            quantity=5,
+            unit_price="100.00",
+            total_price="500.00",
+            currency="SGD",
+        )
+        line_item_2 = PurchaseRequestLineItem.objects.create(
+            purchase_request=purchase_request,
+            sequence=2,
+            product="BBB",
+            quantity=15,
+            unit_price="33.00",
+            total_price="495.00",
+            currency="SGD",
+        )
+        submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=19,
+            total_price=962,
+            status="partially_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        DeliverySubmissionLineItem.objects.create(
+            delivery_submission=submission,
+            purchase_request_line_item=line_item_1,
+            sequence=1,
+            product="AAA",
+            ordered_quantity=5,
+            delivered_quantity=5,
+            unit_price="100.00",
+            total_price="500.00",
+            currency="SGD",
+            status="fully_delivered",
+        )
+        DeliverySubmissionLineItem.objects.create(
+            delivery_submission=submission,
+            purchase_request_line_item=line_item_2,
+            sequence=2,
+            product="BBB",
+            ordered_quantity=15,
+            delivered_quantity=14,
+            unit_price="33.00",
+            total_price="462.00",
+            currency="SGD",
+            status="partially_delivered",
+        )
+
+        response = client.get(
+            f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+        )
+
+        assert response.status_code == 200
+        assert response.context["form"].initial["payment_quantity"] == 19
+        assert str(response.context["form"].initial["total_price"]) == "962.00"
+        assert (
+            str(response.context["source_purchase_request_summary"]["max_standard_payment_total"])
+            == "962.00"
+        )
 
     def test_create_saves_uploaded_invoice(
         self,
@@ -471,4 +571,4 @@ class TestPaymentReleaseVisualCues:
         assert response.status_code == 200
         content = response.content.decode()
         assert "Goods recieved" in content
-        assert "This payment is backed by delivered goods." in content
+        assert "This payment is backed by cumulative delivered line-item value." in content

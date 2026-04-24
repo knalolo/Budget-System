@@ -8,7 +8,7 @@
         onclick="window.location='{% url 'orders:purchase-request-detail' pr.pk %}'"
     >
         <td class="whitespace-nowrap py-3 pl-4 pr-3 text-sm font-medium text-brand-600 sm:pl-6">
-            {{ pr.request_number }}
+            {{ pr.workflow_number }}
         </td>
         <td class="whitespace-nowrap px-3 py-3 text-sm text-gray-700">
             {{ pr.requester.get_full_name|default:pr.requester.username }}

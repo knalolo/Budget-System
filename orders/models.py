@@ -8,7 +8,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 
-from core.services.request_number_service import generate_request_number
+from core.services.request_number_service import generate_request_number, to_workflow_number
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,11 @@ class PurchaseRequest(models.Model):
         ordering = ["-created_at"]
 
     def __str__(self) -> str:
-        return f"{self.request_number} - {self.vendor}"
+        return f"{self.workflow_number} - {self.vendor}"
+
+    @property
+    def workflow_number(self) -> str:
+        return to_workflow_number(self.request_number)
 
     # ------------------------------------------------------------------
     # Save override – auto-generate request_number
@@ -270,8 +274,35 @@ class PurchaseRequest(models.Model):
         return max(self.delivered_quantity - requested_quantity, 0)
 
     @property
+    def delivered_total_value(self) -> Decimal:
+        from deliveries.models import DeliverySubmissionLineItem
+
+        line_item_total = DeliverySubmissionLineItem.objects.filter(
+            delivery_submission__purchase_request=self
+        ).aggregate(total=models.Sum("total_price"))["total"] or Decimal("0.00")
+        submission_total = self.delivery_submissions.filter(
+            line_items__isnull=True
+        ).aggregate(total=models.Sum("total_price"))["total"] or Decimal("0.00")
+        return line_item_total + submission_total
+
+    @property
+    def active_standard_payment_total(self) -> Decimal:
+        requested_total = self.payment_releases.filter(
+            payment_type="standard",
+            status__in=("pending_pcm", "pending_final", "approved"),
+        ).aggregate(total=models.Sum("total_price"))["total"]
+        return requested_total or Decimal("0.00")
+
+    @property
+    def available_standard_payment_total(self) -> Decimal:
+        return max(
+            self.delivered_total_value - self.active_standard_payment_total,
+            Decimal("0.00"),
+        )
+
+    @property
     def max_standard_payment_total(self) -> Decimal:
-        return self.unit_price * Decimal(self.available_standard_payment_quantity)
+        return min(self.available_standard_payment_total, self.remaining_payable_total)
 
     @property
     def active_payment_total(self) -> Decimal:
@@ -339,4 +370,4 @@ class PurchaseRequestLineItem(models.Model):
         ordering = ["sequence", "id"]
 
     def __str__(self) -> str:
-        return f"{self.purchase_request.request_number} - {self.product}"
+        return f"{self.purchase_request.workflow_number} - {self.product}"

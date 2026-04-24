@@ -4,7 +4,7 @@ We regret to inform you that your Purchase Request has been REJECTED.
 
 REQUEST DETAILS
 ---------------
-Request Number : {{ request_number }}
+Request No.    : {{ request_number }}
 Vendor         : {{ vendor }}
 Amount         : {{ currency }} {{ amount }}
 Description    : {{ description }}

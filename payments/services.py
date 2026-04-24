@@ -122,12 +122,8 @@ def _validate_delivery_and_payment_limits(payment_release) -> None:
             f"Only {available_quantity} delivered unit(s) are currently available for standard payment."
         )
 
-    unit_price = purchase_request.unit_price
-    max_total = min(
-        unit_price * Decimal(payment_release.payment_quantity),
-        remaining_payable_total,
-    )
+    max_total = purchase_request.max_standard_payment_total
     if payment_release.total_price > max_total:
         raise ValidationError(
-            f"Standard payment cannot exceed {purchase_request.currency} {max_total:.2f} for {payment_release.payment_quantity} delivered unit(s)."
+            f"Standard payment cannot exceed {purchase_request.currency} {max_total:.2f} based on the delivered goods currently available."
         )

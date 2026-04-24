@@ -31,6 +31,7 @@
             {% endif %}
         </form>
 
+        {% if can_create_delivery_submission %}
         <a
             href="{% url 'deliveries:create' %}"
             class="inline-flex items-center gap-2 bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-brand-700 transition-colors"
@@ -40,6 +41,7 @@
             </svg>
             New Goods recieve Record
         </a>
+        {% endif %}
     </div>
 
     <!-- Table -->

@@ -27,6 +27,13 @@ def _purchase_request_payload(project, category, *, action="draft") -> dict:
 
 @pytest.mark.django_db
 class TestPurchaseRequestCreateView:
+    def test_pcm_approver_cannot_open_create_page(self, client, pcm_approver):
+        client.force_login(pcm_approver)
+
+        response = client.get(reverse("orders:purchase-request-create"))
+
+        assert response.status_code == 403
+
     def test_create_saves_uploaded_quotation(
         self,
         client,
@@ -302,3 +309,65 @@ class TestPurchaseRequestOrderWorkflowView:
 
         purchase_request.refresh_from_db()
         assert purchase_request.status == "approved"
+
+
+@pytest.mark.django_db
+class TestPurchaseRequestVisibility:
+    def test_pcm_approver_list_shows_other_users_requests(
+        self,
+        client,
+        pcm_approver,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Bench power supply",
+            vendor="Acme Components",
+            currency="SGD",
+            ordered_quantity=2,
+            total_price="450.00",
+            justification="Needed for prototype validation.",
+            po_required=False,
+            target_payment="2026-01-15",
+            status="pending_pcm",
+        )
+        client.force_login(pcm_approver)
+
+        response = client.get(reverse("orders:purchase-request-list"))
+
+        assert response.status_code == 200
+        assert len(response.context["purchase_requests"]) == 1
+
+    def test_pcm_approver_can_view_other_users_request_detail(
+        self,
+        client,
+        pcm_approver,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Bench power supply",
+            vendor="Acme Components",
+            currency="SGD",
+            ordered_quantity=2,
+            total_price="450.00",
+            justification="Needed for prototype validation.",
+            po_required=False,
+            target_payment="2026-01-15",
+            status="pending_pcm",
+        )
+        client.force_login(pcm_approver)
+
+        response = client.get(
+            reverse("orders:purchase-request-detail", args=[purchase_request.pk])
+        )
+
+        assert response.status_code == 200

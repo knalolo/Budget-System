@@ -134,7 +134,7 @@ class TestRetrievePaymentRelease:
         pr = PaymentReleaseFactory(requester=regular_user)
         resp = api_client.get(_detail(pr.pk))
         assert "request_number" in resp.data
-        assert resp.data["request_number"].startswith("RP-")
+        assert resp.data["request_number"] == pr.workflow_number
 
 
 # ---------------------------------------------------------------------------

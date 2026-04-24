@@ -73,6 +73,7 @@ class ExpenseCategorySerializer(serializers.ModelSerializer):
 class PurchaseRequestListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views."""
 
+    request_number = serializers.CharField(source="workflow_number", read_only=True)
     requester = UserBriefSerializer(read_only=True)
     expense_category = ExpenseCategoryBriefSerializer(read_only=True)
     project = ProjectBriefSerializer(read_only=True)
@@ -98,6 +99,7 @@ class PurchaseRequestListSerializer(serializers.ModelSerializer):
 class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
     """Full serializer for detail, create, and update views."""
 
+    request_number = serializers.CharField(source="workflow_number", read_only=True)
     requester = UserBriefSerializer(read_only=True)
     expense_category = ExpenseCategoryBriefSerializer(read_only=True)
     project = ProjectBriefSerializer(read_only=True)

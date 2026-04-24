@@ -4,7 +4,7 @@ A DO/SO Submission has been completed and recorded in the procurement system.
 
 SUBMISSION DETAILS
 ------------------
-Submission Number : {{ request_number }}
+Request No.       : {{ request_number }}
 Vendor            : {{ vendor }}
 Amount            : {{ currency }} {{ amount }}
 Description       : {{ description }}

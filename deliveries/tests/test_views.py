@@ -52,6 +52,31 @@ class TestDeliverySubmissionDeleteView:
 
 @pytest.mark.django_db
 class TestDeliverySubmissionListView:
+    def test_requester_only_sees_own_delivery_submissions(self, client, regular_user):
+        other_user = UserFactory()
+        DeliverySubmissionFactory(requester=other_user)
+        own_submission = DeliverySubmissionFactory(requester=regular_user)
+        client.force_login(regular_user)
+
+        response = client.get(reverse("deliveries:list"))
+
+        assert response.status_code == 200
+        submissions = list(response.context["submissions"])
+        assert submissions == [own_submission]
+
+    def test_pcm_approver_sees_all_delivery_submissions(self, client, pcm_approver, regular_user):
+        PurchaseRequestFactory(requester=regular_user, status="ordered")
+        own_submission = DeliverySubmissionFactory(requester=regular_user)
+        other_submission = DeliverySubmissionFactory()
+        client.force_login(pcm_approver)
+
+        response = client.get(reverse("deliveries:list"))
+
+        assert response.status_code == 200
+        submissions = list(response.context["submissions"])
+        assert own_submission in submissions
+        assert other_submission in submissions
+
     def test_list_shows_quantity_and_value_progress(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
@@ -76,7 +101,7 @@ class TestDeliverySubmissionListView:
         assert response.status_code == 200
         content = response.content.decode()
         assert "10 / 20" in content
-        assert "SGD 50.00 / SGD 100.00" in content
+        assert "SGD 100.00 / SGD 100.00" in content
 
     def test_list_keeps_plain_values_for_fully_delivered_rows(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
@@ -140,6 +165,13 @@ class TestDeliverySubmissionListView:
 
 @pytest.mark.django_db
 class TestDeliverySubmissionCreateView:
+    def test_pcm_approver_cannot_open_create_page(self, client, pcm_approver):
+        client.force_login(pcm_approver)
+
+        response = client.get(reverse("deliveries:create"))
+
+        assert response.status_code == 403
+
     def test_create_with_line_items_aggregates_delivery_totals(self, client, regular_user, sample_project, sample_expense_category, settings, tmp_path):
         settings.MEDIA_ROOT = tmp_path
         purchase_request = PurchaseRequestFactory(

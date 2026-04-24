@@ -7,6 +7,7 @@
 <div
     class="max-w-5xl mx-auto"
     x-data="{
+        linkedPurchaseRequest: {% if source_purchase_request %}true{% else %}false{% endif %},
         initialLineItemsRaw: '{{ form.line_items_json.value|default:''|escapejs }}',
         lineItems: [],
         blankLineItem(currency='SGD') {
@@ -17,6 +18,7 @@
                 delivered_quantity: 1,
                 unit_price: '',
                 total_price: '',
+                display_total_price: '',
                 currency: currency,
                 status: 'fully_delivered',
             };
@@ -29,19 +31,21 @@
                 delivered_quantity: parseInt(item.delivered_quantity || 1, 10) > 0 ? parseInt(item.delivered_quantity || 1, 10) : 1,
                 unit_price: item.unit_price === null || item.unit_price === undefined ? '' : String(item.unit_price),
                 total_price: item.total_price === null || item.total_price === undefined ? '' : String(item.total_price),
+                display_total_price: item.display_total_price === null || item.display_total_price === undefined
+                    ? (item.total_price === null || item.total_price === undefined ? '' : String(item.total_price))
+                    : String(item.display_total_price),
                 currency: item.currency || 'SGD',
                 status: item.status || 'fully_delivered',
                 sequence: index + 1,
             };
         },
-        recalculateItem(item) {
+        computeSubmittedTotal(item) {
             const delivered = parseFloat(item.delivered_quantity);
             const unitPrice = parseFloat(item.unit_price);
             if (isNaN(delivered) || isNaN(unitPrice) || delivered <= 0 || unitPrice <= 0) {
-                item.total_price = '';
-                return;
+                return '';
             }
-            item.total_price = (delivered * unitPrice).toFixed(2);
+            return (delivered * unitPrice).toFixed(2);
         },
         addRow() {
             const currency = this.lineItems.length ? this.lineItems[0].currency : 'SGD';
@@ -57,7 +61,14 @@
             this.syncLineItems();
         },
         recalculateAndSync(item) {
-            this.recalculateItem(item);
+            this.syncLineItems();
+        },
+        handleStatusChange(item) {
+            if (item.status === 'fully_delivered') {
+                item.delivered_quantity = item.ordered_quantity;
+            } else if (item.delivered_quantity >= item.ordered_quantity) {
+                item.delivered_quantity = item.ordered_quantity > 1 ? item.ordered_quantity - 1 : 1;
+            }
             this.syncLineItems();
         },
         syncLineItems() {
@@ -66,10 +77,12 @@
                 if (item.delivered_quantity > item.ordered_quantity) {
                     item.delivered_quantity = item.ordered_quantity;
                 }
-                if (item.status === 'fully_delivered') {
-                    item.delivered_quantity = item.ordered_quantity;
+                if (!item.display_total_price) {
+                    item.display_total_price = item.total_price || this.computeSubmittedTotal(item);
                 }
-                this.recalculateItem(item);
+                item.total_price = this.linkedPurchaseRequest
+                    ? item.display_total_price
+                    : this.computeSubmittedTotal(item);
             });
             this.$refs.lineItemsJson.value = JSON.stringify(this.lineItems.map((item, index) => ({
                 sequence: index + 1,
@@ -78,7 +91,7 @@
                 ordered_quantity: item.ordered_quantity,
                 delivered_quantity: item.delivered_quantity,
                 unit_price: item.unit_price,
-                total_price: item.total_price,
+                total_price: this.computeSubmittedTotal(item),
                 currency: item.currency,
                 status: item.status,
             })));
@@ -88,7 +101,7 @@
                 return sum + (isNaN(value) ? 0 : value);
             }, 0);
             this.$refs.hiddenTotalPrice.value = this.lineItems.reduce((sum, item) => {
-                const value = parseFloat(item.total_price);
+                const value = parseFloat(this.computeSubmittedTotal(item));
                 return sum + (isNaN(value) ? 0 : value);
             }, 0).toFixed(2);
             this.$refs.hiddenStatus.value = this.lineItems.every(item => item.status === 'fully_delivered')
@@ -124,16 +137,17 @@
 
         {% if source_purchase_request %}
         <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-900">
-            <p class="font-semibold">Linked Purchase Request: {{ source_purchase_request.request_number }}</p>
+        <p class="font-semibold">Request No.: {{ source_purchase_request.workflow_number }}</p>
             <p class="mt-1">
                 Ordered quantity: {{ source_purchase_request.ordered_quantity }}.
                 Delivered so far: {{ source_purchase_request.delivered_quantity }}.
                 Outstanding: {{ source_purchase_request.remaining_quantity }}.
             </p>
             <p class="mt-2">
-                Product details are synced from the purchase request. Upload the DO / SO document, then fill in only
-                <span class="font-semibold">Actual Received</span> and
-                <span class="font-semibold">Delivery Outcome</span>.
+                Product details are synced from the purchase request. Upload the DO / SO document, then choose
+                <span class="font-semibold">Delivery Outcome</span> first.
+                <span class="font-semibold">Fully Delivered</span> will auto-fill the full ordered quantity.
+                <span class="font-semibold">Partially Delivered</span> lets you enter the actual received quantity yourself.
             </p>
         </div>
         {% endif %}
@@ -213,7 +227,7 @@
                 <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">
                     <h3 class="text-sm font-semibold text-gray-900">Goods recieve Line Items</h3>
                     {% if source_purchase_request %}
-                    <span class="text-sm text-gray-500">Synced from {{ source_purchase_request.request_number }}</span>
+                <span class="text-sm text-gray-500">Synced from {{ source_purchase_request.workflow_number }}</span>
                     {% else %}
                     <button
                         type="button"
@@ -236,8 +250,8 @@
                                 <th class="px-4 py-3">Unit Price</th>
                                 <th class="px-4 py-3">Total Price</th>
                                 <th class="px-4 py-3">Currency</th>
-                                <th class="px-4 py-3 text-red-600">Actual Received *</th>
                                 <th class="px-4 py-3 text-red-600">Delivery Outcome *</th>
+                                <th class="px-4 py-3 text-red-600">Actual Received *</th>
                                 {% if not source_purchase_request %}
                                 <th class="px-4 py-3 w-20">Action</th>
                                 {% endif %}
@@ -279,7 +293,7 @@
                                 <td class="px-4 py-3 min-w-[8rem]">
                                     <input
                                         type="number"
-                                        x-model="item.total_price"
+                                        :value="item.display_total_price"
                                         readonly
                                         class="block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-sm text-gray-700 px-3 py-2 border"
                                     />
@@ -299,26 +313,33 @@
                                     </select>
                                     {% endif %}
                                 </td>
-                                <td class="px-4 py-3 min-w-[8rem]">
-                                    <input
-                                        type="number"
-                                        step="1"
-                                        min="1"
-                                        :max="item.ordered_quantity"
-                                        x-model="item.delivered_quantity"
-                                        @input="recalculateAndSync(item)"
-                                        class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
-                                    />
-                                </td>
                                 <td class="px-4 py-3 min-w-[11rem]">
                                     <select
                                         x-model="item.status"
-                                        @change="syncLineItems()"
+                                        @change="handleStatusChange(item)"
                                         class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
                                     >
                                         <option value="partially_delivered">Partially Delivered</option>
                                         <option value="fully_delivered">Fully Delivered</option>
                                     </select>
+                                </td>
+                                <td class="px-4 py-3 min-w-[8rem]">
+                                    <template x-if="item.status === 'fully_delivered'">
+                                        <div class="block w-full rounded-md border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 cursor-not-allowed">
+                                            <span x-text="item.delivered_quantity"></span>
+                                        </div>
+                                    </template>
+                                    <template x-if="item.status !== 'fully_delivered'">
+                                        <input
+                                            type="number"
+                                            step="1"
+                                            min="1"
+                                            :max="item.ordered_quantity"
+                                            x-model="item.delivered_quantity"
+                                            @input="recalculateAndSync(item)"
+                                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                                        />
+                                    </template>
                                 </td>
                                 {% if not source_purchase_request %}
                                 <td class="px-4 py-3">

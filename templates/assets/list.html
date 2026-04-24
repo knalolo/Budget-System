@@ -45,11 +45,11 @@
                         <td class="px-3 py-3 text-sm text-gray-700">
                             {% if reg.payment_release %}
                                 <a href="{% url 'payments:detail' reg.payment_release.pk %}" class="text-brand-600 hover:underline">
-                                    {{ reg.payment_release.request_number }}
+                                    {{ reg.payment_release.workflow_number }}
                                 </a>
                                 {% if reg.linked_purchase_request %}
                                 <div class="mt-1 text-xs text-gray-400">
-                                    {{ reg.linked_purchase_request.request_number }}
+                                    {{ reg.linked_purchase_request.workflow_number }}
                                 </div>
                                 {% endif %}
                             {% else %}

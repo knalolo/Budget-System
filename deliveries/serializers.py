@@ -31,6 +31,7 @@ class _AttachmentSerializer(serializers.ModelSerializer):
 class DeliverySubmissionListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for list views."""
 
+    request_number = serializers.CharField(source="workflow_number", read_only=True)
     requester = _RequesterSerializer(read_only=True)
 
     class Meta:
@@ -41,6 +42,7 @@ class DeliverySubmissionListSerializer(serializers.ModelSerializer):
             "requester",
             "vendor",
             "currency",
+            "delivered_quantity",
             "total_price",
             "status",
             "created_at",
@@ -50,6 +52,7 @@ class DeliverySubmissionListSerializer(serializers.ModelSerializer):
 class DeliverySubmissionDetailSerializer(serializers.ModelSerializer):
     """Full serializer including attachments."""
 
+    request_number = serializers.CharField(source="workflow_number", read_only=True)
     requester = _RequesterSerializer(read_only=True)
     attachments = _AttachmentSerializer(many=True, read_only=True)
 
@@ -62,8 +65,10 @@ class DeliverySubmissionDetailSerializer(serializers.ModelSerializer):
             "requester",
             "vendor",
             "currency",
+            "delivered_quantity",
             "total_price",
             "status",
+            "notes",
             "attachments",
             "created_at",
             "updated_at",
@@ -79,7 +84,10 @@ class DeliverySubmissionCreateSerializer(serializers.ModelSerializer):
             "purchase_request",
             "vendor",
             "currency",
+            "delivered_quantity",
             "total_price",
+            "status",
+            "notes",
         ]
 
     def validate_total_price(self, value):

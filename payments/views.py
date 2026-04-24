@@ -29,6 +29,8 @@ PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES = {
     "proforma_invoice": "Proforma Invoice",
 }
 LINKED_PURCHASE_REQUEST_PARAM = "purchase_request"
+VIEW_ALL_ROLES = {"pcm_approver", "final_approver", "admin"}
+APPROVAL_ONLY_ROLES = {"pcm_approver", "final_approver"}
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +50,7 @@ class PaymentReleaseListView(View):
 
         # Non-approvers see only their own records
         role = _get_role(request.user)
-        if role not in ("pcm_approver", "final_approver", "admin"):
+        if role not in VIEW_ALL_ROLES:
             qs = qs.filter(requester=request.user)
 
         status_filter = request.GET.get("status", "").strip()
@@ -59,6 +61,7 @@ class PaymentReleaseListView(View):
             "payment_releases": qs,
             "status_filter": status_filter,
             "status_choices": _status_choices(),
+            "can_create_payment_release": not _is_approval_only_role(request.user),
         }
         return render(request, self.template_name, context)
 
@@ -74,6 +77,8 @@ class PaymentReleaseCreateView(View):
     template_name = "payments/form.html"
 
     def get(self, request: HttpRequest) -> HttpResponse:
+        if _is_approval_only_role(request.user):
+            return HttpResponseForbidden("PCM / Final approvers cannot create payment releases.")
         try:
             source_purchase_request = _get_linkable_purchase_request(request)
         except PermissionError:
@@ -94,6 +99,8 @@ class PaymentReleaseCreateView(View):
         )
 
     def post(self, request: HttpRequest) -> HttpResponse:
+        if _is_approval_only_role(request.user):
+            return HttpResponseForbidden("PCM / Final approvers cannot create payment releases.")
         try:
             source_purchase_request = _get_linkable_purchase_request(request)
         except PermissionError:
@@ -135,7 +142,7 @@ class PaymentReleaseCreateView(View):
                     submit_payment_release(payment)
                     messages.success(
                         request,
-                        f"Payment release {payment.request_number} submitted for approval.",
+                        f"Payment release {payment.workflow_number} submitted for approval.",
                     )
                 except ValidationError as exc:
                     messages.error(request, _validation_error_message(exc))
@@ -143,7 +150,7 @@ class PaymentReleaseCreateView(View):
             else:
                 messages.success(
                     request,
-                    f"Payment release {payment.request_number} created.",
+                    f"Payment release {payment.workflow_number} created.",
                 )
             return redirect("payments:detail", pk=payment.pk)
         return _render_payment_create_form(
@@ -178,10 +185,14 @@ class PaymentReleaseDetailView(View):
             ),
             pk=pk,
         )
-        _check_can_view(request.user, payment)
+        try:
+            _check_can_view(request.user, payment)
+        except PermissionError:
+            return HttpResponseForbidden("You do not have permission to view this payment release.")
         context = {
             "payment": payment,
             "can_edit": payment.can_be_edited and payment.requester == request.user,
+            "can_manage_payment": _can_manage_payment(request.user, payment),
             "can_approve": _can_approve(request.user, payment),
             "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
             "selected_attachment_type": "invoice",
@@ -202,7 +213,7 @@ class PaymentReleaseUpdateView(View):
 
     def _get_payment(self, request: HttpRequest, pk: int) -> PaymentRelease:
         payment = get_object_or_404(PaymentRelease, pk=pk)
-        if payment.requester != request.user and not _is_admin(request.user):
+        if not _can_manage_payment(request.user, payment):
             raise PermissionError
         if not payment.can_be_edited:
             raise ValidationError("Only draft payment releases can be edited.")
@@ -227,6 +238,9 @@ class PaymentReleaseUpdateView(View):
                 "is_create": False,
                 "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
                 "selected_attachment_type": "invoice",
+                "source_purchase_request": payment.purchase_request,
+                "source_purchase_request_summary": _purchase_request_summary(payment.purchase_request),
+                "initial_po_mode": _payment_release_po_mode(payment.purchase_request, form),
             },
         )
 
@@ -253,6 +267,9 @@ class PaymentReleaseUpdateView(View):
                 "is_create": False,
                 "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
                 "selected_attachment_type": "invoice",
+                "source_purchase_request": payment.purchase_request,
+                "source_purchase_request_summary": _purchase_request_summary(payment.purchase_request),
+                "initial_po_mode": _payment_release_po_mode(payment.purchase_request, form),
             },
         )
 
@@ -268,12 +285,12 @@ def submit_view(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseForbidden()
 
     payment = get_object_or_404(PaymentRelease, pk=pk)
-    if payment.requester != request.user:
-        return HttpResponseForbidden("Only the requester can submit this record.")
+    if not _can_manage_payment(request.user, payment):
+        return HttpResponseForbidden("Only the requester or admin can submit this record.")
 
     try:
         submit_payment_release(payment)
-        messages.success(request, f"{payment.request_number} submitted for approval.")
+        messages.success(request, f"{payment.workflow_number} submitted for approval.")
     except ValidationError as exc:
         messages.error(request, str(exc.message))
 
@@ -296,7 +313,7 @@ def approve_view(request: HttpRequest, pk: int) -> HttpResponse:
     comment = request.POST.get("comment", "")
     try:
         approve_payment_release(payment, request.user, comment)
-        messages.success(request, f"{payment.request_number} approved.")
+        messages.success(request, f"{payment.workflow_number} approved.")
     except ValidationError as exc:
         messages.error(request, str(exc.message))
 
@@ -319,7 +336,7 @@ def reject_view(request: HttpRequest, pk: int) -> HttpResponse:
     comment = request.POST.get("comment", "")
     try:
         reject_payment_release(payment, request.user, comment)
-        messages.success(request, f"{payment.request_number} rejected.")
+        messages.success(request, f"{payment.workflow_number} rejected.")
     except ValidationError as exc:
         messages.error(request, str(exc.message))
 
@@ -336,6 +353,8 @@ def upload_view(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseForbidden()
 
     payment = get_object_or_404(PaymentRelease, pk=pk)
+    if not _can_manage_payment(request.user, payment):
+        return HttpResponseForbidden("Only the requester or admin can upload payment attachments.")
     uploaded_file = request.FILES.get("file")
     if not uploaded_file:
         messages.error(request, "No file provided.")
@@ -387,7 +406,7 @@ def list_table_partial(request: HttpRequest) -> HttpResponse:
     ).order_by("-created_at")
 
     role = _get_role(request.user)
-    if role not in ("pcm_approver", "final_approver", "admin"):
+    if role not in VIEW_ALL_ROLES:
         qs = qs.filter(requester=request.user)
 
     status_filter = request.GET.get("status", "").strip()
@@ -397,7 +416,10 @@ def list_table_partial(request: HttpRequest) -> HttpResponse:
     return render(
         request,
         "payments/_list_table.html",
-        {"payment_releases": qs},
+        {
+            "payment_releases": qs,
+            "can_create_payment_release": not _is_approval_only_role(request.user),
+        },
     )
 
 
@@ -416,10 +438,14 @@ def _is_admin(user) -> bool:
     return _get_role(user) == "admin"
 
 
+def _is_approval_only_role(user) -> bool:
+    return _get_role(user) in APPROVAL_ONLY_ROLES
+
+
 def _check_can_view(user, payment: PaymentRelease) -> None:
     """Raise PermissionError if *user* cannot view *payment*."""
     role = _get_role(user)
-    if role not in ("pcm_approver", "final_approver", "admin"):
+    if role not in VIEW_ALL_ROLES:
         if payment.requester != user:
             raise PermissionError
 
@@ -432,6 +458,10 @@ def _can_approve(user, payment: PaymentRelease) -> bool:
     if payment.status == "pending_final":
         return role in ("final_approver", "admin") and payment.requester != user
     return False
+
+
+def _can_manage_payment(user, payment: PaymentRelease) -> bool:
+    return payment.requester == user or _is_admin(user)
 
 
 def _status_choices() -> list[tuple[str, str]]:
@@ -538,11 +568,14 @@ def _purchase_request_summary(purchase_request) -> dict | None:
     return {
         "ordered_quantity": purchase_request.ordered_quantity,
         "delivered_quantity": purchase_request.delivered_quantity,
+        "delivered_total_value": purchase_request.delivered_total_value,
         "remaining_quantity": purchase_request.remaining_quantity,
         "delivery_stage_status": purchase_request.delivery_stage_status,
         "delivery_stage_display": purchase_request.delivery_stage_display,
         "available_standard_payment_quantity": purchase_request.available_standard_payment_quantity,
+        "available_standard_payment_total": purchase_request.available_standard_payment_total,
         "max_standard_payment_total": purchase_request.max_standard_payment_total,
+        "remaining_payable_total": purchase_request.remaining_payable_total,
         "is_ready_for_payment": purchase_request.is_ready_for_payment,
     }
 
