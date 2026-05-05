@@ -12,7 +12,7 @@ from django.views.generic import DetailView, ListView
 
 from .forms import DeliverySubmissionForm
 from .models import DeliverySubmission
-from .services import create_delivery_submission
+from .services import create_delivery_submission, update_delivery_submission
 
 logger = logging.getLogger(__name__)
 VIEW_ALL_ROLES = {"pcm_approver", "final_approver", "admin"}
@@ -68,6 +68,17 @@ def delivery_submission_create(request):
     except PermissionError:
         return HttpResponseForbidden("You do not have permission to use this purchase request.")
 
+    existing_open_submission = _get_editable_delivery_submission(request.user, source_purchase_request)
+    if existing_open_submission is not None:
+        messages.info(
+            request,
+            f"Continue updating {existing_open_submission.workflow_number} until all goods are received.",
+        )
+        if request.method == "GET":
+            return redirect("deliveries:update", pk=existing_open_submission.pk)
+        if request.method == "POST":
+            return redirect("deliveries:update", pk=existing_open_submission.pk)
+
     if request.method == "POST":
         form = DeliverySubmissionForm(
             request.POST,
@@ -109,6 +120,84 @@ def delivery_submission_create(request):
         {
             "form": form,
             "source_purchase_request": source_purchase_request,
+            "is_edit": False,
+        },
+    )
+
+
+@login_required
+def delivery_submission_update(request, pk: int):
+    """Continue a partially delivered goods receive record until goods are complete."""
+    submission = get_object_or_404(
+        DeliverySubmission.objects.select_related("purchase_request", "requester")
+        .prefetch_related("attachments", "line_items"),
+        pk=pk,
+    )
+
+    if not _can_manage_submission(request.user, submission):
+        return HttpResponseForbidden("Only the requester or admin can edit this goods recieve record.")
+
+    if not submission.can_continue_receiving:
+        messages.info(request, "This goods recieve record is already complete and no longer needs updates.")
+        return redirect("deliveries:detail", pk=submission.pk)
+
+    source_purchase_request = submission.purchase_request
+    existing_attachment_count = submission.attachments.count()
+
+    if request.method == "POST":
+        form = DeliverySubmissionForm(
+            request.POST,
+            instance=submission,
+            source_purchase_request=source_purchase_request,
+        )
+        files = request.FILES.getlist("files")
+
+        if existing_attachment_count == 0 and not files:
+            form.add_error(None, "At least one DO/SO document must be attached.")
+
+        if form.is_valid() and (existing_attachment_count > 0 or files):
+            try:
+                updated_submission = update_delivery_submission(
+                    submission=submission,
+                    data={
+                        **form.cleaned_data,
+                        "line_items": form.parsed_line_items,
+                        "purchase_request": source_purchase_request,
+                    },
+                    user=request.user,
+                    files=files,
+                )
+                if updated_submission.is_fully_delivered:
+                    messages.success(
+                        request,
+                        f"Goods recieve record {updated_submission.workflow_number} is now fully delivered.",
+                    )
+                else:
+                    messages.success(
+                        request,
+                        f"Goods recieve record {updated_submission.workflow_number} updated. Continue until all goods arrive.",
+                    )
+                return redirect("deliveries:detail", pk=updated_submission.pk)
+            except Exception:
+                logger.exception("Failed to update delivery submission.")
+                messages.error(
+                    request,
+                    "An unexpected error occurred. Please try again.",
+                )
+    else:
+        form = DeliverySubmissionForm(
+            instance=submission,
+            source_purchase_request=source_purchase_request,
+        )
+
+    return render(
+        request,
+        "deliveries/form.html",
+        {
+            "form": form,
+            "source_purchase_request": source_purchase_request,
+            "submission": submission,
+            "is_edit": True,
         },
     )
 
@@ -144,6 +233,14 @@ class DeliverySubmissionDetailView(LoginRequiredMixin, DetailView):
             and linked_purchase_request
             and linked_purchase_request.is_ready_for_payment
         )
+        context["can_continue_submission"] = bool(
+            can_manage_submission and submission.can_continue_receiving
+        )
+        if context["can_continue_submission"]:
+            context["delivery_submission_update_url"] = reverse(
+                "deliveries:update",
+                kwargs={"pk": submission.pk},
+            )
         if linked_purchase_request is not None:
             context["payment_release_create_url"] = (
                 f"{reverse('payments:create')}?purchase_request={linked_purchase_request.pk}"
@@ -258,6 +355,16 @@ def _user_can_view_all_submissions(user) -> bool:
 
 def _can_manage_submission(user, submission: DeliverySubmission) -> bool:
     return submission.requester == user or _is_admin(user)
+
+
+def _get_editable_delivery_submission(user, purchase_request):
+    if purchase_request is None:
+        return None
+
+    queryset = purchase_request.delivery_submissions.filter(status="partially_delivered")
+    if not _is_admin(user):
+        queryset = queryset.filter(requester=user)
+    return queryset.order_by("-created_at").first()
 
 
 def _delivery_initial_from_purchase_request(purchase_request) -> dict:

@@ -561,7 +561,7 @@ def _payment_release_initial_from_purchase_request(
 
 
 def _purchase_request_summary(purchase_request) -> dict | None:
-    """Return delivery and payment guidance for a linked purchase request."""
+    """Return unified workflow guidance for a linked purchase request."""
     if purchase_request is None:
         return None
 
@@ -570,13 +570,17 @@ def _purchase_request_summary(purchase_request) -> dict | None:
         "delivered_quantity": purchase_request.delivered_quantity,
         "delivered_total_value": purchase_request.delivered_total_value,
         "remaining_quantity": purchase_request.remaining_quantity,
-        "delivery_stage_status": purchase_request.delivery_stage_status,
-        "delivery_stage_display": purchase_request.delivery_stage_display,
+        "goods_stage": purchase_request.goods_stage,
+        "goods_stage_display": purchase_request.goods_stage_display,
+        "payment_stage": purchase_request.payment_stage,
+        "payment_stage_display": purchase_request.payment_stage_display,
+        "workflow_stage": purchase_request.workflow_stage,
+        "workflow_stage_display": purchase_request.workflow_stage_display,
+        "workflow_completed": purchase_request.workflow_completed,
         "available_standard_payment_quantity": purchase_request.available_standard_payment_quantity,
         "available_standard_payment_total": purchase_request.available_standard_payment_total,
         "max_standard_payment_total": purchase_request.max_standard_payment_total,
         "remaining_payable_total": purchase_request.remaining_payable_total,
-        "is_ready_for_payment": purchase_request.is_ready_for_payment,
     }
 
 

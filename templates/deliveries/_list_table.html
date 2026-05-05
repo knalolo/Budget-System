@@ -42,6 +42,14 @@
                             href="{% url 'deliveries:detail' submission.pk %}"
                             class="text-brand-600 hover:text-brand-800 font-medium transition-colors"
                         >View</a>
+                        {% if submission.can_continue_receiving %}
+                            {% if submission.requester == request.user or request.user.profile.role == "admin" %}
+                            <a
+                                href="{% url 'deliveries:update' submission.pk %}"
+                                class="text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                            >Continue</a>
+                            {% endif %}
+                        {% endif %}
                         {% if submission.requester == request.user and submission.requester_can_delete %}
                         <form method="post" action="{% url 'deliveries:delete' submission.pk %}" onsubmit="return window.confirm('Delete this Goods recieve record? This cannot be undone.');">
                             {% csrf_token %}

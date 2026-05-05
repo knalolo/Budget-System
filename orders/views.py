@@ -17,12 +17,14 @@ from approvals.services import can_user_approve, get_approval_history
 from core.services.file_service import save_attachment, validate_file
 from core.services.request_number_service import to_internal_number
 
+from .export_service import (
+    export_purchase_request_dataset,
+    export_purchase_request_sap_reconciliation,
+)
 from .forms import PurchaseRequestForm
 from .models import Project, PurchaseRequest
 from .services import (
     approve_purchase_request,
-    mark_ordered,
-    mark_po_sent,
     reject_purchase_request,
     submit_purchase_request,
 )
@@ -48,6 +50,36 @@ APPROVAL_ONLY_ROLES = {"pcm_approver", "final_approver"}
 # ---------------------------------------------------------------------------
 
 
+def _build_purchase_request_queryset(user, params):
+    """Return the filtered purchase request queryset for list/export views."""
+    tab = params.get("tab", "my_requests")
+    status_filter = params.get("status", "")
+    project_filter = params.get("project", "")
+    search = params.get("q", "").strip()
+
+    if tab == "pending_approval":
+        qs = PurchaseRequest.objects.filter(status__in=PENDING_APPROVAL_STATUSES)
+    elif _user_can_view_all_purchase_requests(user):
+        qs = PurchaseRequest.objects.all()
+    else:
+        qs = PurchaseRequest.objects.filter(requester=user)
+
+    if status_filter:
+        qs = qs.filter(status=status_filter)
+    if project_filter:
+        qs = qs.filter(project_id=project_filter)
+    if search:
+        internal_search = to_internal_number(search, "PR")
+        qs = qs.filter(
+            Q(vendor__icontains=search)
+            | Q(description__icontains=search)
+            | Q(request_number__icontains=search)
+            | Q(request_number__icontains=internal_search)
+        )
+
+    return qs
+
+
 class PurchaseRequestListView(LoginRequiredMixin, ListView):
     """Paginated list of purchase requests with tab and filter support."""
 
@@ -57,36 +89,8 @@ class PurchaseRequestListView(LoginRequiredMixin, ListView):
     paginate_by = PAGE_SIZE
 
     def get_queryset(self):
-        tab = self.request.GET.get("tab", "my_requests")
-        status_filter = self.request.GET.get("status", "")
-        project_filter = self.request.GET.get("project", "")
-        search = self.request.GET.get("q", "").strip()
-
-        if tab == "pending_approval":
-            qs = PurchaseRequest.objects.filter(
-                status__in=PENDING_APPROVAL_STATUSES
-            )
-        elif _user_can_view_all_purchase_requests(self.request.user):
-            qs = PurchaseRequest.objects.all()
-        else:
-            qs = PurchaseRequest.objects.filter(requester=self.request.user)
-
-        if status_filter:
-            qs = qs.filter(status=status_filter)
-        if project_filter:
-            qs = qs.filter(project_id=project_filter)
-        if search:
-            internal_search = to_internal_number(search, "PR")
-            qs = qs.filter(
-                Q(vendor__icontains=search)
-                | Q(description__icontains=search)
-                | Q(request_number__icontains=search)
-                | Q(request_number__icontains=internal_search)
-            )
-
-        return qs.select_related("requester", "project", "expense_category").order_by(
-            "-created_at"
-        )
+        qs = _build_purchase_request_queryset(self.request.user, self.request.GET)
+        return qs.select_related("requester", "project", "expense_category").order_by("-created_at")
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -101,6 +105,20 @@ class PurchaseRequestListView(LoginRequiredMixin, ListView):
             "All Requests" if _user_can_view_all_purchase_requests(self.request.user) else "My Requests"
         )
         return context
+
+
+@login_required
+def purchase_request_dataset_export(request):
+    """Export the current purchase request list filter as the main dataset CSV."""
+    queryset = _build_purchase_request_queryset(request.user, request.GET).order_by("-created_at")
+    return export_purchase_request_dataset(queryset)
+
+
+@login_required
+def purchase_request_sap_reconciliation_export(request):
+    """Export the current purchase request list filter as SAP reconciliation CSV."""
+    queryset = _build_purchase_request_queryset(request.user, request.GET).order_by("-created_at")
+    return export_purchase_request_sap_reconciliation(queryset)
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +217,8 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         can_manage_request = _can_manage_purchase_request(self.request.user, pr)
         approval_history = get_approval_history(pr).select_related("action_by")
         can_approve, _ = can_user_approve(pr, self.request.user)
-        latest_payment_release = pr.payment_releases.order_by("-created_at").first()
+        latest_payment_release = pr.latest_payment_release
+        payment_draft = pr.latest_payment_draft
         has_standard_payment_release = pr.payment_releases.filter(payment_type="standard").exists()
         context["approval_history"] = approval_history
         context["can_approve"] = can_approve
@@ -210,14 +229,26 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         context["has_payment_release"] = latest_payment_release is not None
         context["has_standard_payment_release"] = has_standard_payment_release
         context["first_payment_release"] = latest_payment_release
-        latest_delivery_submission = pr.delivery_submissions.order_by("-created_at").first()
+        latest_delivery_submission = pr.latest_delivery_submission
+        open_delivery_submission = pr.latest_open_delivery_submission
         context["latest_delivery_submission"] = latest_delivery_submission
+        context["open_delivery_submission"] = open_delivery_submission
         context["has_delivery_submission"] = latest_delivery_submission is not None
+        context["workflow_stage"] = pr.workflow_stage
+        context["workflow_completed"] = pr.workflow_completed
+        context["can_submit_goods"] = can_manage_request and pr.can_submit_goods
+        context["can_submit_payment"] = can_manage_request and pr.can_submit_payment
+        context["payment_draft"] = payment_draft
+        context["show_execution_tracking"] = pr.is_execution_ready
         context["delivery_submission_create_url"] = (
-            f"{reverse('deliveries:create')}?purchase_request={pr.pk}"
+            reverse("deliveries:update", args=[open_delivery_submission.pk])
+            if open_delivery_submission is not None
+            else f"{reverse('deliveries:create')}?purchase_request={pr.pk}"
         )
         context["payment_release_create_url"] = (
-            f"{reverse('payments:create')}?purchase_request={pr.pk}"
+            reverse("payments:update", args=[payment_draft.pk])
+            if payment_draft is not None
+            else f"{reverse('payments:create')}?purchase_request={pr.pk}"
         )
         context["advance_payment_create_url"] = (
             f"{reverse('payments:create')}?purchase_request={pr.pk}&payment_type=advance"
@@ -370,21 +401,20 @@ def purchase_request_reject(request, pk):
 
 @login_required
 def purchase_request_mark_po_sent(request, pk):
-    """Transition an approved PR to po_sent (POST)."""
+    """Compatibility redirect for the retired PO-sent stage action."""
     pr = get_object_or_404(PurchaseRequest, pk=pk)
     if request.method != "POST":
         return redirect("orders:purchase-request-detail", pk=pk)
     if not _can_manage_purchase_request(request.user, pr):
         return HttpResponse("Only the requester or admin can update this purchase request.", status=403)
 
-    try:
-        updated_pr = mark_po_sent(pr)
-        messages.success(
-            request,
-            f"Purchase request {updated_pr.workflow_number} marked as PO sent.",
-        )
-    except ValidationError as exc:
-        messages.error(request, str(exc.message))
+    messages.info(
+        request,
+        (
+            f"{pr.workflow_number} now follows the new execution flow. "
+            "After approval, continue with Goods recieve and Payment Release instead of using PO Sent."
+        ),
+    )
 
     if request.headers.get("HX-Request"):
         return _htmx_detail_redirect(request, pk)
@@ -393,29 +423,25 @@ def purchase_request_mark_po_sent(request, pk):
 
 @login_required
 def purchase_request_mark_ordered(request, pk):
-    """Transition an approved/po_sent PR to ordered (POST)."""
+    """Compatibility redirect for the retired ordered-stage action."""
     pr = get_object_or_404(PurchaseRequest, pk=pk)
     if request.method != "POST":
         return redirect("orders:purchase-request-detail", pk=pk)
     if not _can_manage_purchase_request(request.user, pr):
         return HttpResponse("Only the requester or admin can update this purchase request.", status=403)
 
-    try:
-        updated_pr = mark_ordered(pr)
-        messages.success(
-            request,
-            (
-                f"Purchase request {updated_pr.workflow_number} marked as ordered. "
-                "Continue by tracking delivery before payment."
-            ),
-        )
-    except ValidationError as exc:
-        messages.error(request, str(exc.message))
-        if request.headers.get("HX-Request"):
-            return _htmx_detail_redirect(request, pk)
-        return redirect("orders:purchase-request-detail", pk=pk)
-
-    delivery_submission_url = f"{reverse('deliveries:create')}?purchase_request={updated_pr.pk}"
+    existing_delivery = pr.latest_open_delivery_submission
+    if existing_delivery is not None and existing_delivery.can_continue_receiving:
+        delivery_submission_url = reverse("deliveries:update", args=[existing_delivery.pk])
+    else:
+        delivery_submission_url = f"{reverse('deliveries:create')}?purchase_request={pr.pk}"
+    messages.info(
+        request,
+        (
+            f"{pr.workflow_number} now uses the new execution flow. "
+            "Continue by updating Goods recieve or submitting Payment Release."
+        ),
+    )
     if request.headers.get("HX-Request"):
         response = HttpResponse(status=204)
         response["HX-Redirect"] = delivery_submission_url

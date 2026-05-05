@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
-{% block title %}New Goods recieve Record{% endblock %}
-{% block page_title %}New Goods recieve Record{% endblock %}
+{% block title %}{% if is_edit %}Continue Goods recieve Record{% else %}New Goods recieve Record{% endif %}{% endblock %}
+{% block page_title %}{% if is_edit %}Continue Goods recieve Record{% else %}New Goods recieve Record{% endif %}{% endblock %}
 
 {% block content %}
 <div
@@ -133,7 +133,13 @@
             Back to Goods recieve
         </a>
 
-        <h2 class="text-lg font-semibold text-gray-800">Create Goods recieve / DO Record</h2>
+        <h2 class="text-lg font-semibold text-gray-800">
+            {% if is_edit %}
+            Continue Goods recieve / DO Record
+            {% else %}
+            Create Goods recieve / DO Record
+            {% endif %}
+        </h2>
 
         {% if source_purchase_request %}
         <div class="rounded-lg border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-blue-900">
@@ -143,12 +149,21 @@
                 Delivered so far: {{ source_purchase_request.delivered_quantity }}.
                 Outstanding: {{ source_purchase_request.remaining_quantity }}.
             </p>
+            {% if is_edit %}
+            <p class="mt-2">
+                This request is still partially delivered. Keep updating the same goods recieve record until the
+                cumulative <span class="font-semibold">Actual Received</span> matches the ordered quantity.
+                Once everything arrives, set <span class="font-semibold">Delivery Outcome</span> to
+                <span class="font-semibold">Fully Delivered</span> and the follow-up will end automatically.
+            </p>
+            {% else %}
             <p class="mt-2">
                 Product details are synced from the purchase request. Upload the DO / SO document, then choose
                 <span class="font-semibold">Delivery Outcome</span> first.
                 <span class="font-semibold">Fully Delivered</span> will auto-fill the full ordered quantity.
                 <span class="font-semibold">Partially Delivered</span> lets you enter the actual received quantity yourself.
             </p>
+            {% endif %}
         </div>
         {% endif %}
 
@@ -413,7 +428,7 @@
                     type="submit"
                     class="bg-brand-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors"
                 >
-                    Submit
+                    {% if is_edit %}Update Goods recieve{% else %}Submit{% endif %}
                 </button>
                 <a href="{% url 'deliveries:list' %}" class="text-sm text-gray-500 hover:text-gray-800 transition-colors">Cancel</a>
             </div>

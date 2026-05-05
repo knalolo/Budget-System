@@ -41,11 +41,6 @@ def create_delivery_submission(
     line_items = data.get("line_items", [])
 
     if purchase_request is not None:
-        if purchase_request.status in ("approved", "po_sent"):
-            from orders.services import mark_ordered
-
-            purchase_request = mark_ordered(purchase_request)
-
         if line_items:
             _validate_delivery_line_items(purchase_request, line_items)
             delivered_quantity = sum(item["delivered_quantity"] for item in line_items)
@@ -116,7 +111,96 @@ def create_delivery_submission(
     return submission
 
 
-def _validate_delivery_line_items(purchase_request, line_items: list[dict]) -> None:
+def update_delivery_submission(
+    submission: DeliverySubmission,
+    data: dict,
+    user: "AbstractUser",
+    files: list["UploadedFile"] | None = None,
+) -> DeliverySubmission:
+    """Update an existing delivery submission, keeping cumulative delivered quantities."""
+    purchase_request = submission.purchase_request or data.get("purchase_request")
+    delivered_quantity = data["delivered_quantity"]
+    status = data["status"]
+    line_items = data.get("line_items", [])
+
+    if purchase_request is not None:
+        if line_items:
+            _validate_delivery_line_items(
+                purchase_request,
+                line_items,
+                existing_submission=submission,
+            )
+            delivered_quantity = sum(item["delivered_quantity"] for item in line_items)
+            status = (
+                "fully_delivered"
+                if all(item["status"] == "fully_delivered" for item in line_items)
+                else "partially_delivered"
+            )
+        else:
+            total_before_other_submissions = (
+                purchase_request.delivered_quantity - submission.delivered_quantity
+            )
+            remaining_before_update = max(
+                purchase_request.ordered_quantity - total_before_other_submissions,
+                0,
+            )
+
+            if delivered_quantity > remaining_before_update:
+                raise ValueError(
+                    "Delivered quantity cannot exceed the remaining ordered quantity."
+                )
+
+            if status == "fully_delivered" and delivered_quantity != remaining_before_update:
+                raise ValueError(
+                    "To mark the request as fully delivered, this delivery must clear the full remaining quantity."
+                )
+
+            if status == "partially_delivered" and delivered_quantity >= remaining_before_update:
+                raise ValueError(
+                    "Use Fully Delivered when this delivery completes the remaining quantity."
+                )
+
+    submission.vendor = data["vendor"]
+    submission.currency = data["currency"]
+    submission.delivered_quantity = delivered_quantity
+    submission.total_price = data["total_price"]
+    submission.status = status
+    submission.notes = data.get("notes", "")
+    submission.save()
+    submission.line_items.all().delete()
+    _save_delivery_line_items(submission, line_items)
+
+    if files:
+        for uploaded_file in files:
+            try:
+                save_attachment(
+                    uploaded_file=uploaded_file,
+                    content_object=submission,
+                    file_type="delivery_order",
+                    uploaded_by=user,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to save attachment '%s' for DeliverySubmission #%s.",
+                    getattr(uploaded_file, "name", "unknown"),
+                    submission.pk,
+                )
+
+    logger.info(
+        "DeliverySubmission #%s updated by user #%s (vendor=%s).",
+        submission.pk,
+        user.pk,
+        submission.vendor,
+    )
+    return submission
+
+
+def _validate_delivery_line_items(
+    purchase_request,
+    line_items: list[dict],
+    *,
+    existing_submission: DeliverySubmission | None = None,
+) -> None:
     """Validate per-line delivery quantities against the linked purchase request."""
     purchase_request_line_items = {
         item.id: item for item in purchase_request.line_items.all()
@@ -124,6 +208,8 @@ def _validate_delivery_line_items(purchase_request, line_items: list[dict]) -> N
 
     delivered_by_line_item = {}
     for submission in purchase_request.delivery_submissions.prefetch_related("line_items").all():
+        if existing_submission is not None and submission.pk == existing_submission.pk:
+            continue
         for line in submission.line_items.all():
             key = line.purchase_request_line_item_id or line.sequence
             delivered_by_line_item[key] = delivered_by_line_item.get(key, 0) + line.delivered_quantity

@@ -31,6 +31,13 @@ _STATUS_COLOR_MAP: dict[str, str] = {
     "ready_for_payment": "emerald",
     "short_closed": "rose",
     "payment_in_progress": "violet",
+    "awaiting_pr_approval": "yellow",
+    "ready_for_execution": "indigo",
+    "goods_pending": "slate",
+    "payment_pending": "emerald",
+    "goods_follow_up_required": "amber",
+    "waiting_for_payment_approval": "orange",
+    "not_started": "gray",
     # Delivery statuses
     "saved": "gray",
     # Email log statuses

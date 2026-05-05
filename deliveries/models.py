@@ -105,6 +105,16 @@ class DeliverySubmission(models.Model):
         return self.status == "short_closed"
 
     @property
+    def can_continue_receiving(self) -> bool:
+        return self.is_partially_delivered
+
+    @property
+    def remaining_quantity(self) -> int:
+        if not self.purchase_request_id or not self.purchase_request:
+            return 0
+        return max(self.purchase_request.ordered_quantity - self.delivered_quantity, 0)
+
+    @property
     def requester_can_delete(self) -> bool:
         """
         Allow requester-side deletion only before approvers have acted on any
@@ -142,6 +152,16 @@ class DeliverySubmission(models.Model):
             f"{self.currency} {self.delivery_value:.2f} / "
             f"{self.currency} {self.purchase_request.total_price:.2f}"
         )
+
+    @property
+    def delivery_progress_label(self) -> str:
+        if self.is_short_closed:
+            return "Short Closed"
+        if self.is_fully_delivered:
+            return "Fully Delivered"
+        if self.is_partially_delivered:
+            return "Partially Delivered"
+        return "Not Started"
 
     @property
     def display_line_items(self):

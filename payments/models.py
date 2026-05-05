@@ -167,6 +167,14 @@ class PaymentRelease(models.Model):
         return self.status in ("pending_pcm", "pending_final")
 
     @property
+    def is_submitted(self) -> bool:
+        return self.status != "draft"
+
+    @property
+    def is_pending_approval(self) -> bool:
+        return self.is_pending
+
+    @property
     def is_approved(self) -> bool:
         return self.status == "approved"
 

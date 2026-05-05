@@ -15,8 +15,8 @@
             <div>
                 <div class="flex items-center gap-3 flex-wrap">
                     <h2 class="text-xl font-bold text-gray-900">{{ purchase_request.workflow_number }}</h2>
-                    {% if purchase_request.status == "ordered" %}
-                    {% include "components/status_badge.html" with status=purchase_request.delivery_stage_status status_display=purchase_request.delivery_stage_display %}
+                    {% if purchase_request.is_execution_ready %}
+                    {% include "components/status_badge.html" with status=purchase_request.workflow_stage status_display=purchase_request.workflow_stage_display %}
                     {% else %}
                     {% include "components/status_badge.html" with status=purchase_request.status status_display=purchase_request.get_status_display %}
                     {% endif %}
@@ -57,66 +57,29 @@
                         </button>
                     </form>
 
-                {% elif can_manage_request and purchase_request.status == "approved" %}
-                    {# Post-approval actions #}
-                    {% if not purchase_request.po_required %}
+                {% elif can_manage_request and purchase_request.is_execution_ready %}
+                    {% if can_submit_goods %}
                     <a
                         href="{{ delivery_submission_create_url }}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
                     >
-                        Track Goods recieve
+                        {% if open_delivery_submission %}Continue Goods recieve{% else %}Submit Goods recieve{% endif %}
                     </a>
-                    <a
-                        href="{{ advance_payment_create_url }}"
-                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 transition-colors"
-                    >
-                        Request Advance Payment
-                    </a>
-                    {% else %}
-                    <form method="post" action="{% url 'orders:purchase-request-mark-po-sent' purchase_request.pk %}">
-                        {% csrf_token %}
-                        <button type="submit" class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors">
-                            Mark PO Sent
-                        </button>
-                    </form>
-                    {% endif %}
-
-                {% elif can_manage_request and purchase_request.status == "po_sent" %}
-                    <a
-                        href="{{ delivery_submission_create_url }}"
-                        class="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 transition-colors"
-                    >
-                        Track Goods recieve
-                    </a>
-                    <a
-                        href="{{ advance_payment_create_url }}"
-                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 transition-colors"
-                    >
-                        Request Advance Payment
-                    </a>
-                {% elif can_manage_request and purchase_request.status == "ordered" %}
-                    {% if has_delivery_submission %}
+                    {% elif has_delivery_submission %}
                     <a
                         href="{% url 'deliveries:detail' latest_delivery_submission.pk %}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
                     >
                         View Goods recieve Record
                     </a>
-                    {% else %}
-                    <a
-                        href="{{ delivery_submission_create_url }}"
-                        class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 transition-colors"
-                    >
-                        Create Goods recieve Record
-                    </a>
                     {% endif %}
 
-                    {% if purchase_request.is_ready_for_payment and not has_standard_payment_release %}
+                    {% if can_submit_payment %}
                     <a
                         href="{{ payment_release_create_url }}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors"
                     >
-                        Create Payment Release
+                        {% if payment_draft %}Open Payment Draft{% else %}Submit Payment Release{% endif %}
                     </a>
                     {% elif has_payment_release %}
                     <a
@@ -127,7 +90,7 @@
                     </a>
                     {% endif %}
 
-                    {% if purchase_request.remaining_quantity > 0 %}
+                    {% if purchase_request.goods_stage != "fully_delivered" and purchase_request.goods_stage != "short_closed" %}
                     <a
                         href="{{ advance_payment_create_url }}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 transition-colors"
@@ -246,7 +209,7 @@
                 </dl>
             </div>
 
-            {% if purchase_request.status == "ordered" %}
+            {% if show_execution_tracking %}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
                 <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Goods recieve &amp; Payment Tracking</h3>
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4 text-sm">
@@ -265,20 +228,24 @@
                     <div>
                         <dt class="font-medium text-gray-500">Stage</dt>
                         <dd class="mt-1">
-                            {% include "components/status_badge.html" with status=purchase_request.delivery_stage_status status_display=purchase_request.delivery_stage_display %}
+                            {% include "components/status_badge.html" with status=purchase_request.workflow_stage status_display=purchase_request.workflow_stage_display %}
                         </dd>
                     </div>
                 </dl>
 
                 <div class="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-                    {% if purchase_request.delivered_quantity == 0 %}
-                    Goods recieve must be recorded before standard payment can start. Use advance payment only when the supplier requires prepayment.
-                    {% elif purchase_request.remaining_quantity > 0 %}
-                    This request is only partially delivered. Standard payment is limited to the delivered quantity, and the remaining units still require DO follow-up.
-                    {% elif purchase_request.has_short_close %}
+                    {% if purchase_request.workflow_completed %}
+                    Goods recieve and Payment Release are complete. This workflow is fully closed.
+                    {% elif purchase_request.workflow_stage == "goods_pending" %}
+                    Payment exists, but Goods recieve is still required before this workflow can finish.
+                    {% elif purchase_request.workflow_stage == "payment_pending" %}
+                    Goods recieve has already been submitted. Submit Payment Release next to complete this workflow.
+                    {% elif purchase_request.workflow_stage == "goods_follow_up_required" %}
+                    This request is only partially delivered. Keep updating the same Goods recieve record until all items arrive.
+                    {% elif purchase_request.goods_stage == "short_closed" %}
                     This request was short closed. The remaining quantity will not be delivered or paid.
                     {% else %}
-                    Goods recieve is complete. The requester can move on to Payment Release.
+                    Approval is complete. The requester can continue with Goods recieve or Payment Release.
                     {% endif %}
                 </div>
             </div>

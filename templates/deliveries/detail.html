@@ -26,6 +26,14 @@
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-{{ submission.status|status_color }}-100 text-{{ submission.status|status_color }}-800">
                     {{ submission.get_status_display }}
                 </span>
+                {% if can_continue_submission %}
+                <a
+                    href="{{ delivery_submission_update_url }}"
+                    class="inline-flex items-center rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+                >
+                    Continue Goods recieve
+                </a>
+                {% endif %}
                 {% if can_delete %}
                 <form method="post" action="{% url 'deliveries:delete' submission.pk %}" onsubmit="return window.confirm('Delete this Goods recieve record? This cannot be undone.');">
                     {% csrf_token %}
@@ -94,6 +102,15 @@
             {% endif %}
         </dl>
     </div>
+
+    {% if can_continue_submission %}
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <p class="text-sm text-blue-900">
+            This goods recieve record is still open. Keep updating the same record as more units arrive. The workflow
+            will end once the cumulative actual received quantity matches the ordered quantity.
+        </p>
+    </div>
+    {% endif %}
 
     <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div class="flex items-center justify-between mb-4 pb-2 border-b border-gray-100">

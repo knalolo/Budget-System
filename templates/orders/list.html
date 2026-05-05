@@ -10,17 +10,37 @@
     {# Header row #}
     <div class="flex items-center justify-between">
         <div></div>
-        {% if can_create_purchase_request %}
-        <a
-            href="{% url 'orders:purchase-request-create' %}"
-            class="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 transition-colors"
-        >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-            New Request
-        </a>
-        {% endif %}
+        <div class="flex items-center gap-2">
+            <a
+                href="{% url 'orders:purchase-request-dataset-export' %}?tab={{ tab }}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if project_filter %}&project={{ project_filter|urlencode }}{% endif %}{% if search %}&q={{ search|urlencode }}{% endif %}"
+                class="inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5v-9m0 9l-3.75-3.75M12 16.5l3.75-3.75M4.5 19.5h15" />
+                </svg>
+                Export Dataset
+            </a>
+            <a
+                href="{% url 'orders:purchase-request-sap-reconciliation-export' %}?tab={{ tab }}{% if status_filter %}&status={{ status_filter|urlencode }}{% endif %}{% if project_filter %}&project={{ project_filter|urlencode }}{% endif %}{% if search %}&q={{ search|urlencode }}{% endif %}"
+                class="inline-flex items-center gap-2 rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 7.5h18M3 12h18M3 16.5h18" />
+                </svg>
+                Export SAP Reconciliation
+            </a>
+            {% if can_create_purchase_request %}
+            <a
+                href="{% url 'orders:purchase-request-create' %}"
+                class="inline-flex items-center gap-2 rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 transition-colors"
+            >
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                New Request
+            </a>
+            {% endif %}
+        </div>
     </div>
 
     {# Tabs #}

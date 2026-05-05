@@ -435,6 +435,50 @@ class TestDashboardView:
         assert "Submit Payment" not in content
         assert "Waiting for PCM / Final approval before payment can proceed." in content
 
+    def test_requester_dashboard_keeps_partial_delivery_follow_up_until_fully_delivered(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=10,
+        )
+        delivery_submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=4,
+            total_price=400,
+            status="partially_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            status="pending_pcm",
+            payment_type="standard",
+            payment_quantity=4,
+            total_price=400,
+            vendor=purchase_request.vendor,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        action_items = response.context["requester_action_items"]
+        assert len(action_items) == 1
+        assert action_items[0]["label"] == "Partial Delivery Follow-up"
+        assert action_items[0]["primary_text"] == "Continue Goods recieve"
+        assert action_items[0]["primary_url"] == reverse("deliveries:update", args=[delivery_submission.pk])
+        assert action_items[0]["secondary_text"] == "Open Payment"
+        content = response.content.decode()
+        assert "Keep updating the same Goods recieve record until all goods arrive." in content
+
     def test_requester_dashboard_uses_linked_payment_draft_in_pr_action_item(
         self,
         client,

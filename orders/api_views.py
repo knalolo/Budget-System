@@ -3,6 +3,7 @@
 import logging
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.urls import reverse
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
@@ -22,8 +23,6 @@ from .serializers import (
 )
 from .services import (
     approve_purchase_request,
-    mark_ordered,
-    mark_po_sent,
     reject_purchase_request,
     submit_purchase_request,
 )
@@ -240,32 +239,48 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="mark-po-sent")
     def mark_po_sent(self, request, pk=None):
-        """Transition an approved purchase request to 'po_sent'."""
+        """Compatibility endpoint that no longer mutates the PR execution stage."""
         pr = self.get_object()
-        try:
-            updated = mark_po_sent(pr)
-        except DjangoValidationError as exc:
-            return Response(
-                {"detail": exc.message},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         serializer = PurchaseRequestDetailSerializer(
-            updated, context={"request": request}
+            pr, context={"request": request}
         )
-        return Response(serializer.data)
+        return Response(
+            {
+                "detail": (
+                    "PO Sent is no longer a separate execution stage. "
+                    "Use Goods recieve and Payment Release to continue this request."
+                ),
+                "purchase_request": serializer.data,
+            }
+        )
 
     @action(detail=True, methods=["post"], url_path="mark-ordered")
     def mark_ordered(self, request, pk=None):
-        """Transition an approved or po_sent purchase request to 'ordered'."""
+        """Compatibility endpoint that guides users to Goods recieve instead of changing PR state."""
         pr = self.get_object()
-        try:
-            updated = mark_ordered(pr)
-        except DjangoValidationError as exc:
-            return Response(
-                {"detail": exc.message},
-                status=status.HTTP_400_BAD_REQUEST,
+        next_action = "submit_goods_receive"
+        next_action_url = reverse("deliveries:create")
+        if pr.pk:
+            next_action_url = f"{next_action_url}?purchase_request={pr.pk}"
+
+        if pr.latest_open_delivery_submission and pr.latest_open_delivery_submission.can_continue_receiving:
+            next_action = "continue_goods_receive"
+            next_action_url = reverse(
+                "deliveries:update",
+                args=[pr.latest_open_delivery_submission.pk],
             )
+
         serializer = PurchaseRequestDetailSerializer(
-            updated, context={"request": request}
+            pr, context={"request": request}
         )
-        return Response(serializer.data)
+        return Response(
+            {
+                "detail": (
+                    "Ordered is now handled through the Goods recieve workflow. "
+                    "Continue the linked Goods recieve record or create one to proceed."
+                ),
+                "next_action": next_action,
+                "next_action_url": request.build_absolute_uri(next_action_url),
+                "purchase_request": serializer.data,
+            }
+        )

@@ -215,6 +215,10 @@ class PurchaseRequest(models.Model):
         return self.total_price / Decimal(self.ordered_quantity)
 
     @property
+    def is_execution_ready(self) -> bool:
+        return self.status in ("approved", "po_sent", "ordered", "completed")
+
+    @property
     def delivered_quantity(self) -> int:
         delivered_total = self.delivery_submissions.aggregate(
             total=models.Sum("delivered_quantity")
@@ -232,23 +236,143 @@ class PurchaseRequest(models.Model):
         return max(self.ordered_quantity - self.delivered_quantity, 0)
 
     @property
-    def delivery_stage_status(self) -> str:
-        if self.status != "ordered":
-            return self.status
+    def latest_payment_release(self):
+        return self.payment_releases.order_by("-updated_at", "-created_at").first()
+
+    @property
+    def latest_submitted_payment_release(self):
+        return (
+            self.payment_releases.filter(
+                status__in=("pending_pcm", "pending_final", "approved", "rejected")
+            )
+            .order_by("-updated_at", "-created_at")
+            .first()
+        )
+
+    @property
+    def latest_payment_draft(self):
+        return (
+            self.payment_releases.filter(status="draft")
+            .order_by("-updated_at", "-created_at")
+            .first()
+        )
+
+    @property
+    def goods_stage(self) -> str:
         if self.has_short_close:
             return "short_closed"
-        if self.delivered_quantity <= 0:
-            return "do_pending"
+        if not self.has_delivery_records:
+            return "not_started"
         if self.remaining_quantity > 0:
             return "partially_delivered"
-        if (
-            self.remaining_payable_total <= Decimal("0.00")
-            and self.payment_releases.filter(status="approved").exists()
-        ):
+        return "fully_delivered"
+
+    @property
+    def goods_stage_display(self) -> str:
+        labels = {
+            "not_started": "Goods recieve Not Started",
+            "partially_delivered": "Partially Delivered",
+            "fully_delivered": "Fully Delivered",
+            "short_closed": "Short Closed",
+        }
+        return labels.get(self.goods_stage, "Goods recieve")
+
+    @property
+    def payment_stage(self) -> str:
+        latest_payment = self.latest_payment_release
+        if latest_payment is None:
+            return "not_started"
+        return latest_payment.status
+
+    @property
+    def payment_stage_display(self) -> str:
+        labels = {
+            "not_started": "Payment Not Started",
+            "draft": "Payment Draft",
+            "pending_pcm": "Pending PCM Review",
+            "pending_final": "Pending Final Review",
+            "approved": "Payment Approved",
+            "rejected": "Payment Rejected",
+        }
+        return labels.get(self.payment_stage, "Payment")
+
+    @property
+    def workflow_completed(self) -> bool:
+        return (
+            self.is_execution_ready
+            and self.payment_stage == "approved"
+            and self.goods_stage in ("fully_delivered", "short_closed")
+        )
+
+    @property
+    def workflow_stage(self) -> str:
+        if self.is_draft:
+            return "draft"
+        if self.is_pending:
+            return "awaiting_pr_approval"
+        if self.is_rejected:
+            return "rejected"
+        if self.workflow_completed:
             return "completed"
-        if self.payment_releases.filter(
-            status__in=("pending_pcm", "pending_final", "approved")
-        ).exists():
+        if not self.is_execution_ready:
+            return self.status
+
+        goods_stage = self.goods_stage
+        payment_stage = self.payment_stage
+
+        if goods_stage == "partially_delivered":
+            return "goods_follow_up_required"
+        if goods_stage == "not_started" and payment_stage == "not_started":
+            return "ready_for_execution"
+        if goods_stage == "not_started":
+            return "goods_pending"
+        if payment_stage in ("not_started", "draft", "rejected"):
+            return "payment_pending"
+        return "waiting_for_payment_approval"
+
+    @property
+    def workflow_stage_display(self) -> str:
+        labels = {
+            "draft": "Draft",
+            "awaiting_pr_approval": "Awaiting PR Approval",
+            "rejected": "Rejected",
+            "ready_for_execution": "Choose Next Step",
+            "goods_pending": "Goods recieve Still Required",
+            "payment_pending": "Payment Still Required",
+            "goods_follow_up_required": "Partial Delivery Follow-up",
+            "waiting_for_payment_approval": "Waiting For PCM / Final",
+            "completed": "Completed",
+        }
+        return labels.get(self.workflow_stage, self.get_status_display())
+
+    @property
+    def can_submit_goods(self) -> bool:
+        return self.is_execution_ready and self.goods_stage not in (
+            "fully_delivered",
+            "short_closed",
+        )
+
+    @property
+    def can_submit_payment(self) -> bool:
+        return self.is_execution_ready and self.payment_stage in (
+            "not_started",
+            "draft",
+            "rejected",
+        )
+
+    @property
+    def delivery_stage_status(self) -> str:
+        if not self.is_execution_ready:
+            return self.status
+        if self.workflow_completed:
+            return "completed"
+        if self.goods_stage == "short_closed":
+            return "short_closed"
+        if self.goods_stage == "not_started":
+            return "do_pending"
+        if self.goods_stage == "partially_delivered":
+            return "partially_delivered"
+        if self.payment_stage in ("draft", "pending_pcm", "pending_final", "approved"):
             return "payment_in_progress"
         return "ready_for_payment"
 
@@ -318,7 +442,7 @@ class PurchaseRequest(models.Model):
     @property
     def is_ready_for_payment(self) -> bool:
         return (
-            self.status == "ordered"
+            self.is_execution_ready
             and self.available_standard_payment_quantity > 0
             and self.remaining_payable_total > Decimal("0.00")
         )
@@ -330,6 +454,10 @@ class PurchaseRequest(models.Model):
     @property
     def latest_delivery_submission(self):
         return self.delivery_submissions.order_by("-created_at").first()
+
+    @property
+    def latest_open_delivery_submission(self):
+        return self.delivery_submissions.filter(status="partially_delivered").order_by("-created_at").first()
 
     @property
     def display_line_items(self):

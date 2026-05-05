@@ -247,3 +247,135 @@ class TestDeliverySubmissionCreateView:
         assert submission.delivered_quantity == 3
         assert str(submission.total_price) == "250.00"
         assert submission.line_items.count() == 2
+
+    def test_create_redirects_to_existing_partial_submission(self, client, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=8,
+            total_price=800,
+        )
+        submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=3,
+            total_price=300,
+            status="partially_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("deliveries:create"), {"purchase_request": purchase_request.pk})
+
+        assert response.status_code == 302
+        assert response.url == reverse("deliveries:update", args=[submission.pk])
+
+
+@pytest.mark.django_db
+class TestDeliverySubmissionUpdateView:
+    def test_requester_can_continue_partial_delivery_submission(self, client, regular_user, settings, tmp_path):
+        settings.MEDIA_ROOT = tmp_path
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=5,
+            total_price=350,
+            currency="SGD",
+        )
+        line_item_1 = PurchaseRequestLineItem.objects.create(
+            purchase_request=purchase_request,
+            sequence=1,
+            product="Sensor head",
+            quantity=2,
+            unit_price=100,
+            total_price=200,
+            currency="SGD",
+        )
+        line_item_2 = PurchaseRequestLineItem.objects.create(
+            purchase_request=purchase_request,
+            sequence=2,
+            product="Control board",
+            quantity=3,
+            unit_price=50,
+            total_price=150,
+            currency="SGD",
+        )
+        submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=3,
+            total_price=250,
+            status="partially_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        upload = SimpleUploadedFile(
+            "delivery-order.pdf",
+            b"%PDF-1.4 delivery order",
+            content_type="application/pdf",
+        )
+        client.force_login(regular_user)
+
+        response = client.post(
+            reverse("deliveries:update", args=[submission.pk]),
+            data={
+                "purchase_request": purchase_request.pk,
+                "vendor": purchase_request.vendor,
+                "notes": "Everything arrived.",
+                "line_items_json": json.dumps(
+                    [
+                        {
+                            "purchase_request_line_item_id": line_item_1.id,
+                            "sequence": 1,
+                            "product": "Sensor head",
+                            "ordered_quantity": 2,
+                            "delivered_quantity": 2,
+                            "unit_price": "100.00",
+                            "currency": "SGD",
+                            "status": "fully_delivered",
+                        },
+                        {
+                            "purchase_request_line_item_id": line_item_2.id,
+                            "sequence": 2,
+                            "product": "Control board",
+                            "ordered_quantity": 3,
+                            "delivered_quantity": 3,
+                            "unit_price": "50.00",
+                            "currency": "SGD",
+                            "status": "fully_delivered",
+                        },
+                    ]
+                ),
+                "files": [upload],
+            },
+        )
+
+        assert response.status_code == 302
+        submission.refresh_from_db()
+        purchase_request.refresh_from_db()
+        assert submission.status == "fully_delivered"
+        assert submission.delivered_quantity == 5
+        assert purchase_request.remaining_quantity == 0
+
+    def test_requester_cannot_edit_fully_delivered_submission(self, client, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="ordered",
+            ordered_quantity=5,
+        )
+        submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=5,
+            total_price=500,
+            status="fully_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("deliveries:update", args=[submission.pk]))
+
+        assert response.status_code == 302
+        assert response.url == reverse("deliveries:detail", args=[submission.pk])

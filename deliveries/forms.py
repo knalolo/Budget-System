@@ -83,6 +83,25 @@ class DeliverySubmissionForm(forms.ModelForm):
         )
 
     def _initial_line_items(self) -> list[dict]:
+        if self.instance and self.instance.pk:
+            existing_line_items = list(self.instance.line_items.all())
+            if existing_line_items:
+                return [
+                    {
+                        "sequence": line_item.sequence,
+                        "product": line_item.product,
+                        "ordered_quantity": line_item.ordered_quantity,
+                        "delivered_quantity": line_item.delivered_quantity,
+                        "unit_price": f"{line_item.unit_price:.2f}",
+                        "total_price": f"{line_item.total_price:.2f}",
+                        "display_total_price": f"{line_item.total_price:.2f}",
+                        "currency": line_item.currency,
+                        "status": line_item.status,
+                        "purchase_request_line_item_id": line_item.purchase_request_line_item_id or "",
+                    }
+                    for line_item in existing_line_items
+                ]
+
         if self.source_purchase_request is None:
             return [
                 {
