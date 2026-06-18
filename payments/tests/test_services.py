@@ -17,6 +17,8 @@ from payments.tests.factories import PaymentReleaseFactory
 @pytest.mark.django_db
 class TestSubmitPaymentRelease:
     def test_submit_draft_transitions_to_pending_pcm(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PaymentReleaseFactory(status="draft")
         updated = submit_payment_release(pr)
         assert updated.status == "pending_pcm"
@@ -29,11 +31,15 @@ class TestSubmitPaymentRelease:
     def test_submission_creates_approval_log(self):
         from approvals.models import ApprovalLog
 
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PaymentReleaseFactory(status="draft")
         updated = submit_payment_release(pr)
         assert ApprovalLog.objects.filter(object_id=updated.pk, action="submitted").exists()
 
     def test_standard_payment_requires_delivery(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
             status="ordered",
             ordered_quantity=5,
@@ -54,6 +60,8 @@ class TestSubmitPaymentRelease:
             submit_payment_release(payment_release)
 
     def test_standard_payment_respects_delivered_quantity_limit(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
             status="ordered",
             ordered_quantity=10,
@@ -83,6 +91,8 @@ class TestSubmitPaymentRelease:
             submit_payment_release(payment_release)
 
     def test_advance_payment_can_submit_before_delivery(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
             status="ordered",
             ordered_quantity=10,
@@ -103,6 +113,8 @@ class TestSubmitPaymentRelease:
         assert updated.status == "pending_pcm"
 
     def test_standard_payment_uses_delivered_line_item_value_cap(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
             status="ordered",
             ordered_quantity=20,
@@ -174,6 +186,37 @@ class TestSubmitPaymentRelease:
         )
 
         with pytest.raises(ValidationError, match="SGD 962.00"):
+            submit_payment_release(payment_release)
+
+    def test_submit_requires_matching_purchase_type_approver(self):
+        UserFactory(final_approver=True)
+        purchase_request = PurchaseRequestFactory(
+            status="ordered",
+            purchase_type="office",
+            ordered_quantity=2,
+            total_price=200,
+        )
+        DeliverySubmissionFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            delivered_quantity=2,
+            total_price=200,
+            status="fully_delivered",
+        )
+        payment_release = PaymentReleaseFactory(
+            status="draft",
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="standard",
+            payment_quantity=2,
+            total_price=200,
+        )
+
+        with pytest.raises(ValidationError, match="Office Approver"):
             submit_payment_release(payment_release)
 
 

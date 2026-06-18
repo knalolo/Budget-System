@@ -1,11 +1,62 @@
 """Factory-boy factories for the orders app."""
 import factory
+from django.conf import settings
 from django.contrib.auth.models import User
 
 from orders.models import ExpenseCategory, Project, PurchaseRequest
 
 
 class UserFactory(factory.django.DjangoModelFactory):
+    class Params:
+        requester = factory.Trait(
+            profile_is_requester=True,
+            profile_is_project_approver=False,
+            profile_is_non_project_approver=False,
+            profile_is_office_approver=False,
+            profile_is_final_approver=False,
+            profile_is_admin=False,
+        )
+        project_approver = factory.Trait(
+            profile_is_requester=False,
+            profile_is_project_approver=True,
+            profile_is_non_project_approver=False,
+            profile_is_office_approver=False,
+            profile_is_final_approver=False,
+            profile_is_admin=False,
+        )
+        non_project_approver = factory.Trait(
+            profile_is_requester=False,
+            profile_is_project_approver=False,
+            profile_is_non_project_approver=True,
+            profile_is_office_approver=False,
+            profile_is_final_approver=False,
+            profile_is_admin=False,
+        )
+        office_approver = factory.Trait(
+            profile_is_requester=False,
+            profile_is_project_approver=False,
+            profile_is_non_project_approver=False,
+            profile_is_office_approver=True,
+            profile_is_final_approver=False,
+            profile_is_admin=False,
+        )
+        final_approver = factory.Trait(
+            profile_is_requester=False,
+            profile_is_project_approver=False,
+            profile_is_non_project_approver=False,
+            profile_is_office_approver=False,
+            profile_is_final_approver=True,
+            profile_is_admin=False,
+        )
+        admin = factory.Trait(
+            profile_is_requester=False,
+            profile_is_project_approver=False,
+            profile_is_non_project_approver=False,
+            profile_is_office_approver=False,
+            profile_is_final_approver=False,
+            profile_is_admin=True,
+        )
+
     class Meta:
         model = User
         skip_postgeneration_save = True
@@ -13,6 +64,35 @@ class UserFactory(factory.django.DjangoModelFactory):
     username = factory.Sequence(lambda n: f"user{n}")
     email = factory.LazyAttribute(lambda o: f"{o.username}@example.com")
     password = factory.PostGenerationMethodCall("set_password", "testpass123")
+    profile_is_requester = True
+    profile_is_project_approver = False
+    profile_is_non_project_approver = False
+    profile_is_office_approver = False
+    profile_is_final_approver = False
+    profile_is_admin = False
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        profile_flags = {
+            "is_requester": kwargs.pop("profile_is_requester", True),
+            "is_project_approver": kwargs.pop("profile_is_project_approver", False),
+            "is_non_project_approver": kwargs.pop("profile_is_non_project_approver", False),
+            "is_office_approver": kwargs.pop("profile_is_office_approver", False),
+            "is_final_approver": kwargs.pop("profile_is_final_approver", False),
+            "is_admin": kwargs.pop("profile_is_admin", False),
+        }
+
+        user = super()._create(model_class, *args, **kwargs)
+        profile = user.profile
+        profile.is_requester = profile_flags["is_requester"]
+        profile.is_project_approver = profile_flags["is_project_approver"]
+        profile.is_non_project_approver = profile_flags["is_non_project_approver"]
+        profile.is_office_approver = profile_flags["is_office_approver"]
+        profile.is_final_approver = profile_flags["is_final_approver"]
+        profile.is_admin = profile_flags["is_admin"]
+        profile.role = profile.legacy_role
+        profile.save()
+        return user
 
 
 class ProjectFactory(factory.django.DjangoModelFactory):
@@ -37,6 +117,7 @@ class PurchaseRequestFactory(factory.django.DjangoModelFactory):
         model = PurchaseRequest
 
     requester = factory.SubFactory(UserFactory)
+    purchase_type = settings.PURCHASE_TYPE_PROJECT
     expense_category = factory.SubFactory(ExpenseCategoryFactory)
     project = factory.SubFactory(ProjectFactory)
     description = "Test purchase request description"

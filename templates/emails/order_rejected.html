@@ -24,6 +24,12 @@
           <td width="40%" style="color:#666666;">Request No.</td>
           <td style="color:#333333;font-weight:bold;">{{ request_number }}</td>
         </tr>
+        {% if purchase_type_display %}
+        <tr>
+          <td style="color:#666666;">Purchase Type</td>
+          <td style="color:#333333;">{{ purchase_type_display }}</td>
+        </tr>
+        {% endif %}
         <tr>
           <td style="color:#666666;">Vendor</td>
           <td style="color:#333333;">{{ vendor }}</td>
@@ -69,7 +75,7 @@
 
 <p style="margin:0 0 16px 0;font-size:14px;color:#333333;">
   If you believe this decision is incorrect or wish to resubmit with amendments, please contact
-  the PCM team or create a new request.
+  the procurement approval team or create a new request.
 </p>
 
 {% if detail_url %}

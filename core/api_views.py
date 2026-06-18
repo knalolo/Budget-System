@@ -265,7 +265,7 @@ class FileAttachmentViewSet(viewsets.GenericViewSet):
             attachment.uploaded_by_id is not None
             and attachment.uploaded_by_id == request.user.pk
         )
-        is_admin = getattr(request.user, "is_staff", False) or _get_role(request.user) == "admin"
+        is_admin = getattr(request.user, "is_staff", False) or _is_admin_user(request.user)
 
         if not (is_uploader or is_admin):
             return Response(
@@ -294,3 +294,11 @@ def _get_role(user) -> str | None:
         return user.profile.role
     except AttributeError:
         return None
+
+
+def _is_admin_user(user) -> bool:
+    """Return True when the user is an admin in the new permission model."""
+    try:
+        return bool(user.profile.is_admin)
+    except AttributeError:
+        return False

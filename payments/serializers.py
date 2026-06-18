@@ -97,7 +97,13 @@ class PaymentReleaseDetailSerializer(serializers.ModelSerializer):
         source="get_currency_display",
         read_only=True,
     )
-    pcm_approver_username = serializers.SerializerMethodField()
+    first_approver = serializers.SerializerMethodField()
+    first_approver_username = serializers.SerializerMethodField()
+    first_approver_role_label = serializers.CharField(read_only=True)
+    first_approval_decision = serializers.CharField(read_only=True)
+    first_approval_decision_display = serializers.CharField(read_only=True)
+    first_approval_comment = serializers.CharField(read_only=True)
+    first_approved_at = serializers.DateTimeField(read_only=True)
     final_approver_username = serializers.SerializerMethodField()
     attachments = _AttachmentSerializer(many=True, read_only=True)
     approval_logs = ApprovalLogSerializer(many=True, read_only=True)
@@ -123,9 +129,16 @@ class PaymentReleaseDetailSerializer(serializers.ModelSerializer):
             "target_payment",
             "status",
             "status_display",
-            # PCM approval
+            # First-stage approval
+            "first_approver_role_label",
+            "first_approver",
+            "first_approver_username",
+            "first_approval_decision",
+            "first_approval_decision_display",
+            "first_approval_comment",
+            "first_approved_at",
+            # Legacy compatibility fields
             "pcm_approver",
-            "pcm_approver_username",
             "pcm_decision",
             "pcm_comment",
             "pcm_decided_at",
@@ -149,9 +162,20 @@ class PaymentReleaseDetailSerializer(serializers.ModelSerializer):
         full_name = f"{user.first_name} {user.last_name}".strip()
         return full_name or user.username
 
-    def get_pcm_approver_username(self, obj: PaymentRelease) -> str | None:
-        if obj.pcm_approver:
-            return obj.pcm_approver.username
+    def get_first_approver(self, obj: PaymentRelease):
+        approver = obj.first_approver
+        if approver:
+            return {
+                "id": approver.pk,
+                "username": approver.username,
+                "first_name": approver.first_name,
+                "last_name": approver.last_name,
+            }
+        return None
+
+    def get_first_approver_username(self, obj: PaymentRelease) -> str | None:
+        if obj.first_approver:
+            return obj.first_approver.username
         return None
 
     def get_final_approver_username(self, obj: PaymentRelease) -> str | None:

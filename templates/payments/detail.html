@@ -47,9 +47,9 @@
                 <p class="text-sm text-amber-900">
                     This is a prepayment exception. No Goods recieve has been submitted yet.
                     {% if payment.status == 'pending_pcm' %}
-                    PCM should confirm the reason for paying in advance and make sure DO follow-up is still required.
+                    {{ payment.first_approver_role_label }} should confirm the reason for paying in advance and make sure DO follow-up is still required.
                     {% elif payment.status == 'pending_final' %}
-                    Final review should confirm that this advance payment exception is acceptable and that DO follow-up is still required.
+                    Final Approver should confirm that this advance payment exception is acceptable and that DO follow-up is still required.
                     {% else %}
                     Please review it as an advance payment case and make sure DO follow-up is still required.
                     {% endif %}
@@ -87,8 +87,14 @@
             </div>
 
             <div>
-                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Expense Category</dt>
-                <dd class="mt-1 text-sm text-gray-900">{{ payment.expense_category }}</dd>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Purchase Type</dt>
+                <dd class="mt-1 text-sm text-gray-900">
+                    {% if payment.purchase_request %}
+                        {{ payment.purchase_request.purchase_type_display }}
+                    {% else %}
+                        {{ payment.purchase_type|title }}
+                    {% endif %}
+                </dd>
             </div>
 
             <div>
@@ -218,7 +224,7 @@
         <div class="px-6 py-4 border-b border-gray-100">
             <h3 class="text-base font-semibold text-gray-800">Approval Decision</h3>
             <p class="text-sm text-gray-500 mt-0.5">
-                {% if payment.status == 'pending_pcm' %}PCM level review required.{% else %}Final level review required.{% endif %}
+                {% if payment.status == 'pending_pcm' %}{{ payment.first_approver_role_label }} review required.{% else %}Final Approver review required.{% endif %}
             </p>
         </div>
         <div class="px-6 py-4 space-y-4">
@@ -277,35 +283,35 @@
     </div>
     {% endif %}
 
-    {% if payment.pcm_approver %}
+    {% if payment.first_approver %}
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100">
-            <h3 class="text-base font-semibold text-gray-800">PCM Review</h3>
+            <h3 class="text-base font-semibold text-gray-800">{{ payment.first_approver_role_label }} Review</h3>
         </div>
         <dl class="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 px-6 py-4 text-sm">
             <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Reviewer</dt>
-                <dd class="mt-1 text-gray-900">{{ payment.pcm_approver.get_full_name|default:payment.pcm_approver.username }}</dd>
+                <dd class="mt-1 text-gray-900">{{ payment.first_approver.get_full_name|default:payment.first_approver.username }}</dd>
             </div>
             <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Decision</dt>
                 <dd class="mt-1">
                     <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
-                        {% if payment.pcm_decision == 'approved' %}bg-green-100 text-green-800
-                        {% elif payment.pcm_decision == 'rejected' %}bg-red-100 text-red-800
+                        {% if payment.first_approval_decision == 'approved' %}bg-green-100 text-green-800
+                        {% elif payment.first_approval_decision == 'rejected' %}bg-red-100 text-red-800
                         {% else %}bg-gray-100 text-gray-700{% endif %}">
-                        {{ payment.get_pcm_decision_display }}
+                        {{ payment.first_approval_decision_display }}
                     </span>
                 </dd>
             </div>
             <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Decided At</dt>
-                <dd class="mt-1 text-gray-700">{{ payment.pcm_decided_at|date:"d M Y H:i" }}</dd>
+                <dd class="mt-1 text-gray-700">{{ payment.first_approved_at|date:"d M Y H:i" }}</dd>
             </div>
-            {% if payment.pcm_comment %}
+            {% if payment.first_approval_comment %}
             <div class="sm:col-span-3">
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Comment</dt>
-                <dd class="mt-1 text-gray-700 whitespace-pre-line">{{ payment.pcm_comment }}</dd>
+                <dd class="mt-1 text-gray-700 whitespace-pre-line">{{ payment.first_approval_comment }}</dd>
             </div>
             {% endif %}
         </dl>
@@ -315,7 +321,7 @@
     {% if payment.final_approver %}
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100">
-            <h3 class="text-base font-semibold text-gray-800">Final Review</h3>
+            <h3 class="text-base font-semibold text-gray-800">Final Approver Review</h3>
         </div>
         <dl class="grid grid-cols-1 sm:grid-cols-3 gap-x-6 gap-y-4 px-6 py-4 text-sm">
             <div>
@@ -434,10 +440,10 @@
                     </div>
                     <p class="text-gray-600 mt-0.5">
                         <span class="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
-                            {{ log.get_action_display }}
+                            {{ log.human_action_label }}
                         </span>
                         {% if log.old_status and log.new_status %}
-                        <span class="text-gray-400 mx-1">{{ log.old_status }} &rarr; {{ log.new_status }}</span>
+                        <span class="text-gray-400 mx-1">{{ log.old_status_display }} &rarr; {{ log.new_status_display }}</span>
                         {% endif %}
                     </p>
                     {% if log.comment %}

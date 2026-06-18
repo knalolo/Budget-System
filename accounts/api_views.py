@@ -2,11 +2,13 @@
 API views for the accounts app.
 
 Provides:
-  - MeView       – GET current authenticated user info.
-  - TokenView    – POST to generate / retrieve a DRF auth token (CLI auth).
-  - UserViewSet  – List users and update user roles (admin only).
+  - MeView      : GET current authenticated user info.
+  - TokenView   : POST to generate / retrieve a DRF auth token.
+  - UserViewSet : list users and update profile permissions (admin only).
 """
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.request import Request
@@ -28,15 +30,7 @@ class MeView(APIView):
 
 
 class TokenView(APIView):
-    """
-    Generate or return the DRF auth token for the current user.
-
-    Intended for CLI tooling that needs a persistent token rather than
-    session-cookie authentication.
-
-    POST /api/v1/auth/token/
-    Returns: { token: "xxxx", user: { id, username, email, first_name, last_name, profile } }
-    """
+    """Generate or return the DRF auth token for the current user."""
 
     permission_classes = [permissions.IsAuthenticated]
 
@@ -50,7 +44,7 @@ class TokenView(APIView):
 
 
 class IsAdminRolePermission(permissions.BasePermission):
-    """Allow access only to users whose profile role is 'admin' or who are staff."""
+    """Allow access only to users with admin permission or Django staff."""
 
     def has_permission(self, request: Request, view: object) -> bool:
         if not request.user or not request.user.is_authenticated:
@@ -70,10 +64,7 @@ class UserViewSet(
     viewsets.GenericViewSet,
 ):
     """
-    List and retrieve users (authenticated), update user role (admin only).
-
-    PATCH /api/v1/users/{id}/ with {"role": "<role>"} to change a user's role.
-    Only admins and staff may update roles.
+    List and retrieve users (authenticated), update profile permissions (admin only).
     """
 
     queryset = User.objects.select_related("profile").order_by("username")
@@ -91,7 +82,7 @@ class UserViewSet(
         return super().get_permissions()
 
     def update(self, request: Request, *args, **kwargs) -> Response:
-        """Update the UserProfile fields (role) for the given user."""
+        """Update the UserProfile permission fields for the given user."""
         user = self.get_object()
         profile, _ = UserProfile.objects.get_or_create(user=user)
         serializer = UserProfileSerializer(
@@ -100,9 +91,14 @@ class UserViewSet(
             partial=kwargs.pop("partial", False),
         )
         serializer.is_valid(raise_exception=True)
-        # Build a new profile dict to avoid mutating the existing instance directly.
-        updated_data = {**{f.name: getattr(profile, f.name) for f in profile._meta.fields}, **serializer.validated_data}
-        for field, value in serializer.validated_data.items():
-            setattr(profile, field, value)
-        profile.save()
+        try:
+            with transaction.atomic():
+                for field, value in serializer.validated_data.items():
+                    setattr(profile, field, value)
+                profile.save()
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message_dict or exc.messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return Response(UserSerializer(user, context={"request": request}).data)

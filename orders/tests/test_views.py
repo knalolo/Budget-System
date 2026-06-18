@@ -13,18 +13,33 @@ from orders.models import PurchaseRequestLineItem
 from payments.models import PaymentRelease
 
 
+def _line_items_json(*items) -> str:
+    return json.dumps(
+        [
+            {
+                "sequence": index,
+                "product": product,
+                "quantity": quantity,
+                "unit_price": unit_price,
+                "currency": currency,
+            }
+            for index, (product, quantity, unit_price, currency) in enumerate(items, start=1)
+        ]
+    )
+
+
 def _purchase_request_payload(project, category, *, action="draft") -> dict:
     return {
+        "purchase_type": "project",
         "expense_category": category.pk,
         "project": project.pk,
-        "description": "Bench power supply",
         "vendor": "Acme Components",
-        "currency": "SGD",
-        "ordered_quantity": "2",
-        "total_price": "450.00",
         "justification": "Needed for prototype validation.",
         "po_required": "False",
         "target_payment": "2026-01-15",
+        "line_items_json": _line_items_json(
+            ("Bench power supply", 2, "225.00", "SGD"),
+        ),
         "action": action,
     }
 
@@ -117,6 +132,7 @@ class TestPurchaseRequestCreateView:
         client.force_login(regular_user)
 
         payload = {
+            "purchase_type": "project",
             "expense_category": sample_expense_category.pk,
             "project": sample_project.pk,
             "vendor": "Acme Components",
@@ -247,72 +263,6 @@ class TestPurchaseRequestUploadView:
 
         assert response.status_code == 400
         assert not purchase_request.attachments.exists()
-
-
-@pytest.mark.django_db
-class TestPurchaseRequestOrderWorkflowView:
-    def test_mark_ordered_redirects_to_delivery_create_for_non_po_request(
-        self,
-        client,
-        regular_user,
-        sample_project,
-        sample_expense_category,
-    ):
-        client.force_login(regular_user)
-        purchase_request = PurchaseRequest.objects.create(
-            requester=regular_user,
-            expense_category=sample_expense_category,
-            project=sample_project,
-            description="Bench power supply",
-            vendor="Acme Components",
-            currency="SGD",
-            ordered_quantity=2,
-            total_price="450.00",
-            justification="Needed for prototype validation.",
-            po_required=False,
-            target_payment="2026-01-15",
-            status="approved",
-        )
-
-        response = client.post(
-            reverse("orders:purchase-request-mark-ordered", args=[purchase_request.pk]),
-        )
-
-        assert response.status_code == 302
-        assert response.url == f"{reverse('deliveries:create')}?purchase_request={purchase_request.pk}"
-
-    def test_po_required_request_mark_ordered_now_redirects_to_goods_receive_without_mutating_pr(
-        self,
-        client,
-        regular_user,
-        sample_project,
-        sample_expense_category,
-    ):
-        client.force_login(regular_user)
-        purchase_request = PurchaseRequest.objects.create(
-            requester=regular_user,
-            expense_category=sample_expense_category,
-            project=sample_project,
-            description="Bench power supply",
-            vendor="Acme Components",
-            currency="SGD",
-            ordered_quantity=2,
-            total_price="1450.00",
-            justification="Needed for prototype validation.",
-            po_required=True,
-            target_payment="2026-01-15",
-            status="approved",
-        )
-
-        response = client.post(
-            reverse("orders:purchase-request-mark-ordered", args=[purchase_request.pk]),
-        )
-
-        assert response.status_code == 302
-        assert response.url == f"{reverse('deliveries:create')}?purchase_request={purchase_request.pk}"
-
-        purchase_request.refresh_from_db()
-        assert purchase_request.status == "approved"
 
 
 @pytest.mark.django_db

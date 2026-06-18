@@ -5,19 +5,19 @@ Your Purchase Request has been APPROVED.
 REQUEST DETAILS
 ---------------
 Request No.    : {{ request_number }}
-Vendor         : {{ vendor }}
+{% if purchase_type_display %}Purchase Type  : {{ purchase_type_display }}
+{% endif %}Vendor         : {{ vendor }}
 Amount         : {{ currency }} {{ amount }}
 Description    : {{ description }}
 {% if project %}Project        : {{ project }}
 {% endif %}Approved At    : {{ approved_at }}
-{% if po_required %}PO Required    : Yes – A Purchase Order will be issued.
+{% if po_required %}PO Required    : Yes - A Purchase Order will be issued.
 {% endif %}
-Next steps: The procurement team will proceed with the purchase. You will be notified of further
-updates. If you have any questions, please contact the PCM team.
+Next step: {{ next_step_message }}
 
 {% if detail_url %}View your request at:
 {{ detail_url }}
 
 {% endif %}
 ---
-This is an automated notification from the KEY Procurement System. Please do not reply to this email.
+This is an automated notification from the Procurement System. Please do not reply to this email.

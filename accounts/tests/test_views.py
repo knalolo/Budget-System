@@ -16,8 +16,8 @@ def test_login_view_authenticates_with_local_email_password(client):
         last_name="WANG",
     )
     user.profile.display_name = "YIMENG WANG"
-    user.profile.role = "requester"
-    user.profile.save(update_fields=["display_name", "role"])
+    user.profile.is_requester = True
+    user.profile.save(update_fields=["display_name", "is_requester", "role"])
 
     response = client.post(
         reverse("accounts:login"),

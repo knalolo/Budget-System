@@ -130,6 +130,41 @@ class PaymentRelease(models.Model):
             return self.purchase_request.workflow_number
         return to_workflow_number(self.request_number)
 
+    @property
+    def purchase_type(self) -> str:
+        if self.purchase_request_id and self.purchase_request:
+            return self.purchase_request.purchase_type
+        return settings.PURCHASE_TYPE_PROJECT
+
+    @property
+    def first_approver_role_label(self) -> str:
+        if self.purchase_request_id and self.purchase_request:
+            return self.purchase_request.first_approver_role_label
+        return "Approver"
+
+    @property
+    def first_approver(self):
+        return self.pcm_approver
+
+    @property
+    def first_approval_decision(self) -> str:
+        return self.pcm_decision
+
+    @property
+    def first_approval_decision_display(self) -> str:
+        return dict(settings.DECISION_CHOICES).get(
+            self.first_approval_decision,
+            self.first_approval_decision,
+        )
+
+    @property
+    def first_approval_comment(self) -> str:
+        return self.pcm_comment
+
+    @property
+    def first_approved_at(self):
+        return self.pcm_decided_at
+
     # ------------------------------------------------------------------
     # Save override – auto-generate request_number
     # ------------------------------------------------------------------
@@ -181,6 +216,17 @@ class PaymentRelease(models.Model):
     @property
     def is_rejected(self) -> bool:
         return self.status == "rejected"
+
+    @property
+    def human_status_label(self) -> str:
+        labels = {
+            "draft": "Draft",
+            "pending_pcm": f"Pending {self.first_approver_role_label} Review",
+            "pending_final": "Pending Final Approver Review",
+            "approved": "Approved",
+            "rejected": "Rejected",
+        }
+        return labels.get(self.status, self.get_status_display())
 
     @property
     def can_be_edited(self) -> bool:

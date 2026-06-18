@@ -52,7 +52,7 @@
                             {% elif payment.status == 'approved' %}bg-green-100 text-green-800
                             {% elif payment.status == 'rejected' %}bg-red-100 text-red-800
                             {% else %}bg-gray-100 text-gray-700{% endif %}">
-                            {{ payment.get_status_display }}
+                            {{ payment.human_status_label }}
                         </span>
                         <span class="text-xs {% if payment.is_advance_payment %}text-amber-700{% else %}text-gray-500{% endif %}">
                             {{ payment.get_payment_type_display }}

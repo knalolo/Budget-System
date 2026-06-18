@@ -7,8 +7,6 @@ from core.models import SystemConfig
 from orders.services import (
     approve_purchase_request,
     check_po_threshold,
-    mark_ordered,
-    mark_po_sent,
     reject_purchase_request,
     submit_purchase_request,
 )
@@ -63,6 +61,8 @@ class TestCheckPoThreshold:
 @pytest.mark.django_db
 class TestSubmitPurchaseRequest:
     def test_submit_draft_transitions_to_pending_pcm(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
         with patch("orders.services.notify_submission"):
             updated = submit_purchase_request(pr)
@@ -75,6 +75,8 @@ class TestSubmitPurchaseRequest:
 
     def test_submit_updates_po_required_when_above_threshold(self):
         SystemConfig.set_value("po_threshold_sgd", 1000)
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(currency="SGD", total_price=2000, po_required=False)
         with patch("orders.services.notify_submission"):
             updated = submit_purchase_request(pr)
@@ -83,6 +85,8 @@ class TestSubmitPurchaseRequest:
     def test_submit_creates_approval_log(self):
         from approvals.models import ApprovalLog
 
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
         with patch("orders.services.notify_submission"):
             updated = submit_purchase_request(pr)
@@ -92,10 +96,20 @@ class TestSubmitPurchaseRequest:
 
     def test_submit_notification_failure_does_not_raise(self):
         """Email notification failures must not bubble up."""
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
         with patch("orders.services.notify_submission", side_effect=Exception("SMTP down")):
             updated = submit_purchase_request(pr)
         assert updated.status == "pending_pcm"
+
+    def test_submit_requires_matching_purchase_type_approver(self):
+        UserFactory(final_approver=True)
+        pr = PurchaseRequestFactory(status="draft", purchase_type="office")
+
+        with patch("orders.services.notify_submission"):
+            with pytest.raises(ValidationError, match="Office Approver"):
+                submit_purchase_request(pr)
 
 
 # ---------------------------------------------------------------------------
@@ -152,64 +166,3 @@ class TestRejectPurchaseRequest:
         assert updated.final_decision == "rejected"
 
 
-# ---------------------------------------------------------------------------
-# mark_po_sent
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-class TestMarkPoSent:
-    def test_approved_transitions_to_po_sent(self):
-        pr = PurchaseRequestFactory(status="approved")
-        updated = mark_po_sent(pr)
-        assert updated.status == "po_sent"
-
-    def test_non_approved_raises(self):
-        pr = PurchaseRequestFactory(status="draft")
-        with pytest.raises(ValidationError):
-            mark_po_sent(pr)
-
-    def test_creates_status_log(self):
-        from approvals.models import ApprovalLog
-
-        pr = PurchaseRequestFactory(status="approved")
-        updated = mark_po_sent(pr)
-        log = ApprovalLog.objects.filter(object_id=updated.pk, new_status="po_sent").first()
-        assert log is not None
-        assert log.action == "status_changed"
-
-
-# ---------------------------------------------------------------------------
-# mark_ordered
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.django_db
-class TestMarkOrdered:
-    def test_approved_transitions_to_ordered(self):
-        pr = PurchaseRequestFactory(status="approved")
-        updated = mark_ordered(pr)
-        assert updated.status == "ordered"
-
-    def test_po_required_approved_raises_until_po_sent(self):
-        pr = PurchaseRequestFactory(status="approved", po_required=True)
-        with pytest.raises(ValidationError):
-            mark_ordered(pr)
-
-    def test_po_sent_transitions_to_ordered(self):
-        pr = PurchaseRequestFactory(status="po_sent")
-        updated = mark_ordered(pr)
-        assert updated.status == "ordered"
-
-    def test_invalid_status_raises(self):
-        pr = PurchaseRequestFactory(status="draft")
-        with pytest.raises(ValidationError):
-            mark_ordered(pr)
-
-    def test_creates_status_log(self):
-        from approvals.models import ApprovalLog
-
-        pr = PurchaseRequestFactory(status="approved")
-        updated = mark_ordered(pr)
-        log = ApprovalLog.objects.filter(object_id=updated.pk, new_status="ordered").first()
-        assert log is not None

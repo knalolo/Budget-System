@@ -19,9 +19,11 @@ class ApprovalLogSerializer(serializers.ModelSerializer):
     )
     action_by_full_name = serializers.SerializerMethodField()
     action_display = serializers.CharField(
-        source="get_action_display",
+        source="human_action_label",
         read_only=True,
     )
+    old_status_display = serializers.CharField(read_only=True)
+    new_status_display = serializers.CharField(read_only=True)
 
     class Meta:
         model = ApprovalLog
@@ -36,7 +38,9 @@ class ApprovalLogSerializer(serializers.ModelSerializer):
             "action_by_full_name",
             "comment",
             "old_status",
+            "old_status_display",
             "new_status",
+            "new_status_display",
             "created_at",
         ]
         read_only_fields = fields

@@ -152,6 +152,7 @@
 
     <form method="post" enctype="multipart/form-data" id="pr-form" @submit="confirmSubmitWithoutAttachments($event)">
         {% csrf_token %}
+        {{ form.expense_category }}
         <input type="hidden" name="{{ form.description.html_name }}" x-ref="hiddenDescription" value="{{ form.description.value|default:'' }}">
         <input type="hidden" name="{{ form.ordered_quantity.html_name }}" x-ref="hiddenQuantity" value="{{ form.ordered_quantity.value|default:'' }}">
         <input type="hidden" name="{{ form.total_price.html_name }}" x-ref="hiddenTotalPrice" value="{{ form.total_price.value|default:'' }}">
@@ -181,25 +182,23 @@
                 <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Classification</h3>
                 <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
 
-                    {# Expense Category #}
+                    {# Purchase Type #}
                     <div>
-                        <label for="{{ form.expense_category.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                            Project Expense <span class="text-red-500">*</span>
+                        <label for="{{ form.purchase_type.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
+                            Purchase Type <span class="text-red-500">*</span>
                         </label>
                         <select
-                            name="{{ form.expense_category.html_name }}"
-                            id="{{ form.expense_category.id_for_label }}"
-                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.expense_category.errors %}border-red-300{% endif %}"
+                            name="{{ form.purchase_type.html_name }}"
+                            id="{{ form.purchase_type.id_for_label }}"
+                            class="block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border {% if form.purchase_type.errors %}border-red-300{% endif %}"
                         >
-                            <option value="">-- Select category --</option>
-                            {% for val, label in form.expense_category.field.choices %}
-                            {% if val %}
-                            <option value="{{ val }}" {% if form.expense_category.value|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
-                            {% endif %}
+                            <option value="">-- Select purchase type --</option>
+                            {% for val, label in form.purchase_type.field.choices %}
+                            <option value="{{ val }}" {% if form.purchase_type.value|stringformat:"s" == val|stringformat:"s" %}selected{% endif %}>{{ label }}</option>
                             {% endfor %}
                         </select>
-                        {% if form.expense_category.errors %}
-                        <p class="mt-1 text-xs text-red-600">{{ form.expense_category.errors|join:", " }}</p>
+                        {% if form.purchase_type.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.purchase_type.errors|join:", " }}</p>
                         {% endif %}
                     </div>
 
@@ -228,9 +227,9 @@
                 </div>
             </div>
 
-            {# Section 2: Financial Info #}
+            {# Section 2: Product Detail #}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Financial Information</h3>
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Product Detail</h3>
                 <div class="space-y-5">
 
                     <div class="flex items-center justify-between">

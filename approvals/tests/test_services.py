@@ -1,13 +1,4 @@
-"""Unit tests for approvals.services (generic two-level approval engine).
-
-NOTE: The approvals/services._get_user_role function references
-user.userprofile.role, but the UserProfile model uses related_name="profile".
-This means _get_user_role always falls back to "requester", causing
-can_user_approve to return (False, <wrong-role-reason>) for any user at
-the PCM or final stage. The tests here document both the correct service
-behavior (process_approval, submit_for_approval) and the actual (bugged)
-can_user_approve behavior.
-"""
+"""Unit tests for approvals.services."""
 import pytest
 from django.core.exceptions import ValidationError
 from unittest.mock import patch
@@ -25,11 +16,15 @@ from orders.tests.factories import PurchaseRequestFactory, UserFactory
 @pytest.mark.django_db
 class TestSubmitForApproval:
     def test_draft_transitions_to_pending_pcm(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
         updated = svc.submit_for_approval(pr)
         assert updated.status == "pending_pcm"
 
     def test_submission_creates_log(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
         updated = svc.submit_for_approval(pr)
         log = ApprovalLog.objects.filter(object_id=updated.pk, action=ACTION_SUBMITTED).first()
@@ -43,10 +38,26 @@ class TestSubmitForApproval:
             svc.submit_for_approval(pr)
 
     def test_log_actor_is_requester(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
         updated = svc.submit_for_approval(pr)
         log = ApprovalLog.objects.filter(object_id=updated.pk, action=ACTION_SUBMITTED).first()
         assert log.action_by == updated.requester
+
+    def test_missing_purchase_type_approver_raises(self):
+        UserFactory(final_approver=True)
+        pr = PurchaseRequestFactory(status="draft", purchase_type="project")
+
+        with pytest.raises(ValidationError, match="Project Approver"):
+            svc.submit_for_approval(pr)
+
+    def test_missing_final_approver_raises(self):
+        UserFactory(project_approver=True)
+        pr = PurchaseRequestFactory(status="draft", purchase_type="project")
+
+        with pytest.raises(ValidationError, match="Final Approver"):
+            svc.submit_for_approval(pr)
 
 
 # ---------------------------------------------------------------------------
@@ -130,17 +141,22 @@ class TestProcessApprovalValidation:
         with pytest.raises(ValidationError, match="pending"):
             svc.process_approval(pr, approver, "approved")
 
-    def test_self_approval_blocked(self):
-        """Requester cannot approve their own submission."""
+    def test_requester_with_matching_approver_permission_can_self_approve(self):
         pr = PurchaseRequestFactory(status="pending_pcm")
-        with pytest.raises(ValidationError, match="cannot approve"):
-            svc.process_approval(pr, pr.requester, "approved")
+        pr.requester.profile.apply_permission_flags(
+            is_requester=True,
+            is_project_approver=True,
+        )
+        pr.requester.profile.save()
+
+        updated = svc.process_approval(pr, pr.requester, "approved")
+
+        assert updated.status == "pending_final"
+        assert updated.pcm_approver == pr.requester
 
 
 # ---------------------------------------------------------------------------
 # can_user_approve
-# NOTE: Due to the userprofile/profile naming bug, _get_user_role always
-# returns "requester" for all users. The tests below document actual behavior.
 # ---------------------------------------------------------------------------
 
 
@@ -155,23 +171,39 @@ class TestCanUserApprove:
         assert "status" in reason.lower() or "awaiting" in reason.lower()
 
     def test_requester_cannot_approve_own_pending(self):
-        """Self-approval is blocked (checked before role)."""
+        """A requester-only account still cannot approve without approver permission."""
         pr = PurchaseRequestFactory(status="pending_pcm")
         can, reason = svc.can_user_approve(pr, pr.requester)
         assert can is False
-        assert "cannot approve" in reason.lower()
+        assert "project approver" in reason.lower()
 
-    def test_other_user_cannot_approve_due_to_role_bug(self):
-        """Due to userprofile/profile naming bug, all non-requester role
-        lookups fail and users appear as 'requester' role, making them
-        unable to approve at PCM or final stages."""
+    def test_matching_project_approver_can_approve_first_stage(self):
         pr = PurchaseRequestFactory(status="pending_pcm")
-        # Even a user set up with pcm_approver role via user.profile cannot
-        # pass the role check in can_user_approve because it uses user.userprofile
-        approver = UserFactory()
+        approver = UserFactory(project_approver=True)
         can, reason = svc.can_user_approve(pr, approver)
-        # With the bug, this is False (wrong role message)
+        assert can is True
+        assert "may approve" in reason.lower()
+
+    def test_matching_non_project_approver_can_approve_first_stage(self):
+        pr = PurchaseRequestFactory(status="pending_pcm", purchase_type="non_project")
+        approver = UserFactory(non_project_approver=True)
+        can, reason = svc.can_user_approve(pr, approver)
+        assert can is True
+        assert "may approve" in reason.lower()
+
+    def test_matching_office_approver_can_approve_first_stage(self):
+        pr = PurchaseRequestFactory(status="pending_pcm", purchase_type="office")
+        approver = UserFactory(office_approver=True)
+        can, reason = svc.can_user_approve(pr, approver)
+        assert can is True
+        assert "may approve" in reason.lower()
+
+    def test_wrong_first_stage_approver_is_rejected_for_lane(self):
+        pr = PurchaseRequestFactory(status="pending_pcm", purchase_type="office")
+        approver = UserFactory(project_approver=True)
+        can, reason = svc.can_user_approve(pr, approver)
         assert can is False
+        assert "office approver" in reason.lower()
 
     def test_completed_item_not_approvable(self):
         """approved/rejected status items are not approvable."""
@@ -189,12 +221,16 @@ class TestCanUserApprove:
 @pytest.mark.django_db
 class TestGetApprovalHistory:
     def test_returns_logs_for_object(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
         svc.submit_for_approval(pr)
         history = svc.get_approval_history(pr)
         assert history.exists()
 
     def test_does_not_return_other_objects_logs(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr1 = PurchaseRequestFactory(status="draft")
         pr2 = PurchaseRequestFactory(status="draft")
         svc.submit_for_approval(pr1)

@@ -1,25 +1,16 @@
 """
 Generic two-level approval service.
 
-Works with any Django model ("approvable") that exposes the
-following fields:
+The first approval stage is routed by purchase type:
 
-    status                CharField
-    requester             FK -> User
+    project      -> Project Approver
+    non_project  -> Non-Project Approver
+    office       -> Office Approver
 
-    pcm_approver          FK -> User (nullable)
-    pcm_decision          CharField  ('pending' | 'approved' | 'rejected')
-    pcm_comment           TextField
-    pcm_decided_at        DateTimeField (nullable)
+The final approval stage is always handled by the Final Approver.
 
-    final_approver        FK -> User (nullable)
-    final_decision        CharField  ('pending' | 'approved' | 'rejected')
-    final_comment         TextField
-    final_decided_at      DateTimeField (nullable)
-
-The service never mutates the caller's object in unexpected ways:
-it modifies only the well-known approval fields, calls save(), and
-returns the updated instance.
+Legacy database field names such as ``pcm_approver`` are retained for
+backward compatibility while the UI and data model are being migrated.
 """
 from __future__ import annotations
 
@@ -68,6 +59,44 @@ DECISION_REJECTED = "rejected"
 # ---------------------------------------------------------------------------
 
 
+def _first_stage_flag_name(request_obj) -> str:
+    purchase_type = getattr(request_obj, "purchase_type", "")
+    flag_map = {
+        "project": "is_project_approver",
+        "non_project": "is_non_project_approver",
+        "office": "is_office_approver",
+    }
+    return flag_map.get(purchase_type, "")
+
+
+def _has_active_profile_flag(flag_name: str) -> bool:
+    if not flag_name:
+        return False
+    return User.objects.filter(
+        is_active=True,
+        **{f"profile__{flag_name}": True},
+    ).exists()
+
+
+def _validate_assigned_approver_chain(request_obj) -> None:
+    first_stage_flag = _first_stage_flag_name(request_obj)
+    first_stage_label = getattr(
+        request_obj,
+        "first_approver_role_label",
+        "Approver",
+    )
+
+    if not _has_active_profile_flag(first_stage_flag):
+        raise ValidationError(
+            f"Cannot submit this request because no active {first_stage_label} is assigned."
+        )
+
+    if not _has_active_profile_flag("is_final_approver"):
+        raise ValidationError(
+            "Cannot submit this request because no active Final Approver is assigned."
+        )
+
+
 def _create_log(
     obj,
     action: str,
@@ -109,6 +138,8 @@ def submit_for_approval(request_obj):
             f"Current status: '{current_status}'."
         )
 
+    _validate_assigned_approver_chain(request_obj)
+
     requester = request_obj.requester
     request_obj.status = STATUS_PENDING_PCM
     request_obj.save()
@@ -135,7 +166,7 @@ def process_approval(request_obj, approver, decision: str, comment: str = ""):
     """
     Process an approval or rejection at the appropriate level.
 
-    The level (PCM vs final) is inferred automatically from the
+    The level (Purchase Type approver vs final) is inferred automatically from the
     object's current status.
 
     *decision* must be 'approved' or 'rejected'.
@@ -143,7 +174,6 @@ def process_approval(request_obj, approver, decision: str, comment: str = ""):
     Raises ValidationError for:
     - Invalid status (object not awaiting any approval)
     - Invalid decision value
-    - Approver is the requester
     Returns the saved instance.
     """
     if decision not in (DECISION_APPROVED, DECISION_REJECTED):
@@ -155,7 +185,7 @@ def process_approval(request_obj, approver, decision: str, comment: str = ""):
     now = timezone.now()
 
     if current_status == STATUS_PENDING_PCM:
-        return _process_pcm_level(
+        return _process_first_stage_level(
             request_obj=request_obj,
             approver=approver,
             decision=decision,
@@ -180,10 +210,8 @@ def process_approval(request_obj, approver, decision: str, comment: str = ""):
     )
 
 
-def _process_pcm_level(request_obj, approver, decision, comment, now, old_status):
-    """Handle PCM-level approval or rejection."""
-    _validate_not_self_approval(request_obj, approver)
-
+def _process_first_stage_level(request_obj, approver, decision, comment, now, old_status):
+    """Handle Purchase Type approval or rejection using legacy PCM-backed fields."""
     request_obj.pcm_approver = approver
     request_obj.pcm_decision = decision
     request_obj.pcm_comment = comment
@@ -209,7 +237,7 @@ def _process_pcm_level(request_obj, approver, decision, comment, now, old_status
     )
 
     logger.info(
-        "PCM %s %s #%s (decision=%s).",
+        "Purchase Type approver %s processed %s #%s (decision=%s).",
         approver.pk,
         type(request_obj).__name__,
         request_obj.pk,
@@ -223,8 +251,6 @@ def _process_pcm_level(request_obj, approver, decision, comment, now, old_status
 
 def _process_final_level(request_obj, approver, decision, comment, now, old_status):
     """Handle final-level approval or rejection."""
-    _validate_not_self_approval(request_obj, approver)
-
     request_obj.final_approver = approver
     request_obj.final_decision = decision
     request_obj.final_comment = comment
@@ -260,14 +286,6 @@ def _process_final_level(request_obj, approver, decision, comment, now, old_stat
     _fire_notification(request_obj, action, old_status, new_status)
 
     return request_obj
-
-
-def _validate_not_self_approval(request_obj, approver) -> None:
-    """Raise ValidationError if the approver is also the requester."""
-    if request_obj.requester_id == approver.pk:
-        raise ValidationError(
-            "Requesters cannot approve their own submissions."
-        )
 
 
 def _fire_notification(
@@ -326,34 +344,44 @@ def can_user_approve(request_obj, user) -> tuple[bool, str]:
             f"Item is not awaiting approval (status: '{current_status}')."
         )
 
-    # Requesters cannot approve their own submissions
-    if getattr(request_obj, "requester_id", None) == user.pk:
-        return False, "Requesters cannot approve their own submissions."
-
-    # Role-based check via UserProfile (if available)
-    user_role = _get_user_role(user)
+    profile = _get_user_profile(user)
+    if profile is None:
+        return False, "User profile not found."
 
     if current_status == STATUS_PENDING_PCM:
-        if user_role not in ("pcm_approver", "admin"):
+        if not _user_can_handle_first_stage(profile, request_obj):
             return False, (
-                "Only PCM Approvers can review items at the PCM stage."
+                f"Only the assigned { _first_approver_role_label(request_obj) } can review this item at the Purchase Type approval stage."
             )
-        return True, "User may approve at PCM level."
+        return True, "User may approve at the Purchase Type approval stage."
 
     # STATUS_PENDING_FINAL
-    if user_role not in ("final_approver", "admin"):
+    if not profile.is_final_approver:
         return False, (
             "Only Final Approvers can review items at the final stage."
         )
     return True, "User may approve at final level."
 
 
-def _get_user_role(user) -> str:
-    """
-    Return the role string for *user* from UserProfile, defaulting to
-    'requester' if no profile exists or the role is unset.
-    """
+def _get_user_profile(user):
+    """Return the user's profile, or None if it does not exist."""
     try:
-        return user.profile.role  # type: ignore[attr-defined]
+        return user.profile  # type: ignore[attr-defined]
     except AttributeError:
-        return "requester"
+        return None
+
+
+def _user_can_handle_first_stage(profile, request_obj) -> bool:
+    """Return True if *profile* may review the request's Purchase Type approval stage."""
+    return profile.can_approve_purchase_type(
+        getattr(request_obj, "purchase_type", "")
+    )
+
+
+def _first_approver_role_label(request_obj) -> str:
+    """Return a human-readable label for the request's first approver stage."""
+    return getattr(
+        request_obj,
+        "first_approver_role_label",
+        "Approver",
+    )

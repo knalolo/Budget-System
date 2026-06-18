@@ -26,6 +26,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone as dj_timezone
 
 if TYPE_CHECKING:
@@ -86,6 +87,41 @@ def _get_users_by_role(role: str) -> list[str]:
     return emails
 
 
+def _get_users_by_profile_flag(flag_name: str) -> list[str]:
+    """Return emails for active users whose profile boolean flag is True."""
+    emails: list[str] = []
+    try:
+        users = User.objects.filter(
+            is_active=True,
+            **{f"profile__{flag_name}": True},
+        ).select_related("profile")
+        for user in users:
+            if user.email:
+                emails.append(user.email)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to query users by profile flag %r: %s", flag_name, exc)
+    return emails
+
+
+def _purchase_type_approver_recipients(request_obj) -> list[str]:
+    """Return Purchase Type approver emails based on the request purchase type."""
+    purchase_type = getattr(request_obj, "purchase_type", "")
+    flag_map = {
+        settings.PURCHASE_TYPE_PROJECT: "is_project_approver",
+        settings.PURCHASE_TYPE_NON_PROJECT: "is_non_project_approver",
+        settings.PURCHASE_TYPE_OFFICE: "is_office_approver",
+    }
+    flag_name = flag_map.get(purchase_type)
+    if not flag_name:
+        return []
+    return _get_users_by_profile_flag(flag_name)
+
+
+def _final_approver_recipients() -> list[str]:
+    """Return all active final approver email addresses."""
+    return _get_users_by_profile_flag("is_final_approver")
+
+
 def _requester_email(request_obj) -> list[str]:
     """Return a list containing the requester's email, or [] if not set."""
     try:
@@ -109,6 +145,19 @@ def _build_request_context(request_obj, now_str: str = "") -> dict[str, Any]:
         )
 
     project = getattr(request_obj, "project", None)
+    linked_purchase_request = getattr(request_obj, "purchase_request", None)
+    purchase_type_display = ""
+    first_approver_role_label = "Approver"
+
+    if hasattr(request_obj, "purchase_type_display"):
+        purchase_type_display = getattr(request_obj, "purchase_type_display", "")
+    elif linked_purchase_request is not None:
+        purchase_type_display = getattr(linked_purchase_request, "purchase_type_display", "")
+
+    if hasattr(request_obj, "first_approver_role_label"):
+        first_approver_role_label = getattr(request_obj, "first_approver_role_label", "Approver")
+    elif linked_purchase_request is not None:
+        first_approver_role_label = getattr(linked_purchase_request, "first_approver_role_label", "Approver")
 
     ctx: dict[str, Any] = {
         "request_number": getattr(
@@ -122,13 +171,35 @@ def _build_request_context(request_obj, now_str: str = "") -> dict[str, Any]:
         "amount": getattr(request_obj, "total_price", ""),
         "description": getattr(request_obj, "description", ""),
         "project": str(project) if project else "",
+        "purchase_type_display": purchase_type_display,
+        "first_approver_role_label": first_approver_role_label,
+        "review_stage_label": first_approver_role_label,
         "po_required": getattr(request_obj, "po_required", False),
-        "detail_url": "",  # populated by callers when a URL is known
+        "detail_url": _build_detail_url(request_obj),
         "submitted_at": now_str or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "approved_at": now_str or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "rejected_at": now_str or datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
     return ctx
+
+
+def _build_detail_url(request_obj) -> str:
+    """Return the local detail URL for a request-like object when available."""
+    url_name = ""
+    if hasattr(request_obj, "target_payment"):
+        url_name = "payments:detail"
+    elif hasattr(request_obj, "delivery_stage"):
+        url_name = "deliveries:detail"
+    elif hasattr(request_obj, "purchase_type"):
+        url_name = "orders:purchase-request-detail"
+
+    if not url_name:
+        return ""
+
+    try:
+        return reverse(url_name, kwargs={"pk": request_obj.pk})
+    except NoReverseMatch:
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -234,19 +305,19 @@ def send_notification(
 
 def notify_submission(request_obj, request_type: str) -> EmailNotificationLog | None:
     """
-    Notify PCM approvers that a new request has been submitted.
+    Notify the assigned Purchase Type approver that a new request has been submitted.
 
     Args:
         request_obj:  PurchaseRequest or PaymentRelease instance.
         request_type: 'purchase_request' or 'payment_release'.
 
     Returns:
-        The EmailNotificationLog entry, or None if no PCM approvers are found.
+        The EmailNotificationLog entry, or None if no Purchase Type approver is found.
     """
-    recipients = _get_users_by_role(settings.ROLE_PCM_APPROVER)
+    recipients = _purchase_type_approver_recipients(request_obj)
     if not recipients:
         logger.warning(
-            "notify_submission: no PCM approver emails found for %s #%s",
+            "notify_submission: no Purchase Type approver emails found for %s #%s",
             request_type,
             getattr(request_obj, "pk", "?"),
         )
@@ -260,9 +331,17 @@ def notify_submission(request_obj, request_type: str) -> EmailNotificationLog | 
         getattr(request_obj, "request_number", ""),
     )
 
-    subject = f"[Procurement] {request_type_display} {request_number} requires your approval"
+    subject = (
+        f"[Procurement] {request_type_display} {request_number} awaiting "
+        f"{getattr(request_obj, 'first_approver_role_label', 'Approver')} review"
+    )
     context = _build_request_context(request_obj)
     context["request_type_display"] = request_type_display
+    context["review_stage_label"] = getattr(
+        request_obj,
+        "first_approver_role_label",
+        "Approver",
+    )
 
     return send_notification(
         subject=subject,
@@ -273,9 +352,9 @@ def notify_submission(request_obj, request_type: str) -> EmailNotificationLog | 
     )
 
 
-def notify_pcm_approved(request_obj, request_type: str) -> EmailNotificationLog | None:
+def notify_first_stage_approved(request_obj, request_type: str) -> EmailNotificationLog | None:
     """
-    Notify final approvers that a request has passed PCM review.
+    Notify final approvers that a request has passed Purchase Type approval.
 
     Args:
         request_obj:  PurchaseRequest or PaymentRelease instance.
@@ -284,10 +363,10 @@ def notify_pcm_approved(request_obj, request_type: str) -> EmailNotificationLog 
     Returns:
         The EmailNotificationLog entry, or None if no final approvers are found.
     """
-    recipients = _get_users_by_role(settings.ROLE_FINAL_APPROVER)
+    recipients = _final_approver_recipients()
     if not recipients:
         logger.warning(
-            "notify_pcm_approved: no final approver emails found for %s #%s",
+            "notify_first_stage_approved: no final approver emails found for %s #%s",
             request_type,
             getattr(request_obj, "pk", "?"),
         )
@@ -301,9 +380,13 @@ def notify_pcm_approved(request_obj, request_type: str) -> EmailNotificationLog 
         getattr(request_obj, "request_number", ""),
     )
 
-    subject = f"[Procurement] {request_type_display} {request_number} requires your approval"
+    subject = (
+        f"[Procurement] {request_type_display} {request_number} awaiting "
+        "Final Approver review"
+    )
     context = _build_request_context(request_obj)
     context["request_type_display"] = request_type_display
+    context["review_stage_label"] = "Final Approver"
 
     return send_notification(
         subject=subject,
@@ -342,6 +425,16 @@ def notify_final_approved(request_obj, request_type: str) -> EmailNotificationLo
         getattr(request_obj, "request_number", ""),
     )
     context = _build_request_context(request_obj)
+    context["next_step_message"] = (
+        "You can now continue with Goods recieve or submit Payment Release in either order."
+        if request_type == "purchase_request"
+        else (
+            "Goods recieve follow-up is still required until the purchase is fully delivered."
+            if getattr(request_obj, "is_advance_payment", False)
+            and getattr(getattr(request_obj, "purchase_request", None), "remaining_quantity", 0) > 0
+            else "This payment approval stage is complete."
+        )
+    )
 
     if request_type == "purchase_request":
         subject = f"[Procurement] Purchase Request {request_number} has been approved"
@@ -382,7 +475,7 @@ def notify_rejected(request_obj, request_type: str) -> EmailNotificationLog | No
     # Determine the rejection comment from the most recent rejection decision.
     rejection_comment = (
         getattr(request_obj, "final_comment", "")
-        or getattr(request_obj, "pcm_comment", "")
+        or getattr(request_obj, "first_approval_comment", "")
     )
     context["rejection_comment"] = rejection_comment
 
@@ -421,8 +514,13 @@ def notify_delivery_submitted(submission) -> EmailNotificationLog | None:
         getattr(submission, "request_number", ""),
     )
     context = _build_request_context(submission)
+    context["next_step_message"] = (
+        "Continue updating the same Goods recieve record until all goods are fully received."
+        if getattr(submission, "remaining_quantity", 0) > 0
+        else "Goods recieve is complete for this request."
+    )
 
-    subject = f"[Procurement] DO/SO Submission {request_number}"
+    subject = f"[Procurement] Goods recieve update {request_number}"
 
     return send_notification(
         subject=subject,
@@ -479,7 +577,7 @@ def trigger_post_approval_notification(
         if action == ACTION_SUBMITTED:
             return notify_submission(request_obj, request_type)
         if action == ACTION_PCM_APPROVED:
-            return notify_pcm_approved(request_obj, request_type)
+            return notify_first_stage_approved(request_obj, request_type)
         if action == ACTION_FINAL_APPROVED:
             return notify_final_approved(request_obj, request_type)
         if action in (ACTION_PCM_REJECTED, ACTION_FINAL_REJECTED):

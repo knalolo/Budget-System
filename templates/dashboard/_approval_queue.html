@@ -42,7 +42,7 @@
                     <td class="px-4 py-3">
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
                             bg-{{ pr.status|status_color }}-100 text-{{ pr.status|status_color }}-800">
-                            {{ pr.get_status_display }}
+                            {{ pr.human_status_label }}
                         </span>
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-500">{{ pr.created_at|date:"M d, Y" }}</td>
@@ -74,7 +74,7 @@
                     <td class="px-4 py-3">
                         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
                             bg-{{ payment.status|status_color }}-100 text-{{ payment.status|status_color }}-800">
-                            {{ payment.get_status_display }}
+                            {{ payment.human_status_label }}
                         </span>
                         {% if payment.is_advance_without_goods_recieve %}
                         <p class="mt-1 text-[11px] font-semibold text-amber-700">Prepayment exception</p>
@@ -97,7 +97,7 @@
         <svg class="mx-auto w-10 h-10 text-gray-300" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <p class="mt-2 text-sm text-gray-400">No pending approvals - all caught up!</p>
+        <p class="mt-2 text-sm text-gray-400">No Purchase Type approver or Final Approver reviews are waiting right now.</p>
     </div>
     {% endif %}
 </div>

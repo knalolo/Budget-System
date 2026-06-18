@@ -1,9 +1,9 @@
 """
 Serializers for the accounts app.
 
-Provides read/write representations for User and UserProfile,
-plus a MeSerializer that returns the full current-user payload.
+The API now exposes multi-permission profile data instead of a single role.
 """
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
@@ -11,12 +11,48 @@ from accounts.models import UserProfile
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    """Serializer for the UserProfile model (nested inside UserSerializer)."""
+    """Serializer for the UserProfile model."""
+
+    role = serializers.ReadOnlyField()
+    permission_labels = serializers.ReadOnlyField()
+    primary_role = serializers.ReadOnlyField()
+    primary_role_display = serializers.ReadOnlyField()
 
     class Meta:
         model = UserProfile
-        fields = ["role", "display_name"]
-        read_only_fields = ["role"]
+        fields = [
+            "role",
+            "display_name",
+            "is_requester",
+            "is_project_approver",
+            "is_non_project_approver",
+            "is_office_approver",
+            "is_final_approver",
+            "is_admin",
+            "permission_labels",
+            "primary_role",
+            "primary_role_display",
+        ]
+
+    def validate(self, attrs):
+        profile = self.instance or UserProfile()
+        for field_name in UserProfile.PERMISSION_FIELDS:
+            if field_name in attrs:
+                setattr(profile, field_name, attrs[field_name])
+        if "display_name" in attrs:
+            profile.display_name = attrs["display_name"]
+
+        try:
+            profile.clean()
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict or exc.messages)
+
+        return attrs
+        read_only_fields = [
+            "permission_labels",
+            "primary_role",
+            "primary_role_display",
+        ]
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -34,8 +70,7 @@ class MeSerializer(serializers.ModelSerializer):
     """
     Full representation of the currently authenticated user.
 
-    Includes profile role details so the frontend can make
-    permission decisions without a separate request.
+    Includes permission flags so the frontend can make workflow decisions.
     """
 
     profile = UserProfileSerializer(read_only=True)
@@ -43,6 +78,8 @@ class MeSerializer(serializers.ModelSerializer):
     is_pcm_approver = serializers.SerializerMethodField()
     is_final_approver = serializers.SerializerMethodField()
     is_admin_role = serializers.SerializerMethodField()
+    can_create_requests = serializers.SerializerMethodField()
+    can_view_all_requests = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -59,6 +96,8 @@ class MeSerializer(serializers.ModelSerializer):
             "is_pcm_approver",
             "is_final_approver",
             "is_admin_role",
+            "can_create_requests",
+            "can_view_all_requests",
         ]
         read_only_fields = fields
 
@@ -80,5 +119,17 @@ class MeSerializer(serializers.ModelSerializer):
     def get_is_admin_role(self, obj: User) -> bool:
         try:
             return obj.profile.is_admin
+        except UserProfile.DoesNotExist:
+            return False
+
+    def get_can_create_requests(self, obj: User) -> bool:
+        try:
+            return obj.profile.can_create_requests
+        except UserProfile.DoesNotExist:
+            return False
+
+    def get_can_view_all_requests(self, obj: User) -> bool:
+        try:
+            return obj.profile.can_view_all_requests
         except UserProfile.DoesNotExist:
             return False

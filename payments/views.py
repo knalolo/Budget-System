@@ -29,8 +29,6 @@ PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES = {
     "proforma_invoice": "Proforma Invoice",
 }
 LINKED_PURCHASE_REQUEST_PARAM = "purchase_request"
-VIEW_ALL_ROLES = {"pcm_approver", "final_approver", "admin"}
-APPROVAL_ONLY_ROLES = {"pcm_approver", "final_approver"}
 
 
 # ---------------------------------------------------------------------------
@@ -48,9 +46,8 @@ class PaymentReleaseListView(View):
             "requester", "project", "expense_category", "purchase_request"
         ).order_by("-created_at")
 
-        # Non-approvers see only their own records
-        role = _get_role(request.user)
-        if role not in VIEW_ALL_ROLES:
+        profile = _get_profile(request.user)
+        if not (profile and profile.can_view_all_requests):
             qs = qs.filter(requester=request.user)
 
         status_filter = request.GET.get("status", "").strip()
@@ -78,7 +75,9 @@ class PaymentReleaseCreateView(View):
 
     def get(self, request: HttpRequest) -> HttpResponse:
         if _is_approval_only_role(request.user):
-            return HttpResponseForbidden("PCM / Final approvers cannot create payment releases.")
+            return HttpResponseForbidden(
+                "Approval-only accounts cannot create payment releases."
+            )
         try:
             source_purchase_request = _get_linkable_purchase_request(request)
         except PermissionError:
@@ -100,7 +99,9 @@ class PaymentReleaseCreateView(View):
 
     def post(self, request: HttpRequest) -> HttpResponse:
         if _is_approval_only_role(request.user):
-            return HttpResponseForbidden("PCM / Final approvers cannot create payment releases.")
+            return HttpResponseForbidden(
+                "Approval-only accounts cannot create payment releases."
+            )
         try:
             source_purchase_request = _get_linkable_purchase_request(request)
         except PermissionError:
@@ -405,8 +406,8 @@ def list_table_partial(request: HttpRequest) -> HttpResponse:
         "requester", "project", "expense_category", "purchase_request"
     ).order_by("-created_at")
 
-    role = _get_role(request.user)
-    if role not in VIEW_ALL_ROLES:
+    profile = _get_profile(request.user)
+    if not (profile and profile.can_view_all_requests):
         qs = qs.filter(requester=request.user)
 
     status_filter = request.GET.get("status", "").strip()
@@ -428,35 +429,45 @@ def list_table_partial(request: HttpRequest) -> HttpResponse:
 # ---------------------------------------------------------------------------
 
 def _get_role(user) -> str:
+    profile = _get_profile(user)
+    return profile.primary_role if profile is not None else "requester"
+
+
+def _get_profile(user):
     try:
-        return user.profile.role
+        return user.profile
     except AttributeError:
-        return "requester"
+        return None
 
 
 def _is_admin(user) -> bool:
-    return _get_role(user) == "admin"
+    profile = _get_profile(user)
+    return bool(profile and profile.is_admin)
 
 
 def _is_approval_only_role(user) -> bool:
-    return _get_role(user) in APPROVAL_ONLY_ROLES
+    profile = _get_profile(user)
+    return bool(profile and profile.is_approval_only)
 
 
 def _check_can_view(user, payment: PaymentRelease) -> None:
     """Raise PermissionError if *user* cannot view *payment*."""
-    role = _get_role(user)
-    if role not in VIEW_ALL_ROLES:
+    profile = _get_profile(user)
+    can_view_all = bool(profile and profile.can_view_all_requests)
+    if not can_view_all:
         if payment.requester != user:
             raise PermissionError
 
 
 def _can_approve(user, payment: PaymentRelease) -> bool:
     """Return True if *user* may approve *payment* at its current stage."""
-    role = _get_role(user)
+    profile = _get_profile(user)
+    if profile is None:
+        return False
     if payment.status == "pending_pcm":
-        return role in ("pcm_approver", "admin") and payment.requester != user
+        return profile.can_approve_purchase_type(payment.purchase_type)
     if payment.status == "pending_final":
-        return role in ("final_approver", "admin") and payment.requester != user
+        return profile.is_final_approver
     return False
 
 
@@ -466,8 +477,14 @@ def _can_manage_payment(user, payment: PaymentRelease) -> bool:
 
 def _status_choices() -> list[tuple[str, str]]:
     """Return all payment status choices including an empty 'All' option."""
-    from django.conf import settings
-    return [("", "All statuses")] + list(settings.PAYMENT_STATUS_CHOICES)
+    return [
+        ("", "All statuses"),
+        ("draft", "Draft"),
+        ("pending_pcm", "Pending Purchase Type Approver Review"),
+        ("pending_final", "Pending Final Approver Review"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    ]
 
 
 def _render_payment_create_form(

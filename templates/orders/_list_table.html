@@ -23,7 +23,7 @@
             {{ pr.currency|currency_symbol }} {{ pr.total_price|floatformat:2 }}
         </td>
         <td class="whitespace-nowrap px-3 py-3 text-sm">
-            {% include "components/status_badge.html" with status=pr.status status_display=pr.get_status_display %}
+            {% include "components/status_badge.html" with status=pr.status status_display=pr.human_status_label %}
         </td>
         <td class="whitespace-nowrap px-3 py-3 text-sm text-gray-500">
             {{ pr.created_at|date:"d M Y" }}

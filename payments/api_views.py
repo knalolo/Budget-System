@@ -9,8 +9,10 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
+from approvals.services import can_user_approve
 from core.permissions import IsOwnerOrApprover
 from core.services.file_service import save_attachment
+from core.services.workflow_delete_service import delete_payment_workflow
 
 from .models import PaymentRelease
 from .serializers import (
@@ -25,6 +27,13 @@ from .services import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _get_profile(user):
+    try:
+        return user.profile
+    except AttributeError:
+        return None
 
 
 class PaymentReleaseViewSet(
@@ -111,6 +120,10 @@ class PaymentReleaseViewSet(
         serializer.save()
 
     def perform_destroy(self, instance):
+        profile = _get_profile(self.request.user)
+        if profile and profile.is_admin:
+            delete_payment_workflow(instance)
+            return
         if not instance.can_be_deleted:
             raise DRFValidationError(
                 {"detail": "Only draft payment releases can be deleted."}
@@ -136,6 +149,9 @@ class PaymentReleaseViewSet(
     def approve(self, request, pk=None):
         """Record an approval decision at the current level."""
         payment = self.get_object()
+        can_approve, reason = can_user_approve(payment, request.user)
+        if not can_approve:
+            return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
         comment = request.data.get("comment", "")
         try:
             updated = approve_payment_release(payment, request.user, comment)
@@ -148,6 +164,9 @@ class PaymentReleaseViewSet(
     def reject(self, request, pk=None):
         """Record a rejection decision at the current level."""
         payment = self.get_object()
+        can_approve, reason = can_user_approve(payment, request.user)
+        if not can_approve:
+            return Response({"detail": reason}, status=status.HTTP_403_FORBIDDEN)
         comment = request.data.get("comment", "")
         try:
             updated = reject_payment_release(payment, request.user, comment)

@@ -41,8 +41,24 @@ PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES = {
     "quotation": "Quotation",
     "new_order_list": "New Order List",
 }
-VIEW_ALL_ROLES = {"pcm_approver", "final_approver", "admin"}
-APPROVAL_ONLY_ROLES = {"pcm_approver", "final_approver"}
+
+
+def _purchase_request_status_choices() -> list[tuple[str, str]]:
+    """Return list-filter labels using unified workflow wording."""
+    labels = {
+        "draft": "Draft",
+        "pending_pcm": "Pending Purchase Type Approver Review",
+        "pending_final": "Pending Final Approver Review",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "po_sent": "Legacy PO Sent",
+        "ordered": "Legacy Ordered",
+        "completed": "Legacy Completed",
+    }
+    return [
+        (value, labels.get(value, label))
+        for value, label in PurchaseRequest._meta.get_field("status").choices
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +115,7 @@ class PurchaseRequestListView(LoginRequiredMixin, ListView):
         context["project_filter"] = self.request.GET.get("project", "")
         context["search"] = self.request.GET.get("q", "")
         context["projects"] = Project.objects.filter(is_active=True)
-        context["status_choices"] = PurchaseRequest._meta.get_field("status").choices
+        context["status_choices"] = _purchase_request_status_choices()
         context["can_create_purchase_request"] = not _is_approval_only_role(self.request.user)
         context["requests_tab_label"] = (
             "All Requests" if _user_can_view_all_purchase_requests(self.request.user) else "My Requests"
@@ -135,7 +151,10 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
 
     def dispatch(self, request, *args, **kwargs):
         if _is_approval_only_role(request.user):
-            return HttpResponse("PCM / Final approvers cannot create purchase requests.", status=403)
+            return HttpResponse(
+                "Approval-only accounts cannot create purchase requests.",
+                status=403,
+            )
         return super().dispatch(request, *args, **kwargs)
 
     def form_valid(self, form):
@@ -400,56 +419,6 @@ def purchase_request_reject(request, pk):
 
 
 @login_required
-def purchase_request_mark_po_sent(request, pk):
-    """Compatibility redirect for the retired PO-sent stage action."""
-    pr = get_object_or_404(PurchaseRequest, pk=pk)
-    if request.method != "POST":
-        return redirect("orders:purchase-request-detail", pk=pk)
-    if not _can_manage_purchase_request(request.user, pr):
-        return HttpResponse("Only the requester or admin can update this purchase request.", status=403)
-
-    messages.info(
-        request,
-        (
-            f"{pr.workflow_number} now follows the new execution flow. "
-            "After approval, continue with Goods recieve and Payment Release instead of using PO Sent."
-        ),
-    )
-
-    if request.headers.get("HX-Request"):
-        return _htmx_detail_redirect(request, pk)
-    return redirect("orders:purchase-request-detail", pk=pk)
-
-
-@login_required
-def purchase_request_mark_ordered(request, pk):
-    """Compatibility redirect for the retired ordered-stage action."""
-    pr = get_object_or_404(PurchaseRequest, pk=pk)
-    if request.method != "POST":
-        return redirect("orders:purchase-request-detail", pk=pk)
-    if not _can_manage_purchase_request(request.user, pr):
-        return HttpResponse("Only the requester or admin can update this purchase request.", status=403)
-
-    existing_delivery = pr.latest_open_delivery_submission
-    if existing_delivery is not None and existing_delivery.can_continue_receiving:
-        delivery_submission_url = reverse("deliveries:update", args=[existing_delivery.pk])
-    else:
-        delivery_submission_url = f"{reverse('deliveries:create')}?purchase_request={pr.pk}"
-    messages.info(
-        request,
-        (
-            f"{pr.workflow_number} now uses the new execution flow. "
-            "Continue by updating Goods recieve or submitting Payment Release."
-        ),
-    )
-    if request.headers.get("HX-Request"):
-        response = HttpResponse(status=204)
-        response["HX-Redirect"] = delivery_submission_url
-        return response
-    return redirect(delivery_submission_url)
-
-
-@login_required
 def purchase_request_upload(request, pk):
     """Handle file upload via HTMX POST and return updated attachments partial."""
     pr = get_object_or_404(PurchaseRequest, pk=pk)
@@ -500,22 +469,30 @@ def _htmx_detail_redirect(request, pk: int) -> HttpResponse:
 
 
 def _get_role(user) -> str:
+    profile = _get_profile(user)
+    return profile.primary_role if profile is not None else "requester"
+
+
+def _get_profile(user):
     try:
-        return user.profile.role
+        return user.profile
     except AttributeError:
-        return "requester"
+        return None
 
 
 def _is_approval_only_role(user) -> bool:
-    return _get_role(user) in APPROVAL_ONLY_ROLES
+    profile = _get_profile(user)
+    return bool(profile and profile.is_approval_only)
 
 
 def _user_can_view_all_purchase_requests(user) -> bool:
-    return _get_role(user) in VIEW_ALL_ROLES
+    profile = _get_profile(user)
+    return bool(profile and profile.can_view_all_requests)
 
 
 def _can_manage_purchase_request(user, purchase_request: PurchaseRequest) -> bool:
-    return purchase_request.requester == user or _get_role(user) == "admin"
+    profile = _get_profile(user)
+    return purchase_request.requester == user or bool(profile and profile.is_admin)
 
 
 def _clean_purchase_request_attachment_type(raw_value: str) -> str:

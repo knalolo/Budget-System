@@ -58,6 +58,11 @@ class PurchaseRequest(models.Model):
         on_delete=models.CASCADE,
         related_name="purchase_requests",
     )
+    purchase_type = models.CharField(
+        max_length=20,
+        choices=settings.PURCHASE_TYPE_CHOICES,
+        default=settings.PURCHASE_TYPE_PROJECT,
+    )
     expense_category = models.ForeignKey(
         ExpenseCategory,
         on_delete=models.PROTECT,
@@ -137,6 +142,45 @@ class PurchaseRequest(models.Model):
     def workflow_number(self) -> str:
         return to_workflow_number(self.request_number)
 
+    @property
+    def purchase_type_display(self) -> str:
+        return dict(settings.PURCHASE_TYPE_CHOICES).get(
+            self.purchase_type,
+            self.purchase_type,
+        )
+
+    @property
+    def first_approver_role_label(self) -> str:
+        labels = {
+            settings.PURCHASE_TYPE_PROJECT: "Project Approver",
+            settings.PURCHASE_TYPE_NON_PROJECT: "Non-Project Approver",
+            settings.PURCHASE_TYPE_OFFICE: "Office Approver",
+        }
+        return labels.get(self.purchase_type, "Approver")
+
+    @property
+    def first_approver(self):
+        return self.pcm_approver
+
+    @property
+    def first_approval_decision(self) -> str:
+        return self.pcm_decision
+
+    @property
+    def first_approval_decision_display(self) -> str:
+        return dict(settings.DECISION_CHOICES).get(
+            self.first_approval_decision,
+            self.first_approval_decision,
+        )
+
+    @property
+    def first_approval_comment(self) -> str:
+        return self.pcm_comment
+
+    @property
+    def first_approved_at(self):
+        return self.pcm_decided_at
+
     # ------------------------------------------------------------------
     # Save override – auto-generate request_number
     # ------------------------------------------------------------------
@@ -165,6 +209,20 @@ class PurchaseRequest(models.Model):
     @property
     def is_rejected(self) -> bool:
         return self.status == "rejected"
+
+    @property
+    def human_status_label(self) -> str:
+        labels = {
+            "draft": "Draft",
+            "pending_pcm": f"Pending {self.first_approver_role_label} Review",
+            "pending_final": "Pending Final Approver Review",
+            "approved": "Approved",
+            "rejected": "Rejected",
+            "po_sent": "Legacy PO Sent",
+            "ordered": "Legacy Ordered",
+            "completed": "Legacy Completed",
+        }
+        return labels.get(self.status, self.get_status_display())
 
     @property
     def can_be_edited(self) -> bool:
@@ -216,7 +274,7 @@ class PurchaseRequest(models.Model):
 
     @property
     def is_execution_ready(self) -> bool:
-        return self.status in ("approved", "po_sent", "ordered", "completed")
+        return self.status == "approved"
 
     @property
     def delivered_quantity(self) -> int:
@@ -289,8 +347,8 @@ class PurchaseRequest(models.Model):
         labels = {
             "not_started": "Payment Not Started",
             "draft": "Payment Draft",
-            "pending_pcm": "Pending PCM Review",
-            "pending_final": "Pending Final Review",
+            "pending_pcm": f"Pending {self.first_approver_role_label} Review",
+            "pending_final": "Pending Final Approver Review",
             "approved": "Payment Approved",
             "rejected": "Payment Rejected",
         }
@@ -299,7 +357,7 @@ class PurchaseRequest(models.Model):
     @property
     def workflow_completed(self) -> bool:
         return (
-            self.is_execution_ready
+            self.status == "approved"
             and self.payment_stage == "approved"
             and self.goods_stage in ("fully_delivered", "short_closed")
         )
@@ -328,19 +386,19 @@ class PurchaseRequest(models.Model):
             return "goods_pending"
         if payment_stage in ("not_started", "draft", "rejected"):
             return "payment_pending"
-        return "waiting_for_payment_approval"
+        return "awaiting_payment_approval"
 
     @property
     def workflow_stage_display(self) -> str:
         labels = {
             "draft": "Draft",
-            "awaiting_pr_approval": "Awaiting PR Approval",
+            "awaiting_pr_approval": f"Awaiting {self.first_approver_role_label} / Final Approver Approval",
             "rejected": "Rejected",
             "ready_for_execution": "Choose Next Step",
             "goods_pending": "Goods recieve Still Required",
             "payment_pending": "Payment Still Required",
             "goods_follow_up_required": "Partial Delivery Follow-up",
-            "waiting_for_payment_approval": "Waiting For PCM / Final",
+            "awaiting_payment_approval": f"Waiting For {self.first_approver_role_label} / Final Approver",
             "completed": "Completed",
         }
         return labels.get(self.workflow_stage, self.get_status_display())

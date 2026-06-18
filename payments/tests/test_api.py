@@ -1,16 +1,10 @@
-"""Integration tests for the payments API (PaymentRelease endpoints).
+"""Integration tests for the payments API (PaymentRelease endpoints)."""
 
-Known issues in source code:
-- PaymentReleaseCreateSerializer does not include 'id', so creates are
-  verified via DB lookups.
-- IsOwnerOrApprover uses user.userprofile.role (bug); role checks fail,
-  non-owners get 403 (not 404, since queryset is unfiltered).
-- The approve/reject endpoints have no explicit role check, but self-approval
-  is blocked at the service layer.
-"""
 import pytest
 
-from orders.tests.factories import ExpenseCategoryFactory, ProjectFactory
+from assets.models import AssetRegistration
+from deliveries.tests.factories import DeliverySubmissionFactory
+from orders.tests.factories import ExpenseCategoryFactory, ProjectFactory, PurchaseRequestFactory, UserFactory
 from payments.models import PaymentRelease
 from payments.tests.factories import PaymentReleaseFactory
 
@@ -82,7 +76,6 @@ class TestCreatePaymentRelease:
         payload = _create_payload(project, category)
         resp = api_client.post(_BASE, payload, format="json")
         assert resp.status_code == 201
-        # CreateSerializer does not return 'id'; verify via DB
         pr = PaymentRelease.objects.filter(requester=regular_user).first()
         assert pr is not None
         assert pr.requester == regular_user
@@ -125,7 +118,6 @@ class TestRetrievePaymentRelease:
         assert resp.data["id"] == pr.pk
 
     def test_retrieve_other_users_returns_403(self, api_client):
-        """Queryset is unfiltered; non-owners get 403 from IsOwnerOrApprover."""
         pr = PaymentReleaseFactory()
         resp = api_client.get(_detail(pr.pk))
         assert resp.status_code == 403
@@ -145,6 +137,8 @@ class TestRetrievePaymentRelease:
 @pytest.mark.django_db
 class TestSubmitAction:
     def test_submit_draft_transitions_to_pending_pcm(self, api_client, regular_user):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         pr = PaymentReleaseFactory(requester=regular_user, status="draft")
         resp = api_client.post(_action(pr.pk, "submit"))
         assert resp.status_code == 200
@@ -163,17 +157,15 @@ class TestSubmitAction:
 
 # ---------------------------------------------------------------------------
 # Approve action
-# No role check in PaymentRelease API; service-layer self-approval is blocked.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
 class TestApproveAction:
-    def test_owner_self_approve_blocked_at_service_layer(self, api_client, regular_user):
-        """The service blocks self-approval with a ValidationError → 400."""
+    def test_requester_without_approver_permission_cannot_approve(self, api_client, regular_user):
         pr = PaymentReleaseFactory(requester=regular_user, status="pending_pcm")
         resp = api_client.post(_action(pr.pk, "approve"))
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
     def test_unauthenticated_cannot_approve(self, anon_client, regular_user):
         pr = PaymentReleaseFactory(requester=regular_user, status="pending_pcm")
@@ -188,11 +180,10 @@ class TestApproveAction:
 
 @pytest.mark.django_db
 class TestRejectAction:
-    def test_owner_self_reject_blocked_at_service_layer(self, api_client, regular_user):
-        """Service blocks self-approval (also applies to rejection) → 400."""
+    def test_requester_without_approver_permission_cannot_reject(self, api_client, regular_user):
         pr = PaymentReleaseFactory(requester=regular_user, status="pending_pcm")
         resp = api_client.post(_action(pr.pk, "reject"), {"comment": "Insufficient docs"})
-        assert resp.status_code == 400
+        assert resp.status_code == 403
 
     def test_unauthenticated_cannot_reject(self, anon_client, regular_user):
         pr = PaymentReleaseFactory(requester=regular_user, status="pending_pcm")
@@ -216,6 +207,41 @@ class TestDeletePaymentRelease:
         pr = PaymentReleaseFactory(requester=regular_user, status="pending_pcm")
         resp = api_client.delete(_detail(pr.pk))
         assert resp.status_code == 400
+
+    def test_admin_can_delete_linked_workflow_from_non_draft_payment(
+        self,
+        api_client_admin,
+        admin_user,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(requester=regular_user, status="approved")
+        payment = PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            status="pending_pcm",
+            vendor=purchase_request.vendor,
+        )
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            status="partially_delivered",
+        )
+        AssetRegistration.objects.create(
+            requester=admin_user,
+            purchase_request=purchase_request,
+            payment_release=payment,
+        )
+
+        resp = api_client_admin.delete(_detail(payment.pk))
+
+        assert resp.status_code == 204
+        assert not PaymentRelease.objects.filter(pk=payment.pk).exists()
+        assert not purchase_request.__class__.objects.filter(pk=purchase_request.pk).exists()
+        assert AssetRegistration.objects.count() == 0
 
     def test_delete_unauthenticated_returns_403(self, anon_client, regular_user):
         pr = PaymentReleaseFactory(requester=regular_user, status="draft")

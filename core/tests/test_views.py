@@ -23,14 +23,14 @@ class TestDashboardView:
 
         completed_general = PurchaseRequestFactory(
             project=general_project,
-            status="ordered",
+            status="approved",
             currency="SGD",
             total_price=100,
             ordered_quantity=5,
         )
         completed_power = PurchaseRequestFactory(
             project=power_project,
-            status="ordered",
+            status="approved",
             currency="USD",
             total_price=50,
             ordered_quantity=2,
@@ -44,7 +44,7 @@ class TestDashboardView:
         )
         future_sensor = PurchaseRequestFactory(
             project=sensor_project,
-            status="ordered",
+            status="approved",
             currency="SGD",
             total_price=80,
             ordered_quantity=4,
@@ -158,20 +158,23 @@ class TestDashboardView:
         assert "Approved This Month" not in content
         assert "Spend This Month" not in content
 
-    def test_purchase_requests_tab_excludes_ordered_requests_in_delivery_stage(
+    def test_purchase_requests_tab_keeps_recent_requests_visible_even_after_execution_begins(
         self,
         client,
         regular_user,
     ):
         client.force_login(regular_user)
         visible_pr = PurchaseRequestFactory(requester=regular_user)
-        moved_pr = PurchaseRequestFactory(requester=regular_user, status="ordered")
+        moved_pr = PurchaseRequestFactory(requester=regular_user, status="approved")
 
         response = client.get(reverse("core:dashboard"))
 
         assert response.status_code == 200
-        assert list(response.context["my_purchase_requests"]) == [visible_pr]
-        assert response.context["stats"]["dashboard_prs_count"] == 1
+        assert {pr.pk for pr in response.context["my_purchase_requests"]} == {
+            moved_pr.pk,
+            visible_pr.pk,
+        }
+        assert response.context["stats"]["dashboard_prs_count"] == 2
         assert response.context["stats"]["total_prs"] == 2
 
     def test_requester_cards_track_delivery_stage_and_ready_for_payment(
@@ -182,22 +185,22 @@ class TestDashboardView:
         client.force_login(regular_user)
         do_pending_pr = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
         )
         partial_pr = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
         )
         ready_pr = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
         )
         pending_payment_pr = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
         )
 
@@ -245,7 +248,7 @@ class TestDashboardView:
         pcm_approver,
     ):
         purchase_request = PurchaseRequestFactory(
-            status="ordered",
+            status="approved",
             ordered_quantity=8,
         )
         PaymentReleaseFactory(
@@ -311,7 +314,7 @@ class TestDashboardView:
     ):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
             total_price=1000,
         )
@@ -344,7 +347,7 @@ class TestDashboardView:
         content = response.content.decode()
         assert "Ready For Payment" not in content
 
-    def test_requester_dashboard_shows_approved_pr_as_next_action_before_ordering(
+    def test_requester_dashboard_shows_approved_pr_as_next_action_before_execution(
         self,
         client,
         regular_user,
@@ -376,7 +379,7 @@ class TestDashboardView:
     ):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=5,
         )
         DeliverySubmissionFactory(
@@ -430,10 +433,52 @@ class TestDashboardView:
         assert action_items[0]["label"] == "Goods recieve Still Required"
         assert action_items[0]["primary_text"] == "Submit Goods recieve"
         assert action_items[0]["secondary_text"] == "Open Payment"
+        waiting_items = response.context["requester_waiting_items"]
+        assert len(waiting_items) == 1
+        assert waiting_items[0]["kind"] == "payment"
+        assert waiting_items[0]["detail"] == "Waiting for Project Approver review before payment can proceed."
         content = response.content.decode()
         assert "Submit Goods recieve" in content
         assert "Submit Payment" not in content
-        assert "Waiting for PCM / Final approval before payment can proceed." in content
+        assert "Waiting for Project Approver review before payment can proceed." in content
+
+    def test_requester_dashboard_keeps_pending_payment_only_in_waiting_after_goods_are_complete(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="approved",
+            ordered_quantity=5,
+        )
+        DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=5,
+            status="fully_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            total_price=purchase_request.total_price,
+        )
+        PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            status="pending_pcm",
+            vendor=purchase_request.vendor,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        assert response.context["requester_action_items"] == []
+        waiting_items = response.context["requester_waiting_items"]
+        assert len(waiting_items) == 1
+        assert waiting_items[0]["kind"] == "payment"
+        assert waiting_items[0]["label"] == "Pending Project Approver Review"
 
     def test_requester_dashboard_keeps_partial_delivery_follow_up_until_fully_delivered(
         self,
@@ -442,7 +487,7 @@ class TestDashboardView:
     ):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
         )
         delivery_submission = DeliverySubmissionFactory(
@@ -486,7 +531,7 @@ class TestDashboardView:
     ):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=5,
         )
         DeliverySubmissionFactory(
@@ -540,7 +585,7 @@ class TestDashboardView:
     ):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
             total_price=1000,
         )

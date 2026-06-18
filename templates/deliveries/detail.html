@@ -24,7 +24,7 @@
             </div>
             <div class="flex items-center gap-3">
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-{{ submission.status|status_color }}-100 text-{{ submission.status|status_color }}-800">
-                    {{ submission.get_status_display }}
+                    {{ submission.delivery_progress_label }}
                 </span>
                 {% if can_continue_submission %}
                 <a
@@ -87,11 +87,11 @@
             </div>
             <div>
                 <dt class="text-gray-500">Outstanding Quantity</dt>
-                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.purchase_request.remaining_quantity }}</dd>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.remaining_quantity }}</dd>
             </div>
             <div>
                 <dt class="text-gray-500">Delivery Stage</dt>
-                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.purchase_request.delivery_stage_display }}</dd>
+                <dd class="font-medium text-gray-900 mt-0.5">{{ submission.delivery_progress_label }}</dd>
             </div>
             {% endif %}
             {% if submission.notes %}
@@ -175,10 +175,10 @@
     </div>
     {% endif %}
 
-    {% if submission.requester == request.user and not can_delete %}
+    {% if show_locked_notice %}
     <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
         <p class="text-sm text-amber-900">
-            This Goods recieve record is locked because the linked payment flow has already been seen or processed by PCM / Final.
+            This Goods recieve record is locked because the linked payment flow has already been reviewed or processed by the approval chain.
         </p>
     </div>
     {% endif %}

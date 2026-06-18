@@ -12,17 +12,24 @@ from rest_framework.views import APIView
 logger = logging.getLogger(__name__)
 
 _PENDING_STATUSES = ("pending_pcm", "pending_final")
-_PCM_APPROVER_ROLES = {"pcm_approver", "admin"}
-_FINAL_APPROVER_ROLES = {"final_approver", "admin"}
-_ALL_APPROVER_ROLES = _PCM_APPROVER_ROLES | _FINAL_APPROVER_ROLES
+def _get_user_profile(user):
+    """Return the linked user profile, or None if unavailable."""
+    try:
+        return user.profile
+    except AttributeError:
+        return None
 
 
 def _get_user_role(user) -> str:
-    """Return the role string for *user*, defaulting to 'requester'."""
-    try:
-        return user.profile.role
-    except AttributeError:
-        return "requester"
+    """Return the primary role string for *user*, defaulting to 'requester'."""
+    profile = _get_user_profile(user)
+    return profile.primary_role if profile is not None else "requester"
+
+
+def _user_can_review_all_requests(user) -> bool:
+    """Return True when the user should see all workflow records."""
+    profile = _get_user_profile(user)
+    return bool(profile and profile.can_view_all_requests)
 
 
 def _pending_approval_counts(user) -> dict[str, int]:
@@ -30,32 +37,28 @@ def _pending_approval_counts(user) -> dict[str, int]:
     from orders.models import PurchaseRequest
     from payments.models import PaymentRelease
 
-    role = _get_user_role(user)
+    profile = _get_user_profile(user)
+    if profile is None:
+        return {"pr_count": 0, "payment_count": 0}
 
-    if role in _PCM_APPROVER_ROLES and role in _FINAL_APPROVER_ROLES:
-        pr_count = PurchaseRequest.objects.filter(
-            status__in=_PENDING_STATUSES
-        ).exclude(requester=user).count()
-        payment_count = PaymentRelease.objects.filter(
-            status__in=_PENDING_STATUSES
-        ).exclude(requester=user).count()
-    elif role in _PCM_APPROVER_ROLES:
-        pr_count = PurchaseRequest.objects.filter(
-            status="pending_pcm"
-        ).exclude(requester=user).count()
-        payment_count = PaymentRelease.objects.filter(
-            status="pending_pcm"
-        ).exclude(requester=user).count()
-    elif role in _FINAL_APPROVER_ROLES:
-        pr_count = PurchaseRequest.objects.filter(
-            status="pending_final"
-        ).exclude(requester=user).count()
-        payment_count = PaymentRelease.objects.filter(
-            status="pending_final"
-        ).exclude(requester=user).count()
-    else:
-        pr_count = 0
-        payment_count = 0
+    pr_q = Q()
+    payment_q = Q()
+
+    if profile.is_project_approver:
+        pr_q |= Q(status="pending_pcm", purchase_type="project")
+        payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="project")
+    if profile.is_non_project_approver:
+        pr_q |= Q(status="pending_pcm", purchase_type="non_project")
+        payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="non_project")
+    if profile.is_office_approver:
+        pr_q |= Q(status="pending_pcm", purchase_type="office")
+        payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="office")
+    if profile.is_final_approver:
+        pr_q |= Q(status="pending_final")
+        payment_q |= Q(status="pending_final")
+
+    pr_count = PurchaseRequest.objects.filter(pr_q).count() if pr_q else 0
+    payment_count = PaymentRelease.objects.filter(payment_q).count() if payment_q else 0
 
     return {"pr_count": pr_count, "payment_count": payment_count}
 
@@ -80,9 +83,14 @@ class DashboardSummaryView(APIView):
         from payments.models import PaymentRelease
 
         today = date.today()
+        view_all = _user_can_review_all_requests(user)
 
         # Purchase request counts
-        pr_base = PurchaseRequest.objects.filter(requester=user)
+        pr_base = (
+            PurchaseRequest.objects.all()
+            if view_all
+            else PurchaseRequest.objects.filter(requester=user)
+        )
         pr_counts = {
             "total": pr_base.count(),
             "draft": pr_base.filter(status="draft").count(),
@@ -92,7 +100,11 @@ class DashboardSummaryView(APIView):
         }
 
         # Payment release counts
-        payment_base = PaymentRelease.objects.filter(requester=user)
+        payment_base = (
+            PaymentRelease.objects.all()
+            if view_all
+            else PaymentRelease.objects.filter(requester=user)
+        )
         payment_counts = {
             "total": payment_base.count(),
             "draft": payment_base.filter(status="draft").count(),
@@ -102,11 +114,16 @@ class DashboardSummaryView(APIView):
         }
 
         # Delivery counts
-        delivery_base = DeliverySubmission.objects.filter(requester=user)
+        delivery_base = (
+            DeliverySubmission.objects.all()
+            if view_all
+            else DeliverySubmission.objects.filter(requester=user)
+        )
         delivery_counts = {
             "total": delivery_base.count(),
-            "submitted": delivery_base.filter(status="submitted").count(),
-            "saved": delivery_base.filter(status="saved").count(),
+            "partially_delivered": delivery_base.filter(status="partially_delivered").count(),
+            "fully_delivered": delivery_base.filter(status="fully_delivered").count(),
+            "short_closed": delivery_base.filter(status="short_closed").count(),
         }
 
         # Spend this month (approved PRs only)
@@ -159,18 +176,31 @@ class MyRequestsView(APIView):
         from orders.models import PurchaseRequest
         from payments.models import PaymentRelease
 
+        view_all = _user_can_review_all_requests(user)
         pr_qs = (
-            PurchaseRequest.objects.filter(requester=user)
+            (
+                PurchaseRequest.objects.all()
+                if view_all
+                else PurchaseRequest.objects.filter(requester=user)
+            )
             .select_related("project")
             .order_by("-created_at")[:10]
         )
         payment_qs = (
-            PaymentRelease.objects.filter(requester=user)
+            (
+                PaymentRelease.objects.all()
+                if view_all
+                else PaymentRelease.objects.filter(requester=user)
+            )
             .select_related("project")
             .order_by("-created_at")[:10]
         )
         delivery_qs = (
-            DeliverySubmission.objects.filter(requester=user)
+            (
+                DeliverySubmission.objects.all()
+                if view_all
+                else DeliverySubmission.objects.filter(requester=user)
+            )
             .order_by("-created_at")[:10]
         )
 
@@ -182,6 +212,10 @@ class MyRequestsView(APIView):
                 "currency": pr.currency,
                 "total_price": str(pr.total_price),
                 "status": pr.status,
+                "status_label": pr.human_status_label,
+                "workflow_stage": pr.workflow_stage,
+                "workflow_stage_display": pr.workflow_stage_display,
+                "workflow_completed": pr.workflow_completed,
                 "project": pr.project.name if pr.project_id else None,
                 "created_at": pr.created_at.isoformat(),
             }
@@ -194,6 +228,10 @@ class MyRequestsView(APIView):
                 "currency": p.currency,
                 "total_price": str(p.total_price),
                 "status": p.status,
+                "status_label": p.human_status_label,
+                "first_approver_role_label": p.first_approver_role_label,
+                "goods_recieve_progress_status": p.goods_recieve_progress_status,
+                "goods_recieve_progress_label": p.goods_recieve_progress_label,
                 "project": p.project.name if p.project_id else None,
                 "created_at": p.created_at.isoformat(),
             }
@@ -206,6 +244,10 @@ class MyRequestsView(APIView):
                 "currency": d.currency,
                 "total_price": str(d.total_price),
                 "status": d.status,
+                "status_label": d.delivery_progress_label,
+                "remaining_quantity": d.remaining_quantity,
+                "quantity_progress": d.delivery_quantity_progress,
+                "value_progress": d.delivery_value_progress,
                 "created_at": d.created_at.isoformat(),
             }
 
@@ -229,35 +271,33 @@ class PendingApprovalsView(APIView):
 
     def get(self, request):
         user = request.user
-        role = _get_user_role(user)
+        profile = _get_user_profile(user)
 
         from orders.models import PurchaseRequest
         from payments.models import PaymentRelease
 
-        if role in _PCM_APPROVER_ROLES and role in _FINAL_APPROVER_ROLES:
-            pr_qs = PurchaseRequest.objects.filter(
-                status__in=_PENDING_STATUSES
-            ).exclude(requester=user)
-            payment_qs = PaymentRelease.objects.filter(
-                status__in=_PENDING_STATUSES
-            ).exclude(requester=user)
-        elif role in _PCM_APPROVER_ROLES:
-            pr_qs = PurchaseRequest.objects.filter(
-                status="pending_pcm"
-            ).exclude(requester=user)
-            payment_qs = PaymentRelease.objects.filter(
-                status="pending_pcm"
-            ).exclude(requester=user)
-        elif role in _FINAL_APPROVER_ROLES:
-            pr_qs = PurchaseRequest.objects.filter(
-                status="pending_final"
-            ).exclude(requester=user)
-            payment_qs = PaymentRelease.objects.filter(
-                status="pending_final"
-            ).exclude(requester=user)
-        else:
+        if profile is None:
             pr_qs = PurchaseRequest.objects.none()
             payment_qs = PaymentRelease.objects.none()
+        else:
+            pr_q = Q()
+            payment_q = Q()
+
+            if profile.is_project_approver:
+                pr_q |= Q(status="pending_pcm", purchase_type="project")
+                payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="project")
+            if profile.is_non_project_approver:
+                pr_q |= Q(status="pending_pcm", purchase_type="non_project")
+                payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="non_project")
+            if profile.is_office_approver:
+                pr_q |= Q(status="pending_pcm", purchase_type="office")
+                payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="office")
+            if profile.is_final_approver:
+                pr_q |= Q(status="pending_final")
+                payment_q |= Q(status="pending_final")
+
+            pr_qs = PurchaseRequest.objects.filter(pr_q) if pr_q else PurchaseRequest.objects.none()
+            payment_qs = PaymentRelease.objects.filter(payment_q) if payment_q else PaymentRelease.objects.none()
 
         pr_qs = pr_qs.select_related("requester", "project").order_by("-created_at")[:20]
         payment_qs = payment_qs.select_related("requester", "project").order_by("-created_at")[:20]
@@ -272,6 +312,9 @@ class PendingApprovalsView(APIView):
                 "currency": pr.currency,
                 "total_price": str(pr.total_price),
                 "status": pr.status,
+                "status_label": pr.human_status_label,
+                "workflow_stage": pr.workflow_stage,
+                "workflow_stage_display": pr.workflow_stage_display,
                 "project": pr.project.name if pr.project_id else None,
                 "created_at": pr.created_at.isoformat(),
                 "detail_url": f"/purchase-requests/{pr.pk}/",
@@ -287,6 +330,9 @@ class PendingApprovalsView(APIView):
                 "currency": p.currency,
                 "total_price": str(p.total_price),
                 "status": p.status,
+                "status_label": p.human_status_label,
+                "first_approver_role_label": p.first_approver_role_label,
+                "goods_recieve_progress_label": p.goods_recieve_progress_label,
                 "project": p.project.name if p.project_id else None,
                 "created_at": p.created_at.isoformat(),
                 "detail_url": f"/payment-releases/{p.pk}/",

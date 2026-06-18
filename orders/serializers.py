@@ -103,8 +103,13 @@ class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
     requester = UserBriefSerializer(read_only=True)
     expense_category = ExpenseCategoryBriefSerializer(read_only=True)
     project = ProjectBriefSerializer(read_only=True)
-    pcm_approver = UserBriefSerializer(read_only=True)
+    first_approver = UserBriefSerializer(read_only=True)
     final_approver = UserBriefSerializer(read_only=True)
+    first_approver_role_label = serializers.CharField(read_only=True)
+    first_approval_decision = serializers.CharField(read_only=True)
+    first_approval_decision_display = serializers.CharField(read_only=True)
+    first_approval_comment = serializers.CharField(read_only=True)
+    first_approved_at = serializers.DateTimeField(read_only=True)
 
     # Lazy import to avoid a circular dependency at module load time.
     attachments = serializers.SerializerMethodField()
@@ -144,7 +149,14 @@ class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
             "target_payment",
             # workflow
             "status",
-            # PCM approval
+            # First-stage approval
+            "first_approver_role_label",
+            "first_approver",
+            "first_approval_decision",
+            "first_approval_decision_display",
+            "first_approval_comment",
+            "first_approved_at",
+            # Legacy compatibility fields
             "pcm_approver",
             "pcm_decision",
             "pcm_comment",
@@ -166,6 +178,12 @@ class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
             "request_number",
             "requester",
             "status",
+            "first_approver_role_label",
+            "first_approver",
+            "first_approval_decision",
+            "first_approval_decision_display",
+            "first_approval_comment",
+            "first_approved_at",
             "pcm_approver",
             "pcm_decision",
             "pcm_comment",

@@ -7,13 +7,17 @@ from datetime import date, datetime
 from decimal import Decimal, ROUND_HALF_UP
 
 from django import forms
+from django.conf import settings
 
-from .models import PurchaseRequest, PurchaseRequestLineItem
+from .models import ExpenseCategory, Project, PurchaseRequest, PurchaseRequestLineItem
 
 
 class PurchaseRequestForm(forms.ModelForm):
     """Form for creating and editing a PurchaseRequest."""
 
+    purchase_type = forms.ChoiceField(
+        choices=settings.PURCHASE_TYPE_CHOICES,
+    )
     description = forms.CharField(required=False, widget=forms.HiddenInput())
     currency = forms.ChoiceField(
         required=False,
@@ -42,6 +46,7 @@ class PurchaseRequestForm(forms.ModelForm):
     class Meta:
         model = PurchaseRequest
         fields = [
+            "purchase_type",
             "expense_category",
             "project",
             "description",
@@ -55,12 +60,24 @@ class PurchaseRequestForm(forms.ModelForm):
         ]
         widgets = {
             "justification": forms.Textarea(attrs={"rows": 4}),
-            "expense_category": forms.Select(),
+            "expense_category": forms.HiddenInput(),
             "project": forms.Select(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["project"].queryset = Project.objects.filter(is_active=True).order_by("mc_number")
+        self.fields["expense_category"].queryset = ExpenseCategory.objects.filter(is_active=True).order_by("name")
+        self.fields["expense_category"].required = False
+
+        if self.instance and self.instance.pk:
+            self.initial.setdefault("purchase_type", self.instance.purchase_type)
+            self.initial.setdefault("expense_category", self.instance.expense_category_id)
+        else:
+            default_expense_category = self._default_expense_category()
+            if default_expense_category is not None:
+                self.initial.setdefault("expense_category", default_expense_category.pk)
+
         target_payment = self.initial.get("target_payment")
         if isinstance(target_payment, str):
             self.initial["target_payment"] = self._parse_target_payment(target_payment)
@@ -76,6 +93,12 @@ class PurchaseRequestForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        if not cleaned_data.get("expense_category"):
+            default_expense_category = self._default_expense_category()
+            if default_expense_category is None:
+                self.add_error(None, "At least one active expense category is required in the system configuration.")
+            else:
+                cleaned_data["expense_category"] = default_expense_category
         line_items_raw = (cleaned_data.get("line_items_json") or "").strip()
         if line_items_raw:
             self.parsed_line_items = self._parse_line_items(line_items_raw)
@@ -260,3 +283,7 @@ class PurchaseRequestForm(forms.ModelForm):
             except ValueError:
                 continue
         return raw_value
+
+    @staticmethod
+    def _default_expense_category():
+        return ExpenseCategory.objects.filter(is_active=True).order_by("name").first()

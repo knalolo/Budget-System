@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load procurement_tags %}
 
 {% block title %}User Management - Admin Panel{% endblock %}
 {% block page_title %}User Management{% endblock %}
@@ -6,10 +7,8 @@
 {% block content %}
 <div class="space-y-5">
 
-    {# Sub-navigation #}
     {% include "admin_panel/_subnav.html" with active="users" %}
 
-    {# Search bar #}
     <form method="get" class="flex items-center gap-3">
         <div class="relative flex-1 max-w-sm">
             <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -38,107 +37,167 @@
         {% endif %}
     </form>
 
-    {# Results summary #}
     <p class="text-sm text-gray-500">
         {% if search %}
-            Search results for "<span class="font-medium text-gray-700">{{ search }}</span>" &mdash;
+            Search results for "<span class="font-medium text-gray-700">{{ search }}</span>" -
         {% endif %}
         <span class="font-medium text-gray-700">{{ paginator.count }}</span> user{{ paginator.count|pluralize }}
     </p>
 
-    {# User table #}
+    <div class="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        Requester can be assigned to multiple users. Admin must stay standalone. Only one active account can hold each of these permissions at a time:
+        Project Approver, Non-Project Approver, Office Approver, Final Approver, and Admin.
+    </div>
+
+    <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+        The system must always keep one active standalone Admin account. If you need to move Admin access, assign it to the next account first, then remove it from the current one.
+    </div>
+
+    <div class="rounded-lg border border-gray-200 bg-white px-4 py-4 shadow-sm">
+        <h2 class="text-sm font-semibold text-gray-900">Current unique permission holders</h2>
+        <div class="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {% for choice in permission_choices %}
+                {% if choice.field != 'is_requester' %}
+                    {% with holder=unique_permission_holders|get_item:choice.field %}
+                    <div class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                        <p class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ choice.label }}</p>
+                        {% if holder %}
+                            <p class="mt-1 text-sm font-medium text-gray-900">{{ holder.display_name }}</p>
+                            <p class="text-xs text-gray-500">{{ holder.username }}</p>
+                        {% else %}
+                            <p class="mt-1 text-sm text-gray-400">Unassigned</p>
+                        {% endif %}
+                    </div>
+                    {% endwith %}
+                {% endif %}
+            {% endfor %}
+        </div>
+        <p class="mt-3 text-xs text-gray-500">
+            To transfer a unique permission, first remove it from the current active holder, save, then assign it to the next account.
+        </p>
+    </div>
+
     <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-        <div id="role-update-feedback" class="hidden px-4 py-2 text-sm text-green-700 bg-green-50 border-b border-green-200"></div>
         <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-gray-200">
                 <thead class="bg-gray-50">
                     <tr>
                         <th scope="col" class="py-3 pl-6 pr-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">User</th>
                         <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Display Name</th>
-                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Role</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Permissions</th>
                         <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
                         <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Last Login</th>
-                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Change Role</th>
+                        <th scope="col" class="px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Update Access</th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-100 bg-white">
                     {% for u in users %}
-                    <tr class="hover:bg-gray-50 transition-colors" id="user-row-{{ u.pk }}">
-
-                        {# User identity #}
+                    <tr class="align-top hover:bg-gray-50 transition-colors" id="user-row-{{ u.pk }}">
                         <td class="py-3 pl-6 pr-3">
                             <div class="flex items-center gap-3">
-                                <div class="flex-shrink-0 w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center text-white font-medium text-xs">
+                                <div class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-medium text-white">
                                     {{ u.username|slice:":2"|upper }}
                                 </div>
                                 <div>
                                     <p class="text-sm font-medium text-gray-900">{{ u.username }}</p>
-                                    <p class="text-xs text-gray-400">{{ u.email|default:"—" }}</p>
+                                    <p class="text-xs text-gray-400">{{ u.email|default:"-" }}</p>
                                 </div>
                             </div>
                         </td>
 
-                        {# Display name #}
                         <td class="px-3 py-3 text-sm text-gray-700">
-                            {{ u.get_full_name|default:"—" }}
+                            {{ u.profile.display_name|default:u.get_full_name|default:"-" }}
                         </td>
 
-                        {# Current role badge #}
                         <td class="px-3 py-3">
-                            {% with role=u.profile.role %}
-                            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
-                                {% if role == 'admin' %}bg-red-100 text-red-800
-                                {% elif role == 'final_approver' %}bg-purple-100 text-purple-800
-                                {% elif role == 'pcm_approver' %}bg-blue-100 text-blue-800
-                                {% else %}bg-gray-100 text-gray-700{% endif %}">
-                                {{ u.profile.get_role_display|default:"—" }}
-                            </span>
-                            {% endwith %}
+                            <div class="flex flex-wrap gap-2">
+                                {% for label in u.profile.permission_labels %}
+                                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                                        {% if label == 'Admin' %}bg-red-100 text-red-800
+                                        {% elif label == 'Final Approver' %}bg-purple-100 text-purple-800
+                                        {% elif 'Approver' in label %}bg-blue-100 text-blue-800
+                                        {% else %}bg-gray-100 text-gray-700{% endif %}">
+                                        {{ label }}
+                                    </span>
+                                {% empty %}
+                                    <span class="text-xs text-gray-400">No permissions</span>
+                                {% endfor %}
+                            </div>
                         </td>
 
-                        {# Active / Inactive status #}
                         <td class="px-3 py-3">
                             {% if u.is_active %}
                             <span class="inline-flex items-center gap-1 text-xs font-medium text-green-700">
-                                <span class="inline-block w-2 h-2 rounded-full bg-green-500"></span>
+                                <span class="inline-block h-2 w-2 rounded-full bg-green-500"></span>
                                 Active
                             </span>
                             {% else %}
                             <span class="inline-flex items-center gap-1 text-xs font-medium text-red-600">
-                                <span class="inline-block w-2 h-2 rounded-full bg-red-400"></span>
+                                <span class="inline-block h-2 w-2 rounded-full bg-red-400"></span>
                                 Inactive
                             </span>
                             {% endif %}
                         </td>
 
-                        {# Last login #}
                         <td class="px-3 py-3 text-sm text-gray-500">
                             {{ u.last_login|date:"d M Y, H:i"|default:"Never" }}
                         </td>
 
-                        {# Role change dropdown (HTMX) #}
                         <td class="px-3 py-3">
-                            <div class="flex items-center gap-2">
-                                <select
-                                    id="role-select-{{ u.pk }}"
-                                    name="role"
-                                    class="rounded-md border border-gray-300 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500 px-2 py-1.5 bg-white"
-                                    hx-post="{% url 'admin-panel:admin-update-role' u.pk %}"
-                                    hx-trigger="change"
-                                    hx-target="#role-feedback-{{ u.pk }}"
-                                    hx-swap="innerHTML"
-                                    hx-include="#role-select-{{ u.pk }}"
-                                >
-                                    {% for value, label in role_choices %}
-                                    <option value="{{ value }}" {% if u.profile.role == value %}selected{% endif %}>
-                                        {{ label }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                                <span id="role-feedback-{{ u.pk }}" class="text-xs text-gray-400"></span>
-                            </div>
-                        </td>
+                            <form
+                                data-user-id="{{ u.pk }}"
+                                class="js-permission-form space-y-3"
+                                hx-post="{% url 'admin-panel:admin-update-role' u.pk %}"
+                                hx-target="#permission-feedback-{{ u.pk }}"
+                                hx-swap="innerHTML"
+                            >
+                                {% csrf_token %}
 
+                                <label class="flex items-center gap-2 text-xs text-gray-600">
+                                    <input
+                                        type="checkbox"
+                                        name="is_active"
+                                        class="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                        {% if u.is_active %}checked{% endif %}
+                                    />
+                                    Active account
+                                </label>
+
+                                <div class="grid gap-2 md:grid-cols-2">
+                                    {% for choice in permission_choices %}
+                                    <label class="flex items-center gap-2 text-xs text-gray-700">
+                                        <input
+                                            type="checkbox"
+                                            name="{{ choice.field }}"
+                                            {% if choice.field != 'is_requester' %}
+                                            data-unique-permission="{{ choice.field }}"
+                                            {% endif %}
+                                            class="rounded border-gray-300 text-brand-600 focus:ring-brand-500"
+                                            {% if choice.field == 'is_requester' and u.profile.is_requester %}checked{% endif %}
+                                            {% if choice.field == 'is_project_approver' and u.profile.is_project_approver %}checked{% endif %}
+                                            {% if choice.field == 'is_non_project_approver' and u.profile.is_non_project_approver %}checked{% endif %}
+                                            {% if choice.field == 'is_office_approver' and u.profile.is_office_approver %}checked{% endif %}
+                                            {% if choice.field == 'is_final_approver' and u.profile.is_final_approver %}checked{% endif %}
+                                            {% if choice.field == 'is_admin' and u.profile.is_admin %}checked{% endif %}
+                                        />
+                                        {{ choice.label }}
+                                    </label>
+                                    {% endfor %}
+                                </div>
+
+                                <div class="hidden rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 js-permission-warning"></div>
+
+                                <div class="flex items-center gap-3">
+                                    <button
+                                        type="submit"
+                                        class="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-500 transition-colors"
+                                    >
+                                        Save
+                                    </button>
+                                    <span id="permission-feedback-{{ u.pk }}" class="text-xs text-gray-400"></span>
+                                </div>
+                            </form>
+                        </td>
                     </tr>
                     {% empty %}
                     <tr>
@@ -152,8 +211,87 @@
         </div>
     </div>
 
-    {# Pagination #}
     {% include "components/pagination.html" %}
 
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (function () {
+        const uniquePermissionOwners = {{ unique_permission_holders_json|safe }};
+        const uniqueFields = [
+            "is_project_approver",
+            "is_non_project_approver",
+            "is_office_approver",
+            "is_final_approver",
+            "is_admin",
+        ];
+
+        function applyPermissionRules(form) {
+            const userId = Number(form.dataset.userId);
+            const activeCheckbox = form.querySelector('input[name="is_active"]');
+            const adminCheckbox = form.querySelector('input[name="is_admin"]');
+            const requesterCheckbox = form.querySelector('input[name="is_requester"]');
+            const warningBox = form.querySelector('.js-permission-warning');
+            const nonAdminPermissionInputs = Array.from(form.querySelectorAll('input[type="checkbox"][name]'))
+                .filter((input) => !["is_active", "is_admin"].includes(input.name));
+            const uniqueInputs = Array.from(form.querySelectorAll('[data-unique-permission]'));
+            const userHasAdmin = adminCheckbox.checked;
+
+            if (userHasAdmin) {
+                nonAdminPermissionInputs.forEach((input) => {
+                    input.checked = false;
+                    input.disabled = true;
+                });
+            } else {
+                nonAdminPermissionInputs.forEach((input) => {
+                    input.disabled = false;
+                });
+            }
+
+            const warnings = [];
+            uniqueInputs.forEach((input) => {
+                const field = input.dataset.uniquePermission;
+                const owner = uniquePermissionOwners[field];
+                const reservedByOther = activeCheckbox.checked && owner && Number(owner.user_id) !== userId;
+
+                if (reservedByOther) {
+                    if (input.checked) {
+                        input.checked = false;
+                    }
+                    if (!adminCheckbox.checked) {
+                        input.disabled = true;
+                    }
+                    warnings.push(`${owner.label} is currently assigned to ${owner.display_name} (${owner.username}).`);
+                } else if (!adminCheckbox.checked) {
+                    input.disabled = false;
+                }
+            });
+
+            if (!adminCheckbox.checked && requesterCheckbox) {
+                requesterCheckbox.disabled = false;
+            }
+
+            if (userHasAdmin) {
+                warnings.unshift("Admin is a standalone permission. Saving this row will clear Requester and all approver permissions.");
+            }
+
+            if (warnings.length) {
+                warningBox.textContent = warnings.join(" ");
+                warningBox.classList.remove('hidden');
+            } else {
+                warningBox.textContent = '';
+                warningBox.classList.add('hidden');
+            }
+        }
+
+        document.querySelectorAll('.js-permission-form').forEach((form) => {
+            form.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+                input.addEventListener('change', () => applyPermissionRules(form));
+            });
+            applyPermissionRules(form);
+        });
+    })();
+</script>
 {% endblock %}

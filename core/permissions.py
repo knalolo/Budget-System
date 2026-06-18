@@ -1,132 +1,127 @@
 """
 DRF permission classes for the procurement approval system.
 
-Role hierarchy (lowest -> highest):
-    requester < pcm_approver < final_approver < admin
-
-All classes handle the case where UserProfile does not exist yet (other apps
-may not be migrated) by defaulting to deny access.
+The application now uses a multi-permission user profile instead of a
+single role string. These helpers intentionally read the new boolean
+flags first and only fall back to deny when no profile exists.
 """
 from __future__ import annotations
 
 from rest_framework.permissions import BasePermission
 
-from django.conf import settings
 
-# Role constants pulled from settings to stay DRY
-_ROLE_REQUESTER = getattr(settings, "ROLE_REQUESTER", "requester")
-_ROLE_PCM_APPROVER = getattr(settings, "ROLE_PCM_APPROVER", "pcm_approver")
-_ROLE_FINAL_APPROVER = getattr(settings, "ROLE_FINAL_APPROVER", "final_approver")
-_ROLE_ADMIN = getattr(settings, "ROLE_ADMIN", "admin")
-
-# Ordered from least to most privileged so that "or higher" checks are easy.
-_ROLE_RANK: dict[str, int] = {
-    _ROLE_REQUESTER: 1,
-    _ROLE_PCM_APPROVER: 2,
-    _ROLE_FINAL_APPROVER: 3,
-    _ROLE_ADMIN: 4,
-}
-
-_APPROVER_ROLES = {_ROLE_PCM_APPROVER, _ROLE_FINAL_APPROVER, _ROLE_ADMIN}
-
-
-def _get_role(user) -> str | None:
-    """Return the user's role string, or None if the profile is absent."""
+def _get_profile(user):
+    """Return the user's profile or None if it is missing."""
     try:
-        return user.profile.role
+        return user.profile
     except AttributeError:
         return None
 
 
-def _has_min_role(user, min_role: str) -> bool:
-    """Return True if the user's role rank is >= *min_role*'s rank."""
-    role = _get_role(user)
-    if role is None:
-        return False
-    user_rank = _ROLE_RANK.get(role, 0)
-    required_rank = _ROLE_RANK.get(min_role, 999)
-    return user_rank >= required_rank
+def _is_authenticated(user) -> bool:
+    """Small helper to keep permission checks tidy."""
+    return bool(user and user.is_authenticated)
 
 
-# ---------------------------------------------------------------------------
-# Permission classes
-# ---------------------------------------------------------------------------
+def _is_first_stage_approver(profile) -> bool:
+    """Return True when the profile can approve any Purchase Type first stage."""
+    return bool(
+        profile
+        and (
+            profile.is_project_approver
+            or profile.is_non_project_approver
+            or profile.is_office_approver
+            or profile.is_pcm_approver
+        )
+    )
+
 
 class IsRequester(BasePermission):
-    """
-    Allow any authenticated user with role 'requester' or higher.
+    """Allow authenticated users who can create requests."""
 
-    In practice this allows all roles since requester is the lowest rank.
-    """
-
-    message = "You must have at least the Requester role."
+    message = "You must have requester permission."
 
     def has_permission(self, request, view) -> bool:
-        if not request.user or not request.user.is_authenticated:
+        if not _is_authenticated(request.user):
             return False
-        return _has_min_role(request.user, _ROLE_REQUESTER)
+        profile = _get_profile(request.user)
+        return bool(profile and (profile.is_requester or profile.is_admin))
 
 
-class IsPCMApprover(BasePermission):
-    """Allow users with exactly the 'pcm_approver' role."""
+class IsPurchaseTypeApprover(BasePermission):
+    """
+    Allow users with any first-stage Purchase Type approver permission.
 
-    message = "You must have the PCM Approver role."
+    Legacy API endpoints still refer to PCM approval. Internally we keep a
+    compatibility alias below so older imports continue to work.
+    """
+
+    message = "You must have Purchase Type approver permission."
 
     def has_permission(self, request, view) -> bool:
-        if not request.user or not request.user.is_authenticated:
+        if not _is_authenticated(request.user):
             return False
-        return _get_role(request.user) == _ROLE_PCM_APPROVER
+        profile = _get_profile(request.user)
+        return bool(
+            (profile and _is_first_stage_approver(profile))
+            or (profile and profile.is_admin)
+        )
+
+
+class IsPCMApprover(IsPurchaseTypeApprover):
+    """Backward-compatible alias for legacy PCM-named API code paths."""
 
 
 class IsFinalApprover(BasePermission):
-    """Allow users with exactly the 'final_approver' role."""
+    """Allow users with final-approver permission or admin access."""
 
-    message = "You must have the Final Approver role."
+    message = "You must have final approver permission."
 
     def has_permission(self, request, view) -> bool:
-        if not request.user or not request.user.is_authenticated:
+        if not _is_authenticated(request.user):
             return False
-        return _get_role(request.user) == _ROLE_FINAL_APPROVER
+        profile = _get_profile(request.user)
+        return bool(profile and (profile.is_final_approver or profile.is_admin))
 
 
 class IsAdmin(BasePermission):
-    """Allow users with the 'admin' role."""
+    """Allow users with standalone admin permission or Django staff."""
 
-    message = "You must have the Admin role."
+    message = "You must have admin permission."
 
     def has_permission(self, request, view) -> bool:
-        if not request.user or not request.user.is_authenticated:
+        if not _is_authenticated(request.user):
             return False
-        return _get_role(request.user) == _ROLE_ADMIN
+        if request.user.is_staff:
+            return True
+        profile = _get_profile(request.user)
+        return bool(profile and profile.is_admin)
 
 
 class IsOwnerOrApprover(BasePermission):
     """
-    Allow access if the user is the owner of the object, OR has any
-    approver-level role (pcm_approver, final_approver, admin).
+    Allow access if the user owns the object or has approver/admin rights.
 
-    Object-level check: the related object is expected to expose a
-    ``requester`` attribute pointing to the owning User. Falls back to
-    checking for a ``user`` attribute if ``requester`` is absent.
+    Object-level check: the related object is expected to expose either a
+    ``requester`` or ``user`` attribute.
     """
 
-    message = "You must be the owner of this record or have an approver role."
+    message = "You must be the owner of this record or have approval access."
 
     def has_permission(self, request, view) -> bool:
-        return bool(request.user and request.user.is_authenticated)
+        return _is_authenticated(request.user)
 
     def has_object_permission(self, request, view, obj) -> bool:
-        if not request.user or not request.user.is_authenticated:
+        if not _is_authenticated(request.user):
             return False
 
-        # Approvers can always access any object.
-        role = _get_role(request.user)
-        if role in _APPROVER_ROLES:
+        profile = _get_profile(request.user)
+        if profile and (
+            profile.is_admin
+            or _is_first_stage_approver(profile)
+            or profile.is_final_approver
+        ):
             return True
 
-        # Check ownership – try common attribute names.
         owner = getattr(obj, "requester", None) or getattr(obj, "user", None)
-        if owner is not None:
-            return owner == request.user
-
-        return False
+        return owner == request.user if owner is not None else False

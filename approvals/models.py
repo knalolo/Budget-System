@@ -21,10 +21,10 @@ ACTION_STATUS_CHANGED = "status_changed"
 
 ACTION_CHOICES = [
     (ACTION_SUBMITTED, "Submitted"),
-    (ACTION_PCM_APPROVED, "PCM Approved"),
-    (ACTION_PCM_REJECTED, "PCM Rejected"),
-    (ACTION_FINAL_APPROVED, "Final Approved"),
-    (ACTION_FINAL_REJECTED, "Final Rejected"),
+    (ACTION_PCM_APPROVED, "Purchase Type Approval Approved"),
+    (ACTION_PCM_REJECTED, "Purchase Type Approval Rejected"),
+    (ACTION_FINAL_APPROVED, "Final Approver Approved"),
+    (ACTION_FINAL_REJECTED, "Final Approver Rejected"),
     (ACTION_STATUS_CHANGED, "Status Changed"),
 ]
 
@@ -67,3 +67,49 @@ class ApprovalLog(models.Model):
             f"[{self.content_type} #{self.object_id}] "
             f"at {self.created_at:%Y-%m-%d %H:%M}"
         )
+
+    @property
+    def human_action_label(self) -> str:
+        """Return a user-facing action label aligned with the new approval naming."""
+        first_stage_label = self._first_stage_role_label()
+        action_map = {
+            ACTION_SUBMITTED: "Submitted",
+            ACTION_PCM_APPROVED: f"{first_stage_label} Approved",
+            ACTION_PCM_REJECTED: f"{first_stage_label} Rejected",
+            ACTION_FINAL_APPROVED: "Final Approver Approved",
+            ACTION_FINAL_REJECTED: "Final Approver Rejected",
+            ACTION_STATUS_CHANGED: "Status Changed",
+        }
+        return action_map.get(self.action, self.get_action_display())
+
+    @property
+    def old_status_display(self) -> str:
+        """Return a user-facing label for the previous status."""
+        return self._status_display(self.old_status)
+
+    @property
+    def new_status_display(self) -> str:
+        """Return a user-facing label for the new status."""
+        return self._status_display(self.new_status)
+
+    def _first_stage_role_label(self) -> str:
+        """Resolve the assigned Purchase Type approver label from the linked workflow object."""
+        content_object = self.content_object
+        return getattr(content_object, "first_approver_role_label", "Assigned Purchase Type Approver")
+
+    def _status_display(self, status: str) -> str:
+        """Map internal workflow status values to user-facing labels."""
+        if not status:
+            return ""
+
+        status_map = {
+            "draft": "Draft",
+            "pending_pcm": f"Pending {self._first_stage_role_label()} Review",
+            "pending_final": "Pending Final Approver Review",
+            "approved": "Approved",
+            "rejected": "Rejected",
+            "po_sent": "Legacy PO Sent",
+            "ordered": "Legacy Ordered",
+            "completed": "Legacy Completed",
+        }
+        return status_map.get(status, status.replace("_", " ").title())

@@ -156,65 +156,31 @@ def reject_purchase_request(purchase_request, approver, comment: str = ""):
 
 def mark_po_sent(purchase_request):
     """
-    Transition an approved purchase request to 'po_sent'.
+    Compatibility helper retained for historical callers.
 
-    Validation: status must be 'approved'.
-    Creates an ApprovalLog entry with ACTION_STATUS_CHANGED.
-    Returns the updated instance.
-    Raises ValidationError if precondition is not met.
+    The retired ``po_sent`` execution stage is no longer part of the active
+    procurement workflow. This helper now leaves the purchase request
+    unchanged and simply returns the current instance.
     """
-    if purchase_request.status != "approved":
-        raise ValidationError(
-            f"Only approved purchase requests can be marked as PO sent. "
-            f"Current status: '{purchase_request.status}'."
-        )
-
-    old_status = purchase_request.status
-    purchase_request.status = "po_sent"
-    purchase_request.save(update_fields=["status", "updated_at"])
-
-    _create_status_log(purchase_request, old_status, "po_sent")
-
-    logger.info("PurchaseRequest #%s marked as po_sent.", purchase_request.pk)
+    logger.info(
+        "mark_po_sent called for PurchaseRequest #%s, but the PO Sent stage is retired.",
+        purchase_request.pk,
+    )
     return purchase_request
 
 
 def mark_ordered(purchase_request):
     """
-    Transition a purchase request to 'ordered'.
+    Compatibility helper retained for historical callers.
 
-    Validation:
-    - PO-required requests must first be marked as 'po_sent'.
-    - Non-PO requests may transition from 'approved' or 'po_sent'.
-    Creates an ApprovalLog entry with ACTION_STATUS_CHANGED.
-    Returns the updated instance.
-    Raises ValidationError if precondition is not met.
+    The retired ``ordered`` execution stage is no longer part of the active
+    procurement workflow. This helper now leaves the purchase request
+    unchanged and simply returns the current instance.
     """
-    if purchase_request.po_required:
-        allowed_statuses = ("po_sent",)
-        error_message = (
-            "PO-required purchase requests must be marked as PO sent before they can be marked as ordered. "
-            f"Current status: '{purchase_request.status}'."
-        )
-    else:
-        allowed_statuses = ("approved", "po_sent")
-        error_message = (
-            "Purchase request must be 'approved' or 'po_sent' to be marked as ordered. "
-            f"Current status: '{purchase_request.status}'."
-        )
-
-    if purchase_request.status not in allowed_statuses:
-        raise ValidationError(
-            error_message
-        )
-
-    old_status = purchase_request.status
-    purchase_request.status = "ordered"
-    purchase_request.save(update_fields=["status", "updated_at"])
-
-    _create_status_log(purchase_request, old_status, "ordered")
-
-    logger.info("PurchaseRequest #%s marked as ordered.", purchase_request.pk)
+    logger.info(
+        "mark_ordered called for PurchaseRequest #%s, but the Ordered stage is retired.",
+        purchase_request.pk,
+    )
     return purchase_request
 
 

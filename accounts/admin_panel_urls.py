@@ -6,6 +6,8 @@ from accounts.admin_panel_views import (
     AuditLogsView,
     SystemConfigView,
     UserManagementView,
+    delete_project,
+    save_project,
     update_config,
     update_user_role,
 )
@@ -27,4 +29,7 @@ urlpatterns = [
         name="admin-update-role",
     ),
     path("config/update/", update_config, name="admin-update-config"),
+    path("config/projects/new/", save_project, name="admin-project-create"),
+    path("config/projects/<int:pk>/save/", save_project, name="admin-project-save"),
+    path("config/projects/<int:pk>/delete/", delete_project, name="admin-project-delete"),
 ]

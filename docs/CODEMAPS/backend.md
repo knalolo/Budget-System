@@ -18,8 +18,7 @@ CRUD /purchase-requests/             → PurchaseRequestViewSet [filters: status
 POST /purchase-requests/{id}/submit/ → .submit → orders.services.submit_purchase_request
 POST /purchase-requests/{id}/approve/→ .approve → orders.services.approve_purchase_request
 POST /purchase-requests/{id}/reject/ → .reject → orders.services.reject_purchase_request
-POST /purchase-requests/{id}/mark-po-sent/  → .mark_po_sent
-POST /purchase-requests/{id}/mark-ordered/  → .mark_ordered
+Legacy note: mark-po-sent / mark-ordered endpoints are retired from the active PR workflow.
 ```
 
 ### Payment Releases (payments/)
@@ -57,7 +56,7 @@ GET  /dashboard/pending-approvals/   → PendingApprovalsView
 /auth/callback/                      → callback_view
 /auth/logout/                        → logout_view
 /auth/dev-login/                     → dev_login_view [DEBUG only]
-/purchase-requests/                  → list, new, {id}/, {id}/edit, {id}/submit|approve|reject|upload|mark-*
+/purchase-requests/                  → list, new, {id}/, {id}/edit, {id}/submit|approve|reject|upload
 /payment-releases/                   → list, new, {id}/, {id}/edit, {id}/submit|approve|reject|upload, _table/
 /delivery-submissions/               → list, new/, {id}/, {id}/upload
 /assets/                             → list, new/, {id}/
@@ -71,8 +70,8 @@ GET  /dashboard/pending-approvals/   → PendingApprovalsView
 submit_purchase_request(pr) → checks PO threshold → approvals.submit_for_approval → email
 approve_purchase_request(pr, approver, comment) → approvals.process_approval → email
 reject_purchase_request(pr, approver, comment) → approvals.process_approval → email
-mark_po_sent(pr) → status transition + ApprovalLog
-mark_ordered(pr) → status transition + ApprovalLog
+mark_po_sent(pr) → legacy compatibility no-op (retired workflow action)
+mark_ordered(pr) → legacy compatibility no-op (retired workflow action)
 ```
 
 ### payments/services.py

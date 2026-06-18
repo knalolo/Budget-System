@@ -20,19 +20,27 @@ _PAYMENT_DRAFT_STATUSES = ("draft",)
 _PAYMENT_SUBMITTED_STATUSES = ("pending_pcm", "pending_final", "approved")
 _PAYMENT_ACTIVE_STATUSES = _PAYMENT_DRAFT_STATUSES + _PAYMENT_SUBMITTED_STATUSES
 
-# Roles that have approval responsibilities.
-_PCM_APPROVER_ROLES = {"pcm_approver", "admin"}
-_FINAL_APPROVER_ROLES = {"final_approver", "admin"}
-_ALL_APPROVER_ROLES = _PCM_APPROVER_ROLES | _FINAL_APPROVER_ROLES
 _ZERO_DECIMAL = Decimal("0.00")
 
 
-def _get_user_role(user) -> str:
-    """Return the role string for *user*, defaulting to 'requester'."""
+def _get_user_profile(user):
+    """Return the linked UserProfile, or None if unavailable."""
     try:
-        return user.profile.role
+        return user.profile
     except AttributeError:
-        return "requester"
+        return None
+
+
+def _get_user_role(user) -> str:
+    """Return the primary role string for *user*, defaulting to 'requester'."""
+    profile = _get_user_profile(user)
+    return profile.primary_role if profile is not None else "requester"
+
+
+def _user_can_review_all_requests(user) -> bool:
+    """Return True when the dashboard should expose all workflow records."""
+    profile = _get_user_profile(user)
+    return bool(profile and profile.can_view_all_requests)
 
 
 def _build_pending_approvals_query(user):
@@ -43,32 +51,28 @@ def _build_pending_approvals_query(user):
     from orders.models import PurchaseRequest
     from payments.models import PaymentRelease
 
-    role = _get_user_role(user)
+    profile = _get_user_profile(user)
+    if profile is None:
+        return PurchaseRequest.objects.none(), PaymentRelease.objects.none()
 
-    if role in _PCM_APPROVER_ROLES and role in _FINAL_APPROVER_ROLES:
-        pr_qs = PurchaseRequest.objects.filter(
-            status__in=_PENDING_STATUSES
-        ).exclude(requester=user)
-        payment_qs = PaymentRelease.objects.filter(
-            status__in=_PENDING_STATUSES
-        ).exclude(requester=user)
-    elif role in _PCM_APPROVER_ROLES:
-        pr_qs = PurchaseRequest.objects.filter(
-            status="pending_pcm"
-        ).exclude(requester=user)
-        payment_qs = PaymentRelease.objects.filter(
-            status="pending_pcm"
-        ).exclude(requester=user)
-    elif role in _FINAL_APPROVER_ROLES:
-        pr_qs = PurchaseRequest.objects.filter(
-            status="pending_final"
-        ).exclude(requester=user)
-        payment_qs = PaymentRelease.objects.filter(
-            status="pending_final"
-        ).exclude(requester=user)
-    else:
-        pr_qs = PurchaseRequest.objects.none()
-        payment_qs = PaymentRelease.objects.none()
+    pr_q = Q()
+    payment_q = Q()
+
+    if profile.is_project_approver:
+        pr_q |= Q(status="pending_pcm", purchase_type="project")
+        payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="project")
+    if profile.is_non_project_approver:
+        pr_q |= Q(status="pending_pcm", purchase_type="non_project")
+        payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="non_project")
+    if profile.is_office_approver:
+        pr_q |= Q(status="pending_pcm", purchase_type="office")
+        payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="office")
+    if profile.is_final_approver:
+        pr_q |= Q(status="pending_final")
+        payment_q |= Q(status="pending_final")
+
+    pr_qs = PurchaseRequest.objects.filter(pr_q) if pr_q else PurchaseRequest.objects.none()
+    payment_qs = PaymentRelease.objects.filter(payment_q) if payment_q else PaymentRelease.objects.none()
 
     return pr_qs, payment_qs
 
@@ -77,45 +81,50 @@ def _dashboard_purchase_requests_query(user):
     """Return PRs that are still in the purchase-request stage list."""
     from orders.models import PurchaseRequest
 
-    return PurchaseRequest.objects.filter(
-        requester=user,
-    ).exclude(status="ordered")
+    qs = (
+        PurchaseRequest.objects.all()
+        if _user_can_review_all_requests(user)
+        else PurchaseRequest.objects.filter(requester=user)
+    )
+    return qs.select_related("requester", "project", "expense_category")
 
 
 def _dashboard_delivery_stage_query(user):
     """Return PRs that are already in the post-approval execution stage."""
     from orders.models import PurchaseRequest
 
-    return list(
-        PurchaseRequest.objects.filter(
-            requester=user,
-            status__in=("approved", "po_sent", "ordered", "completed"),
-        )
-        .select_related("project", "expense_category")
-        .prefetch_related("delivery_submissions", "payment_releases")
+    base_qs = (
+        PurchaseRequest.objects.all()
+        if _user_can_review_all_requests(user)
+        else PurchaseRequest.objects.filter(requester=user)
     )
-    
+    purchase_requests = (
+        base_qs.select_related("requester", "project", "expense_category")
+        .prefetch_related("delivery_submissions", "payment_releases")
+        .order_by("-updated_at")
+    )
+    return [
+        purchase_request
+        for purchase_request in purchase_requests
+        if purchase_request.workflow_stage not in ("draft", "awaiting_pr_approval", "rejected")
+    ]
 
 
 def _dashboard_execution_stage_query(user):
     """Return execution-stage PRs for requester-side workflow calculations."""
-    from orders.models import PurchaseRequest
-
-    return (
-        PurchaseRequest.objects.filter(
-        requester=user,
-        status__in=("approved", "po_sent", "ordered", "completed"),
-    )
-    .select_related("project", "expense_category")
-    .prefetch_related("delivery_submissions", "payment_releases")
-    )
+    return _dashboard_delivery_stage_query(user)
 
 
 def _dashboard_payment_releases_query(user):
     """Return the requester's payment releases."""
     from payments.models import PaymentRelease
 
-    return PaymentRelease.objects.filter(requester=user)
+    qs = (
+        PaymentRelease.objects.all()
+        if _user_can_review_all_requests(user)
+        else PaymentRelease.objects.filter(requester=user)
+    )
+    return qs.select_related("requester", "project", "expense_category", "purchase_request")
 
 
 def _sum_by_currency(qs) -> dict[str, float]:
@@ -131,7 +140,7 @@ def _format_spend_summary(spend_by_currency: dict[str, float]) -> str:
         amount = spend_by_currency.get(currency)
         if amount:
             spend_parts.append(f"{currency} {amount:,.2f}")
-    return " / ".join(spend_parts) if spend_parts else "—"
+    return " / ".join(spend_parts) if spend_parts else "-"
 
 
 def _approved_pr_spend_this_month(user) -> dict[str, float]:
@@ -324,7 +333,7 @@ def _build_requester_action_items(user):
                 if open_delivery_submission is not None
                 else _delivery_create_url(purchase_request)
             )
-        elif purchase_request.workflow_stage == "waiting_for_payment_approval":
+        elif purchase_request.workflow_stage == "awaiting_payment_approval":
             return
         else:
             label = "Choose Next Step"
@@ -400,15 +409,7 @@ def _build_requester_action_items(user):
             }
         )
 
-    from orders.models import PurchaseRequest
-
-    for purchase_request in (
-        PurchaseRequest.objects.filter(requester=user)
-        .filter(status__in=("approved", "po_sent", "ordered", "completed"))
-        .prefetch_related("payment_releases", "delivery_submissions")
-        .select_related("project")
-        .order_by("-updated_at")
-    ):
+    for purchase_request in _dashboard_execution_stage_query(user):
         _append_purchase_request_progress_item(purchase_request, priority=3)
 
     return sorted(
@@ -441,6 +442,19 @@ def _build_requester_waiting_items(user):
             )
         return f"{_requester_name(payment.requester)} - {payment.vendor}"
 
+    def _approval_waiting_detail(status_label: str, first_role_label: str, *, payment: bool) -> str:
+        if status_label == "pending_final":
+            return (
+                "Waiting for Final approval before payment can proceed."
+                if payment
+                else "Waiting for Final approval before it can move to the next step."
+            )
+        return (
+            f"Waiting for {first_role_label} review before payment can proceed."
+            if payment
+            else f"Waiting for {first_role_label} review before it can move to the next step."
+        )
+
     for purchase_request in (
         _dashboard_purchase_requests_query(user)
         .filter(status__in=_PENDING_STATUSES)
@@ -450,10 +464,14 @@ def _build_requester_waiting_items(user):
         waiting_items.append(
             {
                 "kind": "purchase_request",
-                "label": purchase_request.get_status_display(),
+                "label": purchase_request.human_status_label,
                 "title": purchase_request.workflow_number,
                 "subtitle": _purchase_request_subtitle(purchase_request),
-                "detail": "Waiting for PCM / Final approval before it can move to the next step.",
+                "detail": _approval_waiting_detail(
+                    purchase_request.status,
+                    purchase_request.first_approver_role_label,
+                    payment=False,
+                ),
                 "object": purchase_request,
             }
         )
@@ -467,10 +485,14 @@ def _build_requester_waiting_items(user):
         waiting_items.append(
             {
                 "kind": "payment",
-                "label": payment.get_status_display(),
+                "label": payment.human_status_label,
                 "title": payment.workflow_number,
                 "subtitle": _payment_subtitle(payment),
-                "detail": "Waiting for PCM / Final approval before payment can proceed.",
+                "detail": _approval_waiting_detail(
+                    payment.status,
+                    payment.first_approver_role_label,
+                    payment=True,
+                ),
                 "object": payment,
             }
         )
@@ -495,8 +517,7 @@ def _build_completed_yearly_spend_rows():
     year_buckets: dict[int, dict] = {}
 
     completed_purchase_requests = (
-        PurchaseRequest.objects.filter(status__in=("approved", "po_sent", "ordered", "completed"))
-        .select_related("project")
+        PurchaseRequest.objects.select_related("project")
         .prefetch_related("delivery_submissions", "payment_releases")
         .order_by("-created_at")
     )
@@ -580,9 +601,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         from payments.models import PaymentRelease
 
         my_purchase_requests_qs = _dashboard_purchase_requests_query(user)
-        my_purchase_requests = my_purchase_requests_qs.select_related(
-            "project", "expense_category"
-        ).order_by("-created_at")[:10]
+        my_purchase_requests = my_purchase_requests_qs.order_by("-created_at")[:10]
         my_delivery_stage_requests_qs = _dashboard_delivery_stage_query(user)
         my_delivery_stage_requests = sorted(
             my_delivery_stage_requests_qs,
@@ -590,9 +609,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             reverse=True,
         )[:10]
         my_payment_releases_qs = _dashboard_payment_releases_query(user)
-        my_payment_releases = my_payment_releases_qs.select_related(
-            "project", "expense_category", "purchase_request"
-        ).order_by("-created_at")[:10]
+        my_payment_releases = my_payment_releases_qs.order_by("-created_at")[:10]
 
         pr_pending_qs, payment_pending_qs = _build_pending_approvals_query(user)
 
@@ -610,8 +627,9 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         pending_approvals_count = pr_pending_qs.count() + payment_pending_qs.count()
 
         today = date.today()
+        profile = _get_user_profile(user)
         user_role = _get_user_role(user)
-        is_approver = user_role in _ALL_APPROVER_ROLES
+        is_approver = _user_can_review_all_requests(user)
 
         total_prs = (
             PurchaseRequest.objects.count()

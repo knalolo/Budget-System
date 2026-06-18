@@ -10,13 +10,13 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.generic import DetailView, ListView
 
+from core.services.workflow_delete_service import delete_delivery_workflow
+
 from .forms import DeliverySubmissionForm
 from .models import DeliverySubmission
 from .services import create_delivery_submission, update_delivery_submission
 
 logger = logging.getLogger(__name__)
-VIEW_ALL_ROLES = {"pcm_approver", "final_approver", "admin"}
-APPROVAL_ONLY_ROLES = {"pcm_approver", "final_approver"}
 
 
 class DeliverySubmissionListView(LoginRequiredMixin, ListView):
@@ -49,6 +49,7 @@ class DeliverySubmissionListView(LoginRequiredMixin, ListView):
         ctx["vendor_filter"] = self.request.GET.get("vendor", "")
         ctx["status_filter"] = self.request.GET.get("status", "")
         ctx["can_create_delivery_submission"] = not _is_approval_only_role(self.request.user)
+        ctx["is_admin"] = _is_admin(self.request.user)
         return ctx
 
 
@@ -62,7 +63,9 @@ class DeliverySubmissionCreateView(LoginRequiredMixin, object):
 def delivery_submission_create(request):
     """Handle GET (render form) and POST (create submission) for delivery submissions."""
     if _is_approval_only_role(request.user):
-        return HttpResponseForbidden("PCM / Final approvers cannot create goods recieve records.")
+        return HttpResponseForbidden(
+            "Purchase Type approver and Final Approver accounts cannot create goods recieve records."
+        )
     try:
         source_purchase_request = _get_linkable_purchase_request(request)
     except PermissionError:
@@ -222,11 +225,9 @@ class DeliverySubmissionDetailView(LoginRequiredMixin, DetailView):
         submission = self.object
         linked_purchase_request = submission.purchase_request
         can_manage_submission = _can_manage_submission(self.request.user, submission)
+        can_delete = _can_delete_submission(self.request.user, submission)
         context["linked_purchase_request"] = linked_purchase_request
-        context["can_delete"] = (
-            submission.requester == self.request.user
-            and submission.requester_can_delete
-        )
+        context["can_delete"] = can_delete
         context["can_manage_submission"] = can_manage_submission
         context["can_create_payment_release"] = bool(
             can_manage_submission
@@ -235,6 +236,11 @@ class DeliverySubmissionDetailView(LoginRequiredMixin, DetailView):
         )
         context["can_continue_submission"] = bool(
             can_manage_submission and submission.can_continue_receiving
+        )
+        context["show_locked_notice"] = bool(
+            submission.requester == self.request.user
+            and not _is_admin(self.request.user)
+            and not submission.requester_can_delete
         )
         if context["can_continue_submission"]:
             context["delivery_submission_update_url"] = reverse(
@@ -299,21 +305,28 @@ def delivery_submission_delete(request, pk: int):
     if request.method != "POST":
         return redirect("deliveries:detail", pk=pk)
 
-    if submission.requester != request.user:
+    if submission.requester != request.user and not _is_admin(request.user):
         return HttpResponseForbidden("You do not have permission to delete this goods recieve record.")
 
-    if not submission.requester_can_delete:
+    if not _is_admin(request.user) and not submission.requester_can_delete:
         return HttpResponseForbidden(
-            "This goods recieve record can no longer be deleted because PCM / Final have already acted on the linked payment flow."
+            "This goods recieve record can no longer be deleted because the Purchase Type Approver "
+            "or Final Approver has already acted on the linked payment flow."
         )
 
     request_number = submission.workflow_number
     linked_purchase_request_id = submission.purchase_request_id
-    submission.delete()
+    if _is_admin(request.user):
+        delete_delivery_workflow(submission)
+    else:
+        submission.delete()
 
-    messages.success(request, f"Goods recieve record {request_number} deleted.")
+    if _is_admin(request.user):
+        messages.success(request, f"Workflow {request_number} deleted.")
+    else:
+        messages.success(request, f"Goods recieve record {request_number} deleted.")
 
-    if linked_purchase_request_id:
+    if linked_purchase_request_id and not _is_admin(request.user):
         return redirect("orders:purchase-request-detail", pk=linked_purchase_request_id)
     return redirect("deliveries:list")
 
@@ -335,26 +348,40 @@ def _get_linkable_purchase_request(request):
 
 
 def _get_role(user) -> str:
+    profile = _get_profile(user)
+    return profile.primary_role if profile is not None else "requester"
+
+
+def _get_profile(user):
     try:
-        return user.profile.role
+        return user.profile
     except AttributeError:
-        return "requester"
+        return None
 
 
 def _is_admin(user) -> bool:
-    return _get_role(user) == "admin"
+    profile = _get_profile(user)
+    return bool(profile and profile.is_admin)
 
 
 def _is_approval_only_role(user) -> bool:
-    return _get_role(user) in APPROVAL_ONLY_ROLES
+    profile = _get_profile(user)
+    return bool(profile and profile.is_approval_only)
 
 
 def _user_can_view_all_submissions(user) -> bool:
-    return _get_role(user) in VIEW_ALL_ROLES
+    profile = _get_profile(user)
+    return bool(profile and profile.can_view_all_requests)
 
 
 def _can_manage_submission(user, submission: DeliverySubmission) -> bool:
     return submission.requester == user or _is_admin(user)
+
+
+def _can_delete_submission(user, submission: DeliverySubmission) -> bool:
+    if _is_admin(user):
+        return True
+    return submission.requester == user and submission.requester_can_delete
 
 
 def _get_editable_delivery_submission(user, purchase_request):

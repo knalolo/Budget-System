@@ -15,7 +15,18 @@ class UserProfileInline(admin.StackedInline):
     model = UserProfile
     can_delete = False
     verbose_name_plural = "Profile"
-    fields = ("role", "display_name", "azure_oid")
+    fields = (
+        "display_name",
+        "azure_oid",
+        "role",
+        "is_requester",
+        "is_project_approver",
+        "is_non_project_approver",
+        "is_office_approver",
+        "is_final_approver",
+        "is_admin",
+    )
+    readonly_fields = ("role",)
 
 
 class UserAdmin(BaseUserAdmin):

@@ -1,9 +1,9 @@
 Dear {{ requester_name }},
 
-A DO/SO Submission has been completed and recorded in the procurement system.
+Your Goods recieve record has been submitted or updated in the procurement system.
 
-SUBMISSION DETAILS
-------------------
+GOODS RECIEVE DETAILS
+---------------------
 Request No.       : {{ request_number }}
 Vendor            : {{ vendor }}
 Amount            : {{ currency }} {{ amount }}
@@ -11,11 +11,11 @@ Description       : {{ description }}
 {% if project %}Project           : {{ project }}
 {% endif %}Submitted At      : {{ submitted_at }}
 
-The logistics team (Jess) has been notified. If you have any questions, please contact the PCM team.
+Next step: {{ next_step_message }}
 
-{% if detail_url %}View the submission at:
+{% if detail_url %}View the Goods recieve record at:
 {{ detail_url }}
 
 {% endif %}
 ---
-This is an automated notification from the KEY Procurement System. Please do not reply to this email.
+This is an automated notification from the Procurement System. Please do not reply to this email.

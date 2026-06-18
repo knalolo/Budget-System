@@ -101,8 +101,8 @@
                     <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Purchase Request Information</h3>
                     <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4 text-sm">
                         <div>
-                            <dt class="font-medium text-gray-500">Project Expense</dt>
-                            <dd class="mt-1 text-gray-900">{{ source_purchase_request.expense_category }}</dd>
+                            <dt class="font-medium text-gray-500">Purchase Type</dt>
+                            <dd class="mt-1 text-gray-900">{{ source_purchase_request.purchase_type_display }}</dd>
                         </div>
                         <div>
                             <dt class="font-medium text-gray-500">MC Number</dt>
@@ -216,7 +216,7 @@
             <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
                     <label for="{{ form.expense_category.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">
-                        Project Expense <span class="text-red-500">*</span>
+                        Expense Category <span class="text-red-500">*</span>
                     </label>
                     {{ form.expense_category }}
                     {% if form.expense_category.errors %}

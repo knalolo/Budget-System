@@ -5,6 +5,7 @@ Provides factory-based fixtures for users, projects, expense categories,
 and pre-authenticated DRF API clients for each role.
 """
 import pytest
+from django.conf import settings
 from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APIClient
@@ -20,13 +21,62 @@ def user_factory(db):
     """Return a callable that creates unique User instances."""
     counter = {"n": 0}
 
+    def _apply_profile_permissions(profile, role: str | None = None, **flags):
+        legacy_role = role or settings.ROLE_REQUESTER
+        role_map = {
+            settings.ROLE_REQUESTER: {
+                "is_requester": True,
+            },
+            settings.ROLE_PCM_APPROVER: {
+                "is_requester": False,
+                "is_project_approver": True,
+            },
+            "project_approver": {
+                "is_requester": False,
+                "is_project_approver": True,
+            },
+            "non_project_approver": {
+                "is_requester": False,
+                "is_non_project_approver": True,
+            },
+            "office_approver": {
+                "is_requester": False,
+                "is_office_approver": True,
+            },
+            settings.ROLE_FINAL_APPROVER: {
+                "is_requester": False,
+                "is_final_approver": True,
+            },
+            settings.ROLE_ADMIN: {
+                "is_requester": False,
+                "is_admin": True,
+            },
+        }
+        base_flags = {
+            "is_requester": False,
+            "is_project_approver": False,
+            "is_non_project_approver": False,
+            "is_office_approver": False,
+            "is_final_approver": False,
+            "is_admin": False,
+        }
+        base_flags.update(role_map.get(legacy_role, role_map[settings.ROLE_REQUESTER]))
+        base_flags.update(flags)
+        for field_name, value in base_flags.items():
+            setattr(profile, field_name, value)
+        profile.save()
+
     def _make(username=None, password="testpass123", role="requester", **kwargs):
         counter["n"] += 1
         uname = username or f"user{counter['n']}"
+        profile_fields = {
+            key: kwargs.pop(key)
+            for key in list(kwargs.keys())
+            if key.startswith("is_")
+        }
         user = User.objects.create_user(username=uname, password=password, **kwargs)
         # UserProfile is auto-created via post_save signal (related_name="profile")
-        user.profile.role = role
-        user.profile.save()
+        _apply_profile_permissions(user.profile, role=role, **profile_fields)
         return user
 
     return _make

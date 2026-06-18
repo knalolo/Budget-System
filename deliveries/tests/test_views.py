@@ -6,6 +6,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
+from assets.models import AssetRegistration
 from deliveries.models import DeliverySubmission
 from deliveries.tests.factories import DeliverySubmissionFactory
 from orders.models import PurchaseRequestLineItem
@@ -48,6 +49,49 @@ class TestDeliverySubmissionDeleteView:
         response = client.post(reverse("deliveries:delete", args=[submission.pk]))
 
         assert response.status_code == 403
+
+    def test_admin_delete_removes_entire_linked_workflow(self, client, admin_user, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="approved",
+            ordered_quantity=20,
+            total_price=200,
+        )
+        submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            delivered_quantity=10,
+            total_price=100,
+            status="partially_delivered",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+        )
+        payment = PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            status="pending_final",
+            payment_type="standard",
+            payment_quantity=10,
+            total_price=100,
+            vendor=purchase_request.vendor,
+        )
+        AssetRegistration.objects.create(
+            requester=admin_user,
+            purchase_request=purchase_request,
+            payment_release=payment,
+        )
+        client.force_login(admin_user)
+
+        response = client.post(reverse("deliveries:delete", args=[submission.pk]))
+
+        assert response.status_code == 302
+        assert response.url == reverse("deliveries:list")
+        assert not DeliverySubmission.objects.filter(pk=submission.pk).exists()
+        assert not purchase_request.__class__.objects.filter(pk=purchase_request.pk).exists()
+        assert not payment.__class__.objects.filter(pk=payment.pk).exists()
+        assert AssetRegistration.objects.count() == 0
 
 
 @pytest.mark.django_db

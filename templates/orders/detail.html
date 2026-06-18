@@ -18,7 +18,7 @@
                     {% if purchase_request.is_execution_ready %}
                     {% include "components/status_badge.html" with status=purchase_request.workflow_stage status_display=purchase_request.workflow_stage_display %}
                     {% else %}
-                    {% include "components/status_badge.html" with status=purchase_request.status status_display=purchase_request.get_status_display %}
+                    {% include "components/status_badge.html" with status=purchase_request.status status_display=purchase_request.human_status_label %}
                     {% endif %}
                     {% if purchase_request.po_required %}
                     <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">PO Required</span>
@@ -123,8 +123,8 @@
                 <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Request Information</h3>
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 text-sm">
                     <div>
-                        <dt class="font-medium text-gray-500">Expense Category</dt>
-                        <dd class="mt-1 text-gray-900">{{ purchase_request.expense_category }}</dd>
+                        <dt class="font-medium text-gray-500">Purchase Type</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.purchase_type_display }}</dd>
                     </div>
                     <div>
                         <dt class="font-medium text-gray-500">Project (MC Number)</dt>
@@ -178,9 +178,9 @@
                 </div>
             </div>
 
-            {# Financial Information #}
+            {# Product Detail Summary #}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
-                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Financial Information</h3>
+                <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Product Detail Summary</h3>
                 <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4 text-sm">
                     <div>
                         <dt class="font-medium text-gray-500">Currency</dt>
@@ -281,21 +281,21 @@
                 <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Approval Status</h3>
 
                 <div class="space-y-4 text-sm">
-                    {# PCM Level #}
+                    {# First approval level #}
                     <div>
                         <div class="flex items-center justify-between mb-1">
-                            <span class="font-medium text-gray-600">PCM Review</span>
-                            {% include "components/status_badge.html" with status=purchase_request.pcm_decision status_display=purchase_request.get_pcm_decision_display %}
+                            <span class="font-medium text-gray-600">{{ purchase_request.first_approver_role_label }} Review</span>
+                            {% include "components/status_badge.html" with status=purchase_request.first_approval_decision status_display=purchase_request.first_approval_decision_display %}
                         </div>
-                        {% if purchase_request.pcm_approver %}
+                        {% if purchase_request.first_approver %}
                         <p class="text-xs text-gray-400">
-                            {{ purchase_request.pcm_approver.get_full_name|default:purchase_request.pcm_approver.username }}
-                            {% if purchase_request.pcm_decided_at %}
-                            &bull; {{ purchase_request.pcm_decided_at|date:"d M Y" }}
+                            {{ purchase_request.first_approver.get_full_name|default:purchase_request.first_approver.username }}
+                            {% if purchase_request.first_approved_at %}
+                            &bull; {{ purchase_request.first_approved_at|date:"d M Y" }}
                             {% endif %}
                         </p>
-                        {% if purchase_request.pcm_comment %}
-                        <p class="mt-1 text-xs text-gray-500 italic">"{{ purchase_request.pcm_comment }}"</p>
+                        {% if purchase_request.first_approval_comment %}
+                        <p class="mt-1 text-xs text-gray-500 italic">"{{ purchase_request.first_approval_comment }}"</p>
                         {% endif %}
                         {% endif %}
                     </div>
@@ -303,7 +303,7 @@
                     {# Final Level #}
                     <div>
                         <div class="flex items-center justify-between mb-1">
-                            <span class="font-medium text-gray-600">Final Review</span>
+                            <span class="font-medium text-gray-600">Final Approver Review</span>
                             {% include "components/status_badge.html" with status=purchase_request.final_decision status_display=purchase_request.get_final_decision_display %}
                         </div>
                         {% if purchase_request.final_approver %}

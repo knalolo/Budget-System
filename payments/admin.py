@@ -52,7 +52,7 @@ class PaymentReleaseAdmin(admin.ModelAdmin):
             {"fields": ["status"]},
         ),
         (
-            "PCM Approval",
+            "Purchase Type Approval",
             {
                 "fields": [
                     "pcm_approver",

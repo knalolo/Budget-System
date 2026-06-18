@@ -255,20 +255,20 @@ PR_STATUS_COMPLETED = "completed"
 
 PR_STATUS_CHOICES = [
     (PR_STATUS_DRAFT, "Draft"),
-    (PR_STATUS_PENDING_PCM, "Pending PCM Review"),
-    (PR_STATUS_PENDING_FINAL, "Pending Final Review"),
+    (PR_STATUS_PENDING_PCM, "Pending Purchase Type Approver Review"),
+    (PR_STATUS_PENDING_FINAL, "Pending Final Approver Review"),
     (PR_STATUS_APPROVED, "Approved"),
     (PR_STATUS_REJECTED, "Rejected"),
-    (PR_STATUS_PO_SENT, "PO Sent"),
-    (PR_STATUS_ORDERED, "Ordered"),
-    (PR_STATUS_COMPLETED, "Completed"),
+    (PR_STATUS_PO_SENT, "Legacy PO Sent"),
+    (PR_STATUS_ORDERED, "Legacy Ordered"),
+    (PR_STATUS_COMPLETED, "Legacy Completed"),
 ]
 
 # Payment Release statuses
 PAYMENT_STATUS_CHOICES = [
     ("draft", "Draft"),
-    ("pending_pcm", "Pending PCM Review"),
-    ("pending_final", "Pending Final Review"),
+    ("pending_pcm", "Pending Purchase Type Approver Review"),
+    ("pending_final", "Pending Final Approver Review"),
     ("approved", "Approved"),
     ("rejected", "Rejected"),
 ]
@@ -288,18 +288,23 @@ DECISION_CHOICES = [
     ("rejected", "Rejected"),
 ]
 
-# User roles
+# Purchase type choices
+PURCHASE_TYPE_PROJECT = "project"
+PURCHASE_TYPE_NON_PROJECT = "non_project"
+PURCHASE_TYPE_OFFICE = "office"
+
+PURCHASE_TYPE_CHOICES = [
+    (PURCHASE_TYPE_PROJECT, "Project"),
+    (PURCHASE_TYPE_NON_PROJECT, "Non-Project"),
+    (PURCHASE_TYPE_OFFICE, "Office"),
+]
+
+# Legacy user-role constants kept for transitional compatibility while the
+# system moves to multi-permission profiles.
 ROLE_REQUESTER = "requester"
 ROLE_PCM_APPROVER = "pcm_approver"
 ROLE_FINAL_APPROVER = "final_approver"
 ROLE_ADMIN = "admin"
-
-ROLE_CHOICES = [
-    (ROLE_REQUESTER, "Requester"),
-    (ROLE_PCM_APPROVER, "PCM Approver"),
-    (ROLE_FINAL_APPROVER, "Final Approver"),
-    (ROLE_ADMIN, "Admin"),
-]
 
 # File type choices
 FILE_TYPE_CHOICES = [

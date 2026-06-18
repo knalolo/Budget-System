@@ -36,7 +36,7 @@ _STATUS_COLOR_MAP: dict[str, str] = {
     "goods_pending": "slate",
     "payment_pending": "emerald",
     "goods_follow_up_required": "amber",
-    "waiting_for_payment_approval": "orange",
+    "awaiting_payment_approval": "orange",
     "not_started": "gray",
     # Delivery statuses
     "saved": "gray",

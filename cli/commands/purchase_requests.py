@@ -195,23 +195,21 @@ def pr_upload(pr_id: int, file_path: str, file_type: str) -> None:
 @purchase_requests_group.command("mark-po-sent")
 @click.argument("pr_id", type=int)
 def pr_mark_po_sent(pr_id: int) -> None:
-    """Mark a purchase request as PO sent."""
-    client = get_client()
-    response = client.post(f"/api/v1/purchase-requests/{pr_id}/mark-po-sent/")
-    if not response.is_success:
-        raise SystemExit(1)
-    print_success(f"Purchase request {pr_id} marked as PO sent.")
+    """Legacy compatibility command for the retired PO-sent stage."""
+    print_warning(
+        "PO Sent is no longer part of the active workflow. "
+        "Continue the request through Goods recieve and Payment Release instead."
+    )
 
 
 @purchase_requests_group.command("mark-ordered")
 @click.argument("pr_id", type=int)
 def pr_mark_ordered(pr_id: int) -> None:
-    """Mark a purchase request as ordered."""
-    client = get_client()
-    response = client.post(f"/api/v1/purchase-requests/{pr_id}/mark-ordered/")
-    if not response.is_success:
-        raise SystemExit(1)
-    print_success(f"Purchase request {pr_id} marked as ordered.")
+    """Legacy compatibility command for the retired ordered stage."""
+    print_warning(
+        "Ordered is no longer part of the active workflow. "
+        "Continue the request through Goods recieve and Payment Release instead."
+    )
 
 
 # ---------------------------------------------------------------------------
