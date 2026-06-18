@@ -12,6 +12,7 @@ urlpatterns = [
     # Detail + edit
     path("<int:pk>/", views.PaymentReleaseDetailView.as_view(), name="detail"),
     path("<int:pk>/edit/", views.PaymentReleaseUpdateView.as_view(), name="update"),
+    path("<int:pk>/delete/", views.delete_view, name="delete"),
     # HTMX workflow actions
     path("<int:pk>/submit/", views.submit_view, name="submit"),
     path("<int:pk>/approve/", views.approve_view, name="approve"),

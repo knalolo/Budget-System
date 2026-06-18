@@ -80,7 +80,8 @@ class TestPaymentReleaseCreateView:
         assert response.context["source_purchase_request"] == purchase_request
         assert response.context["form"].initial["vendor"] == purchase_request.vendor
         assert response.context["form"].initial["po_number"] == "N/A"
-        assert response.context["form"].initial["payment_quantity"] == 1
+        assert response.context["form"].initial["payment_type"] == "advance"
+        assert response.context["form"].initial["payment_quantity"] == 2
 
     def test_get_prefills_standard_payment_from_delivered_line_item_value(
         self,
@@ -278,6 +279,8 @@ class TestPaymentReleaseCreateView:
         tmp_path,
     ):
         settings.MEDIA_ROOT = tmp_path
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         client.force_login(regular_user)
 
         upload = SimpleUploadedFile(
@@ -301,7 +304,7 @@ class TestPaymentReleaseCreateView:
         assert payment.status == "pending_pcm"
         assert attachment.file_type == "proforma_invoice"
 
-    def test_standard_payment_submit_requires_delivery_first(
+    def test_no_goods_payment_submit_is_treated_as_advance_payment(
         self,
         client,
         regular_user,
@@ -311,6 +314,8 @@ class TestPaymentReleaseCreateView:
         from orders.models import PurchaseRequest
 
         client.force_login(regular_user)
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         purchase_request = PurchaseRequest.objects.create(
             requester=regular_user,
             expense_category=sample_expense_category,
@@ -337,11 +342,13 @@ class TestPaymentReleaseCreateView:
 
         assert response.status_code == 200
         payment = PaymentRelease.objects.get(requester=regular_user)
-        assert payment.status == "draft"
+        assert payment.payment_type == "advance"
+        assert payment.payment_quantity == purchase_request.ordered_quantity
+        assert payment.status == "pending_pcm"
         messages = [message.message for message in response.context["messages"]]
-        assert any("goods recieve record first" in message for message in messages)
+        assert not any("goods recieve record first" in message for message in messages)
 
-    def test_standard_payment_submit_rejects_when_full_advance_payment_already_covers_total(
+    def test_existing_no_goods_standard_draft_submits_as_advance_payment(
         self,
         client,
         regular_user,
@@ -351,6 +358,59 @@ class TestPaymentReleaseCreateView:
         from orders.models import PurchaseRequest
 
         client.force_login(regular_user)
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Advance payment for testing services",
+            vendor="Playtest Vendor",
+            currency="SGD",
+            ordered_quantity=5,
+            total_price="500.00",
+            justification="Needed to lock the test slot.",
+            po_required=False,
+            target_payment="2026-04-15",
+            status="approved",
+        )
+        payment = PaymentRelease.objects.create(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description=purchase_request.description,
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            payment_type="standard",
+            payment_quantity=1,
+            total_price="500.00",
+            justification=purchase_request.justification,
+            po_number="N/A",
+            target_payment="2026-04-15",
+            status="draft",
+        )
+
+        response = client.post(reverse("payments:submit", args=[payment.pk]), follow=True)
+
+        assert response.status_code == 200
+        payment.refresh_from_db()
+        assert payment.payment_type == "advance"
+        assert payment.payment_quantity == purchase_request.ordered_quantity
+        assert payment.status == "pending_pcm"
+
+    def test_standard_payment_submit_rejects_when_existing_payment_already_covers_total(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        from orders.models import PurchaseRequest
+
+        client.force_login(regular_user)
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
         purchase_request = PurchaseRequest.objects.create(
             requester=regular_user,
             expense_category=sample_expense_category,
@@ -403,13 +463,13 @@ class TestPaymentReleaseCreateView:
         response = client.post(reverse("payments:create"), data=payload, follow=True)
 
         assert response.status_code == 200
-        draft_payment = PaymentRelease.objects.filter(
+        assert not PaymentRelease.objects.filter(
             requester=regular_user,
             status="draft",
-        ).latest("created_at")
-        assert draft_payment.status == "draft"
-        messages = [message.message for message in response.context["messages"]]
-        assert any("already been fully covered" in message for message in messages)
+        ).exists()
+        assert response.context["form"].errors["total_price"] == [
+            "Total price must be greater than zero."
+        ]
 
 
 @pytest.mark.django_db

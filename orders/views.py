@@ -264,10 +264,11 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
             if open_delivery_submission is not None
             else f"{reverse('deliveries:create')}?purchase_request={pr.pk}"
         )
+        payment_type = "standard" if pr.delivered_quantity > 0 else "advance"
         context["payment_release_create_url"] = (
             reverse("payments:update", args=[payment_draft.pk])
             if payment_draft is not None
-            else f"{reverse('payments:create')}?purchase_request={pr.pk}"
+            else f"{reverse('payments:create')}?purchase_request={pr.pk}&payment_type={payment_type}"
         )
         context["advance_payment_create_url"] = (
             f"{reverse('payments:create')}?purchase_request={pr.pk}&payment_type=advance"

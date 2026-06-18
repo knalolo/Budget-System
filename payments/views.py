@@ -12,9 +12,10 @@ from django.utils.decorators import method_decorator
 from django.views import View
 
 from core.services.file_service import save_attachment, validate_file
+from core.services.workflow_delete_service import delete_payment_workflow
 
 from .forms import PaymentReleaseForm
-from .models import PaymentRelease
+from .models import PAYMENT_TYPE_ADVANCE, PAYMENT_TYPE_STANDARD, PaymentRelease
 from .services import (
     approve_payment_release,
     reject_payment_release,
@@ -108,7 +109,13 @@ class PaymentReleaseCreateView(View):
             return HttpResponseForbidden(
                 "You do not have permission to use this purchase request."
             )
-        form = PaymentReleaseForm(request.POST)
+        requested_payment_type = _requested_payment_type(request, source_purchase_request)
+        form_data = _payment_release_form_data(
+            request,
+            source_purchase_request,
+            requested_payment_type=requested_payment_type,
+        )
+        form = PaymentReleaseForm(form_data)
         uploaded_files = request.FILES.getlist("attachment_files")
 
         try:
@@ -193,6 +200,7 @@ class PaymentReleaseDetailView(View):
         context = {
             "payment": payment,
             "can_edit": payment.can_be_edited and payment.requester == request.user,
+            "can_delete": _can_delete_payment(request.user, payment),
             "can_manage_payment": _can_manage_payment(request.user, payment),
             "can_approve": _can_approve(request.user, payment),
             "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
@@ -290,6 +298,7 @@ def submit_view(request: HttpRequest, pk: int) -> HttpResponse:
         return HttpResponseForbidden("Only the requester or admin can submit this record.")
 
     try:
+        _sync_no_goods_draft_to_advance_payment(payment)
         submit_payment_release(payment)
         messages.success(request, f"{payment.workflow_number} submitted for approval.")
     except ValidationError as exc:
@@ -299,6 +308,26 @@ def submit_view(request: HttpRequest, pk: int) -> HttpResponse:
         payment.refresh_from_db()
         return render(request, "payments/_detail_status.html", {"payment": payment})
     return redirect("payments:detail", pk=pk)
+
+
+@login_required
+def delete_view(request: HttpRequest, pk: int) -> HttpResponse:
+    """Delete a draft payment release (POST only)."""
+    if request.method != "POST":
+        return HttpResponseForbidden()
+
+    payment = get_object_or_404(PaymentRelease, pk=pk)
+    if not _can_delete_payment(request.user, payment):
+        return HttpResponseForbidden("You do not have permission to delete this payment release.")
+
+    workflow_number = payment.workflow_number
+    if _is_admin(request.user):
+        delete_payment_workflow(payment)
+        messages.success(request, f"{workflow_number} workflow deleted.")
+    else:
+        payment.delete()
+        messages.success(request, f"{workflow_number} draft payment release deleted.")
+    return redirect("payments:list")
 
 
 @login_required
@@ -475,6 +504,12 @@ def _can_manage_payment(user, payment: PaymentRelease) -> bool:
     return payment.requester == user or _is_admin(user)
 
 
+def _can_delete_payment(user, payment: PaymentRelease) -> bool:
+    if _is_admin(user):
+        return True
+    return payment.requester == user and payment.can_be_deleted
+
+
 def _status_choices() -> list[tuple[str, str]]:
     """Return all payment status choices including an empty 'All' option."""
     return [
@@ -577,6 +612,64 @@ def _payment_release_initial_from_purchase_request(
     }
 
 
+def _payment_release_form_data(
+    request: HttpRequest,
+    purchase_request,
+    *,
+    requested_payment_type: str,
+):
+    """Return POST data with server-owned linked-PR fields re-synced.
+
+    The linked purchase request is the source of truth for amount, quantity,
+    vendor, project, and payment type. This prevents stale pages or hidden
+    fields from creating an invalid Standard Payment before goods are received.
+    """
+    form_data = request.POST.copy()
+    if purchase_request is None:
+        return form_data
+
+    initial = _payment_release_initial_from_purchase_request(
+        purchase_request,
+        requested_payment_type=requested_payment_type,
+    )
+    for field_name in (
+        "expense_category",
+        "project",
+        "description",
+        "vendor",
+        "currency",
+        "payment_type",
+        "payment_quantity",
+        "total_price",
+        "justification",
+    ):
+        value = initial.get(field_name)
+        form_data[field_name] = "" if value is None else str(value)
+    return form_data
+
+
+def _sync_no_goods_draft_to_advance_payment(payment: PaymentRelease) -> None:
+    """Convert stale no-goods Standard Payment drafts to Advance Payment.
+
+    Older pages could create a Standard Payment draft before goods receive was
+    recorded. Such drafts cannot be submitted under the current delivery-first
+    rule, so submitting them should follow the explicit prepayment path.
+    """
+    purchase_request = payment.purchase_request
+    if (
+        purchase_request is None
+        or payment.status != "draft"
+        or payment.payment_type != PAYMENT_TYPE_STANDARD
+        or purchase_request.delivered_quantity > 0
+    ):
+        return
+
+    payment.payment_type = PAYMENT_TYPE_ADVANCE
+    payment.payment_quantity = purchase_request.ordered_quantity
+    payment.total_price = purchase_request.total_price
+    payment.save(update_fields=["payment_type", "payment_quantity", "total_price", "updated_at"])
+
+
 def _purchase_request_summary(purchase_request) -> dict | None:
     """Return unified workflow guidance for a linked purchase request."""
     if purchase_request is None:
@@ -607,11 +700,13 @@ def _requested_payment_type(request: HttpRequest, purchase_request) -> str:
         or request.GET.get("payment_type")
         or "standard"
     )
-    if requested_payment_type not in ("standard", "advance"):
-        return "standard"
     if purchase_request is None:
+        return requested_payment_type if requested_payment_type in ("standard", "advance") else "standard"
+    if requested_payment_type == "advance":
+        return "advance"
+    if requested_payment_type == "standard" and purchase_request.delivered_quantity > 0:
         return "standard"
-    return requested_payment_type
+    return "advance"
 
 
 def _payment_release_po_mode(purchase_request, form: PaymentReleaseForm) -> str:

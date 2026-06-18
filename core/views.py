@@ -260,7 +260,15 @@ def _build_requester_action_items(user):
         return reverse("deliveries:detail", args=[delivery_submission.pk])
 
     def _payment_create_url(purchase_request):
-        return f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+        payment_type = (
+            "standard"
+            if purchase_request.delivered_quantity > 0
+            else "advance"
+        )
+        return (
+            f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+            f"&payment_type={payment_type}"
+        )
 
     def _payment_detail_url(payment):
         return reverse("payments:detail", args=[payment.pk])
