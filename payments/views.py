@@ -6,6 +6,7 @@ import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
+from django.db import models
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.decorators import method_decorator
@@ -30,6 +31,7 @@ PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES = {
     "proforma_invoice": "Proforma Invoice",
 }
 LINKED_PURCHASE_REQUEST_PARAM = "purchase_request"
+ACTIVE_PAYMENT_STATUSES = ("pending_pcm", "pending_final", "approved")
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +88,22 @@ class PaymentReleaseCreateView(View):
                 "You do not have permission to use this purchase request."
             )
         requested_payment_type = _requested_payment_type(request, source_purchase_request)
+        existing_active_payment = _existing_active_payment_release(source_purchase_request)
+        if existing_active_payment is not None:
+            messages.info(
+                request,
+                (
+                    f"Payment release {existing_active_payment.workflow_number} already "
+                    "exists for this request."
+                ),
+            )
+            return redirect("payments:detail", pk=existing_active_payment.pk)
+
+        existing_draft = _existing_payment_draft(source_purchase_request, request.user)
+        if existing_draft is not None:
+            messages.info(request, "Opening the existing payment draft for this request.")
+            return redirect("payments:update", pk=existing_draft.pk)
+
         form = PaymentReleaseForm(
             initial=_payment_release_initial_from_purchase_request(
                 source_purchase_request,
@@ -110,12 +128,24 @@ class PaymentReleaseCreateView(View):
                 "You do not have permission to use this purchase request."
             )
         requested_payment_type = _requested_payment_type(request, source_purchase_request)
+        existing_active_payment = _existing_active_payment_release(source_purchase_request)
+        if existing_active_payment is not None:
+            messages.info(
+                request,
+                (
+                    f"Payment release {existing_active_payment.workflow_number} already "
+                    "exists for this request."
+                ),
+            )
+            return redirect("payments:detail", pk=existing_active_payment.pk)
+
+        existing_draft = _existing_payment_draft(source_purchase_request, request.user)
         form_data = _payment_release_form_data(
             request,
             source_purchase_request,
             requested_payment_type=requested_payment_type,
         )
-        form = PaymentReleaseForm(form_data)
+        form = PaymentReleaseForm(form_data, instance=existing_draft)
         uploaded_files = request.FILES.getlist("attachment_files")
 
         try:
@@ -158,7 +188,7 @@ class PaymentReleaseCreateView(View):
             else:
                 messages.success(
                     request,
-                    f"Payment release {payment.workflow_number} created.",
+                    f"Payment release {payment.workflow_number} saved.",
                 )
             return redirect("payments:detail", pk=payment.pk)
         return _render_payment_create_form(
@@ -572,6 +602,37 @@ def _get_linkable_purchase_request(request: HttpRequest):
         raise PermissionError
 
     return purchase_request
+
+
+def _existing_active_payment_release(purchase_request):
+    """Return the active payment that should own this PR payment step."""
+    if purchase_request is None:
+        return None
+    return (
+        purchase_request.payment_releases.filter(status__in=ACTIVE_PAYMENT_STATUSES)
+        .annotate(
+            workflow_priority=models.Case(
+                models.When(status="approved", then=models.Value(30)),
+                models.When(status="pending_final", then=models.Value(20)),
+                models.When(status="pending_pcm", then=models.Value(10)),
+                default=models.Value(0),
+                output_field=models.IntegerField(),
+            )
+        )
+        .order_by("-workflow_priority", "-updated_at", "-created_at")
+        .first()
+    )
+
+
+def _existing_payment_draft(purchase_request, user):
+    """Reuse one draft per linked PR so repeated submits do not create duplicates."""
+    if purchase_request is None:
+        return None
+    return (
+        purchase_request.payment_releases.filter(status="draft", requester=user)
+        .order_by("-updated_at", "-created_at")
+        .first()
+    )
 
 
 def _payment_release_initial_from_purchase_request(

@@ -78,7 +78,7 @@ class PaymentRelease(models.Model):
         default="draft",
     )
 
-    # --- PCM approval ---
+    # --- First-stage approval (legacy pcm_* database columns) ---
     pcm_approver = models.ForeignKey(
         User,
         null=True,

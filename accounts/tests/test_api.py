@@ -30,6 +30,7 @@ class TestMeView:
 
     def test_response_includes_role_flags(self, api_client, regular_user):
         resp = api_client.get(_ME_URL)
+        assert "is_purchase_type_approver" in resp.data
         assert "is_pcm_approver" in resp.data
         assert "is_final_approver" in resp.data
         assert "is_admin_role" in resp.data
@@ -41,6 +42,7 @@ class TestMeView:
     def test_pcm_approver_role_flags(self, api_client_pcm):
         resp = api_client_pcm.get(_ME_URL)
         assert resp.status_code == 200
+        assert resp.data["is_purchase_type_approver"] is True
         assert resp.data["is_pcm_approver"] is True
         assert resp.data["is_final_approver"] is False
 
@@ -48,6 +50,7 @@ class TestMeView:
         resp = api_client_final.get(_ME_URL)
         assert resp.status_code == 200
         assert resp.data["is_final_approver"] is True
+        assert resp.data["is_purchase_type_approver"] is False
         assert resp.data["is_pcm_approver"] is False
 
 

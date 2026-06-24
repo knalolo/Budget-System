@@ -74,7 +74,7 @@ def submit_purchase_request(purchase_request):
     Side effects:
     - Updates po_required based on current PO thresholds.
     - Delegates to approvals.services.submit_for_approval() to transition
-      status to 'pending_pcm' and record the submission log.
+      status to first-stage approval and record the submission log.
 
     Returns the updated instance.
     Raises ValidationError on hard failures.

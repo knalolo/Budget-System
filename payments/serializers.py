@@ -137,11 +137,6 @@ class PaymentReleaseDetailSerializer(serializers.ModelSerializer):
             "first_approval_decision_display",
             "first_approval_comment",
             "first_approved_at",
-            # Legacy compatibility fields
-            "pcm_approver",
-            "pcm_decision",
-            "pcm_comment",
-            "pcm_decided_at",
             # Final approval
             "final_approver",
             "final_approver_username",

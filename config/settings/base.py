@@ -245,7 +245,9 @@ DEFAULT_CURRENCY = "SGD"
 
 # Purchase Request statuses
 PR_STATUS_DRAFT = "draft"
-PR_STATUS_PENDING_PCM = "pending_pcm"
+# Internal value kept as "pending_pcm" for database/backward compatibility.
+PR_STATUS_PENDING_FIRST_APPROVER = "pending_pcm"
+PR_STATUS_PENDING_PCM = PR_STATUS_PENDING_FIRST_APPROVER
 PR_STATUS_PENDING_FINAL = "pending_final"
 PR_STATUS_APPROVED = "approved"
 PR_STATUS_REJECTED = "rejected"
@@ -255,7 +257,7 @@ PR_STATUS_COMPLETED = "completed"
 
 PR_STATUS_CHOICES = [
     (PR_STATUS_DRAFT, "Draft"),
-    (PR_STATUS_PENDING_PCM, "Pending Purchase Type Approver Review"),
+    (PR_STATUS_PENDING_FIRST_APPROVER, "Pending Purchase Type Approver Review"),
     (PR_STATUS_PENDING_FINAL, "Pending Final Approver Review"),
     (PR_STATUS_APPROVED, "Approved"),
     (PR_STATUS_REJECTED, "Rejected"),
@@ -265,12 +267,19 @@ PR_STATUS_CHOICES = [
 ]
 
 # Payment Release statuses
+PAYMENT_STATUS_DRAFT = "draft"
+PAYMENT_STATUS_PENDING_FIRST_APPROVER = "pending_pcm"
+PAYMENT_STATUS_PENDING_PCM = PAYMENT_STATUS_PENDING_FIRST_APPROVER
+PAYMENT_STATUS_PENDING_FINAL = "pending_final"
+PAYMENT_STATUS_APPROVED = "approved"
+PAYMENT_STATUS_REJECTED = "rejected"
+
 PAYMENT_STATUS_CHOICES = [
-    ("draft", "Draft"),
-    ("pending_pcm", "Pending Purchase Type Approver Review"),
-    ("pending_final", "Pending Final Approver Review"),
-    ("approved", "Approved"),
-    ("rejected", "Rejected"),
+    (PAYMENT_STATUS_DRAFT, "Draft"),
+    (PAYMENT_STATUS_PENDING_FIRST_APPROVER, "Pending Purchase Type Approver Review"),
+    (PAYMENT_STATUS_PENDING_FINAL, "Pending Final Approver Review"),
+    (PAYMENT_STATUS_APPROVED, "Approved"),
+    (PAYMENT_STATUS_REJECTED, "Rejected"),
 ]
 
 # Delivery Submission statuses
@@ -302,7 +311,8 @@ PURCHASE_TYPE_CHOICES = [
 # Legacy user-role constants kept for transitional compatibility while the
 # system moves to multi-permission profiles.
 ROLE_REQUESTER = "requester"
-ROLE_PCM_APPROVER = "pcm_approver"
+ROLE_PURCHASE_TYPE_APPROVER = "pcm_approver"
+ROLE_PCM_APPROVER = ROLE_PURCHASE_TYPE_APPROVER
 ROLE_FINAL_APPROVER = "final_approver"
 ROLE_ADMIN = "admin"
 

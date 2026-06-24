@@ -20,7 +20,7 @@ def submit_payment_release(payment_release):
     - Logs a warning if no attachments are present.
 
     Delegates to approvals.services.submit_for_approval() to transition
-    status to 'pending_pcm' and record the submission log.
+    status to first-stage approval and record the submission log.
 
     Returns the updated instance.
     Raises ValidationError on hard failures.

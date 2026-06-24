@@ -92,7 +92,7 @@ class PurchaseRequest(models.Model):
         default="draft",
     )
 
-    # --- PCM approval ---
+    # --- First-stage approval (legacy pcm_* database columns) ---
     pcm_approver = models.ForeignKey(
         User,
         null=True,
@@ -295,7 +295,21 @@ class PurchaseRequest(models.Model):
 
     @property
     def latest_payment_release(self):
-        return self.payment_releases.order_by("-updated_at", "-created_at").first()
+        return (
+            self.payment_releases.annotate(
+                workflow_priority=models.Case(
+                    models.When(status="approved", then=models.Value(50)),
+                    models.When(status="pending_final", then=models.Value(40)),
+                    models.When(status="pending_pcm", then=models.Value(30)),
+                    models.When(status="draft", then=models.Value(20)),
+                    models.When(status="rejected", then=models.Value(10)),
+                    default=models.Value(0),
+                    output_field=models.IntegerField(),
+                )
+            )
+            .order_by("-workflow_priority", "-updated_at", "-created_at")
+            .first()
+        )
 
     @property
     def latest_submitted_payment_release(self):
@@ -337,10 +351,10 @@ class PurchaseRequest(models.Model):
 
     @property
     def payment_stage(self) -> str:
-        latest_payment = self.latest_payment_release
-        if latest_payment is None:
+        payment = self.latest_payment_release
+        if payment is None:
             return "not_started"
-        return latest_payment.status
+        return payment.status
 
     @property
     def payment_stage_display(self) -> str:

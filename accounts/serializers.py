@@ -75,6 +75,7 @@ class MeSerializer(serializers.ModelSerializer):
 
     profile = UserProfileSerializer(read_only=True)
     full_name = serializers.SerializerMethodField()
+    is_purchase_type_approver = serializers.SerializerMethodField()
     is_pcm_approver = serializers.SerializerMethodField()
     is_final_approver = serializers.SerializerMethodField()
     is_admin_role = serializers.SerializerMethodField()
@@ -93,6 +94,7 @@ class MeSerializer(serializers.ModelSerializer):
             "is_staff",
             "is_superuser",
             "profile",
+            "is_purchase_type_approver",
             "is_pcm_approver",
             "is_final_approver",
             "is_admin_role",
@@ -104,11 +106,15 @@ class MeSerializer(serializers.ModelSerializer):
     def get_full_name(self, obj: User) -> str:
         return obj.get_full_name() or obj.username
 
-    def get_is_pcm_approver(self, obj: User) -> bool:
+    def get_is_purchase_type_approver(self, obj: User) -> bool:
         try:
-            return obj.profile.is_pcm_approver
+            return obj.profile.is_purchase_type_approver
         except UserProfile.DoesNotExist:
             return False
+
+    def get_is_pcm_approver(self, obj: User) -> bool:
+        """Legacy API alias. New clients should use is_purchase_type_approver."""
+        return self.get_is_purchase_type_approver(obj)
 
     def get_is_final_approver(self, obj: User) -> bool:
         try:

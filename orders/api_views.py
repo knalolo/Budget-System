@@ -123,6 +123,7 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
             "requester",
             "expense_category",
             "project",
+            # Legacy DB field backing the public first_approver API fields.
             "pcm_approver",
             "final_approver",
         ).prefetch_related("attachments", "approval_logs")

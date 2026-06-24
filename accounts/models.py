@@ -162,8 +162,13 @@ class UserProfile(models.Model):
                 setattr(self, field_name, bool(flags[field_name]))
 
     @property
-    def is_pcm_approver(self) -> bool:
+    def is_purchase_type_approver(self) -> bool:
         return self.is_project_approver or self.is_non_project_approver or self.is_office_approver
+
+    @property
+    def is_pcm_approver(self) -> bool:
+        """Legacy alias for API/test compatibility; prefer is_purchase_type_approver."""
+        return self.is_purchase_type_approver
 
     @property
     def has_any_business_permission(self) -> bool:
@@ -236,8 +241,8 @@ class UserProfile(models.Model):
             return settings.ROLE_ADMIN
         if self.is_final_approver:
             return settings.ROLE_FINAL_APPROVER
-        if self.is_pcm_approver:
-            return settings.ROLE_PCM_APPROVER
+        if self.is_purchase_type_approver:
+            return settings.ROLE_PURCHASE_TYPE_APPROVER
         return settings.ROLE_REQUESTER
 
     @property
@@ -259,7 +264,7 @@ class UserProfile(models.Model):
 
     @property
     def can_view_all_requests(self) -> bool:
-        return self.is_admin or self.is_pcm_approver or self.is_final_approver
+        return self.is_admin or self.is_purchase_type_approver or self.is_final_approver
 
     def can_approve_purchase_type(self, purchase_type: str) -> bool:
         if purchase_type == settings.PURCHASE_TYPE_PROJECT:

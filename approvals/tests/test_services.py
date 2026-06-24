@@ -3,7 +3,12 @@ import pytest
 from django.core.exceptions import ValidationError
 from unittest.mock import patch
 
-from approvals.models import ACTION_SUBMITTED, ACTION_PCM_APPROVED, ACTION_FINAL_APPROVED, ApprovalLog
+from approvals.models import (
+    ACTION_FIRST_STAGE_APPROVED,
+    ACTION_FINAL_APPROVED,
+    ACTION_SUBMITTED,
+    ApprovalLog,
+)
 import approvals.services as svc
 from orders.tests.factories import PurchaseRequestFactory, UserFactory
 
@@ -79,7 +84,7 @@ class TestProcessPcmApproval:
         pr = PurchaseRequestFactory(status="pending_pcm")
         approver = UserFactory()
         updated = svc.process_approval(pr, approver, "approved")
-        log = ApprovalLog.objects.filter(object_id=updated.pk, action=ACTION_PCM_APPROVED).first()
+        log = ApprovalLog.objects.filter(object_id=updated.pk, action=ACTION_FIRST_STAGE_APPROVED).first()
         assert log is not None
         assert log.action_by == approver
 

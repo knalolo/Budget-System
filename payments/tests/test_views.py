@@ -83,6 +83,64 @@ class TestPaymentReleaseCreateView:
         assert response.context["form"].initial["payment_type"] == "advance"
         assert response.context["form"].initial["payment_quantity"] == 2
 
+    def test_get_linked_purchase_request_reopens_existing_draft(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="approved",
+        )
+        draft = PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            status="draft",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(
+            f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+        )
+
+        assert response.status_code == 302
+        assert response.url == reverse("payments:update", args=[draft.pk])
+
+    def test_get_linked_purchase_request_reopens_existing_active_payment(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="approved",
+        )
+        payment = PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            status="pending_pcm",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(
+            f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+        )
+
+        assert response.status_code == 302
+        assert response.url == reverse("payments:detail", args=[payment.pk])
+
     def test_get_prefills_standard_payment_from_delivered_line_item_value(
         self,
         client,
@@ -233,6 +291,59 @@ class TestPaymentReleaseCreateView:
             "RP-",
             1,
         )
+
+    def test_create_reuses_existing_linked_draft(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        from orders.models import PurchaseRequest
+
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Advance payment for testing services",
+            vendor="Playtest Vendor",
+            currency="SGD",
+            ordered_quantity=5,
+            total_price="500.00",
+            justification="Needed to lock the test slot.",
+            po_required=False,
+            target_payment="2026-04-15",
+            status="approved",
+        )
+        draft = PaymentRelease.objects.create(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Old draft",
+            vendor="Old Vendor",
+            currency="SGD",
+            payment_type="standard",
+            payment_quantity=1,
+            total_price="100.00",
+            justification="Old reason",
+            po_number="N/A",
+            target_payment="2026-04-15",
+            status="draft",
+        )
+
+        payload = _payment_release_payload(sample_project, sample_expense_category)
+        payload["purchase_request"] = purchase_request.pk
+
+        response = client.post(reverse("payments:create"), data=payload)
+
+        assert response.status_code == 302
+        assert PaymentRelease.objects.filter(purchase_request=purchase_request).count() == 1
+        draft.refresh_from_db()
+        assert draft.vendor == purchase_request.vendor
+        assert draft.payment_type == "advance"
+        assert draft.payment_quantity == purchase_request.ordered_quantity
 
     def test_create_syncs_request_number_with_linked_purchase_request(
         self,
@@ -399,7 +510,7 @@ class TestPaymentReleaseCreateView:
         assert payment.payment_quantity == purchase_request.ordered_quantity
         assert payment.status == "pending_pcm"
 
-    def test_standard_payment_submit_rejects_when_existing_payment_already_covers_total(
+    def test_create_redirects_when_existing_active_payment_already_covers_total(
         self,
         client,
         regular_user,
@@ -434,7 +545,7 @@ class TestPaymentReleaseCreateView:
             currency=purchase_request.currency,
             total_price=purchase_request.total_price,
         )
-        PaymentRelease.objects.create(
+        active_payment = PaymentRelease.objects.create(
             requester=regular_user,
             purchase_request=purchase_request,
             expense_category=sample_expense_category,
@@ -467,9 +578,9 @@ class TestPaymentReleaseCreateView:
             requester=regular_user,
             status="draft",
         ).exists()
-        assert response.context["form"].errors["total_price"] == [
-            "Total price must be greater than zero."
-        ]
+        assert PaymentRelease.objects.filter(purchase_request=purchase_request).count() == 1
+        assert response.resolver_match.view_name == "payments:detail"
+        assert response.context["payment"] == active_payment
 
 
 @pytest.mark.django_db

@@ -65,6 +65,7 @@ class PaymentReleaseViewSet(
         "expense_category",
         "project",
         "purchase_request",
+        # Legacy DB field backing the public first_approver API fields.
         "pcm_approver",
         "final_approver",
     ).prefetch_related(
@@ -136,7 +137,7 @@ class PaymentReleaseViewSet(
 
     @action(detail=True, methods=["post"], url_path="submit")
     def submit(self, request, pk=None):
-        """Transition a draft PaymentRelease to pending_pcm."""
+        """Transition a draft PaymentRelease to first-stage approval."""
         payment = self.get_object()
         try:
             updated = submit_payment_release(payment)

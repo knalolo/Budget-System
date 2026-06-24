@@ -8,6 +8,7 @@ from orders.tests.factories import (
     ProjectFactory,
     PurchaseRequestFactory,
 )
+from payments.tests.factories import PaymentReleaseFactory
 
 
 # ---------------------------------------------------------------------------
@@ -157,3 +158,23 @@ class TestPurchaseRequestModel:
         # Monkey-patch currency to something not in the map
         pr.currency = "JPY"
         assert pr.requires_po is True
+
+    def test_payment_stage_prefers_active_payment_over_newer_draft(self):
+        pr = PurchaseRequestFactory(status="approved")
+        approved_payment = PaymentReleaseFactory(
+            purchase_request=pr,
+            requester=pr.requester,
+            expense_category=pr.expense_category,
+            project=pr.project,
+            status="approved",
+        )
+        PaymentReleaseFactory(
+            purchase_request=pr,
+            requester=pr.requester,
+            expense_category=pr.expense_category,
+            project=pr.project,
+            status="draft",
+        )
+
+        assert pr.payment_stage == "approved"
+        assert pr.latest_payment_release == approved_payment

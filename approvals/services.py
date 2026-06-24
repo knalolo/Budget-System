@@ -23,10 +23,10 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .models import (
+    ACTION_FIRST_STAGE_APPROVED,
+    ACTION_FIRST_STAGE_REJECTED,
     ACTION_FINAL_APPROVED,
     ACTION_FINAL_REJECTED,
-    ACTION_PCM_APPROVED,
-    ACTION_PCM_REJECTED,
     ACTION_SUBMITTED,
     ApprovalLog,
 )
@@ -46,7 +46,9 @@ User = get_user_model()
 # ---------------------------------------------------------------------------
 
 STATUS_DRAFT = "draft"
-STATUS_PENDING_PCM = "pending_pcm"
+# Internal value kept as "pending_pcm" for existing database rows.
+STATUS_PENDING_FIRST_APPROVER = "pending_pcm"
+STATUS_PENDING_PCM = STATUS_PENDING_FIRST_APPROVER
 STATUS_PENDING_FINAL = "pending_final"
 STATUS_APPROVED = "approved"
 STATUS_REJECTED = "rejected"
@@ -125,7 +127,7 @@ def _create_log(
 
 def submit_for_approval(request_obj):
     """
-    Transition *request_obj* from 'draft' to 'pending_pcm'.
+    Transition *request_obj* from draft to first-stage approval.
 
     Raises ValidationError if the object is not in draft status.
     Returns the saved instance.
@@ -141,7 +143,7 @@ def submit_for_approval(request_obj):
     _validate_assigned_approver_chain(request_obj)
 
     requester = request_obj.requester
-    request_obj.status = STATUS_PENDING_PCM
+    request_obj.status = STATUS_PENDING_FIRST_APPROVER
     request_obj.save()
 
     _create_log(
@@ -149,7 +151,7 @@ def submit_for_approval(request_obj):
         action=ACTION_SUBMITTED,
         actor=requester,
         old_status=current_status,
-        new_status=STATUS_PENDING_PCM,
+        new_status=STATUS_PENDING_FIRST_APPROVER,
     )
 
     logger.info(
@@ -184,7 +186,7 @@ def process_approval(request_obj, approver, decision: str, comment: str = ""):
     current_status = request_obj.status
     now = timezone.now()
 
-    if current_status == STATUS_PENDING_PCM:
+    if current_status == STATUS_PENDING_FIRST_APPROVER:
         return _process_first_stage_level(
             request_obj=request_obj,
             approver=approver,
@@ -206,7 +208,7 @@ def process_approval(request_obj, approver, decision: str, comment: str = ""):
 
     raise ValidationError(
         f"Cannot process approval: object is in status '{current_status}'. "
-        "Expected 'pending_pcm' or 'pending_final'."
+        "Expected pending first-stage approval or pending final approval."
     )
 
 
@@ -219,10 +221,10 @@ def _process_first_stage_level(request_obj, approver, decision, comment, now, ol
 
     if decision == DECISION_APPROVED:
         new_status = STATUS_PENDING_FINAL
-        action = ACTION_PCM_APPROVED
+        action = ACTION_FIRST_STAGE_APPROVED
     else:
         new_status = STATUS_REJECTED
-        action = ACTION_PCM_REJECTED
+        action = ACTION_FIRST_STAGE_REJECTED
 
     request_obj.status = new_status
     request_obj.save()
@@ -339,7 +341,7 @@ def can_user_approve(request_obj, user) -> tuple[bool, str]:
     """
     current_status = request_obj.status
 
-    if current_status not in (STATUS_PENDING_PCM, STATUS_PENDING_FINAL):
+    if current_status not in (STATUS_PENDING_FIRST_APPROVER, STATUS_PENDING_FINAL):
         return False, (
             f"Item is not awaiting approval (status: '{current_status}')."
         )
@@ -348,7 +350,7 @@ def can_user_approve(request_obj, user) -> tuple[bool, str]:
     if profile is None:
         return False, "User profile not found."
 
-    if current_status == STATUS_PENDING_PCM:
+    if current_status == STATUS_PENDING_FIRST_APPROVER:
         if not _user_can_handle_first_stage(profile, request_obj):
             return False, (
                 f"Only the assigned { _first_approver_role_label(request_obj) } can review this item at the Purchase Type approval stage."

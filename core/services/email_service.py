@@ -552,7 +552,7 @@ def trigger_post_approval_notification(
     Args:
         request_obj: The approvable object (PurchaseRequest or PaymentRelease).
         action:      The action string from ApprovalLog constants
-                     (e.g. 'pcm_approved', 'final_approved', 'submitted').
+                     (e.g. first-stage approved, final approved, submitted).
         old_status:  Status before the action.
         new_status:  Status after the action.
 
@@ -560,10 +560,10 @@ def trigger_post_approval_notification(
         The EmailNotificationLog entry, or None when no email was sent.
     """
     from approvals.models import (
+        ACTION_FIRST_STAGE_APPROVED,
+        ACTION_FIRST_STAGE_REJECTED,
         ACTION_FINAL_APPROVED,
         ACTION_FINAL_REJECTED,
-        ACTION_PCM_APPROVED,
-        ACTION_PCM_REJECTED,
         ACTION_SUBMITTED,
     )
 
@@ -576,11 +576,11 @@ def trigger_post_approval_notification(
     try:
         if action == ACTION_SUBMITTED:
             return notify_submission(request_obj, request_type)
-        if action == ACTION_PCM_APPROVED:
+        if action == ACTION_FIRST_STAGE_APPROVED:
             return notify_first_stage_approved(request_obj, request_type)
         if action == ACTION_FINAL_APPROVED:
             return notify_final_approved(request_obj, request_type)
-        if action in (ACTION_PCM_REJECTED, ACTION_FINAL_REJECTED):
+        if action in (ACTION_FIRST_STAGE_REJECTED, ACTION_FINAL_REJECTED):
             return notify_rejected(request_obj, request_type)
     except Exception as exc:  # noqa: BLE001
         logger.error(

@@ -156,11 +156,6 @@ class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
             "first_approval_decision_display",
             "first_approval_comment",
             "first_approved_at",
-            # Legacy compatibility fields
-            "pcm_approver",
-            "pcm_decision",
-            "pcm_comment",
-            "pcm_decided_at",
             # final approval
             "final_approver",
             "final_decision",
@@ -184,10 +179,6 @@ class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
             "first_approval_decision_display",
             "first_approval_comment",
             "first_approved_at",
-            "pcm_approver",
-            "pcm_decision",
-            "pcm_comment",
-            "pcm_decided_at",
             "final_approver",
             "final_decision",
             "final_comment",

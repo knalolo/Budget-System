@@ -13,16 +13,19 @@ from django.db import models
 User = get_user_model()
 
 ACTION_SUBMITTED = "submitted"
-ACTION_PCM_APPROVED = "pcm_approved"
-ACTION_PCM_REJECTED = "pcm_rejected"
+# Internal values kept as pcm_* for existing audit rows; use FIRST_STAGE names in code.
+ACTION_FIRST_STAGE_APPROVED = "pcm_approved"
+ACTION_FIRST_STAGE_REJECTED = "pcm_rejected"
+ACTION_PCM_APPROVED = ACTION_FIRST_STAGE_APPROVED
+ACTION_PCM_REJECTED = ACTION_FIRST_STAGE_REJECTED
 ACTION_FINAL_APPROVED = "final_approved"
 ACTION_FINAL_REJECTED = "final_rejected"
 ACTION_STATUS_CHANGED = "status_changed"
 
 ACTION_CHOICES = [
     (ACTION_SUBMITTED, "Submitted"),
-    (ACTION_PCM_APPROVED, "Purchase Type Approval Approved"),
-    (ACTION_PCM_REJECTED, "Purchase Type Approval Rejected"),
+    (ACTION_FIRST_STAGE_APPROVED, "Purchase Type Approval Approved"),
+    (ACTION_FIRST_STAGE_REJECTED, "Purchase Type Approval Rejected"),
     (ACTION_FINAL_APPROVED, "Final Approver Approved"),
     (ACTION_FINAL_REJECTED, "Final Approver Rejected"),
     (ACTION_STATUS_CHANGED, "Status Changed"),
@@ -74,8 +77,8 @@ class ApprovalLog(models.Model):
         first_stage_label = self._first_stage_role_label()
         action_map = {
             ACTION_SUBMITTED: "Submitted",
-            ACTION_PCM_APPROVED: f"{first_stage_label} Approved",
-            ACTION_PCM_REJECTED: f"{first_stage_label} Rejected",
+            ACTION_FIRST_STAGE_APPROVED: f"{first_stage_label} Approved",
+            ACTION_FIRST_STAGE_REJECTED: f"{first_stage_label} Rejected",
             ACTION_FINAL_APPROVED: "Final Approver Approved",
             ACTION_FINAL_REJECTED: "Final Approver Rejected",
             ACTION_STATUS_CHANGED: "Status Changed",

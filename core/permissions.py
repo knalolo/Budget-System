@@ -25,15 +25,7 @@ def _is_authenticated(user) -> bool:
 
 def _is_first_stage_approver(profile) -> bool:
     """Return True when the profile can approve any Purchase Type first stage."""
-    return bool(
-        profile
-        and (
-            profile.is_project_approver
-            or profile.is_non_project_approver
-            or profile.is_office_approver
-            or profile.is_pcm_approver
-        )
-    )
+    return bool(profile and profile.is_purchase_type_approver)
 
 
 class IsRequester(BasePermission):
@@ -52,8 +44,8 @@ class IsPurchaseTypeApprover(BasePermission):
     """
     Allow users with any first-stage Purchase Type approver permission.
 
-    Legacy API endpoints still refer to PCM approval. Internally we keep a
-    compatibility alias below so older imports continue to work.
+    A compatibility alias below keeps older imports working while new code
+    should use this Purchase Type approver class directly.
     """
 
     message = "You must have Purchase Type approver permission."
