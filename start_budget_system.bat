@@ -17,12 +17,20 @@ if errorlevel 1 (
     exit /b 1
 )
 
+set "LAN_IP=127.0.0.1"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\get-lan-ip.ps1"`) do set "LAN_IP=%%I"
+
 echo Starting Procurement System...
 echo Project folder: %cd%
-echo Login page: http://127.0.0.1:8000/auth/dev-login/
+echo Local login page: http://127.0.0.1:8000/auth/dev-login/
+echo LAN login page:   http://%LAN_IP%:8000/auth/dev-login/
+echo.
+echo Keep this window open while the website is in use.
+echo Other computers must be on the same company network.
+echo If Windows Firewall asks for permission, allow access on Private networks.
 echo.
 
 start "" "http://127.0.0.1:8000/auth/dev-login/"
-python manage.py runserver
+python manage.py runserver 0.0.0.0:8000
 
 endlocal
