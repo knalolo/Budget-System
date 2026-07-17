@@ -379,9 +379,9 @@
         </div>
         <div class="px-6 py-4 space-y-4">
 
-            {% include "payments/_attachments_list.html" with attachments=payment.attachments.all %}
+            {% include "payments/_attachments_list.html" with attachments=payment.attachments.all can_manage_attachments=can_manage_attachments %}
 
-            {% if can_manage_payment %}
+            {% if can_manage_attachments %}
             <form
                 method="post"
                 action="{% url 'payments:upload' pk=payment.pk %}"

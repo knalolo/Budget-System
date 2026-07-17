@@ -14,6 +14,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.decorators import method_decorator
 from django.views import View
 
+from approvals.services import reset_to_draft_after_rejection
 from core.services.file_service import save_attachment, validate_file
 from core.services.workflow_delete_service import delete_payment_workflow
 
@@ -265,6 +266,7 @@ class PaymentReleaseDetailView(View):
             "can_edit": payment.can_be_edited and payment.requester == request.user,
             "can_delete": _can_delete_payment(request.user, payment),
             "can_manage_payment": _can_manage_payment(request.user, payment),
+            "can_manage_attachments": _can_manage_payment_attachments(request.user, payment),
             "can_approve": _can_approve(request.user, payment),
             "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
             "selected_attachment_type": "invoice",
@@ -279,7 +281,7 @@ class PaymentReleaseDetailView(View):
 
 @_LOGIN_REQUIRED
 class PaymentReleaseUpdateView(View):
-    """Edit a draft PaymentRelease."""
+    """Edit a draft or rejected PaymentRelease."""
 
     template_name = "payments/form.html"
 
@@ -288,7 +290,7 @@ class PaymentReleaseUpdateView(View):
         if not _can_manage_payment(request.user, payment):
             raise PermissionError
         if not payment.can_be_edited:
-            raise ValidationError("Only draft payment releases can be edited.")
+            raise ValidationError("Only draft or rejected payment releases can be edited.")
         return payment
 
     def get(self, request: HttpRequest, pk: int) -> HttpResponse:
@@ -313,6 +315,8 @@ class PaymentReleaseUpdateView(View):
                 "source_purchase_request": payment.purchase_request,
                 "source_purchase_request_summary": _purchase_request_summary(payment.purchase_request),
                 "initial_po_mode": _payment_release_po_mode(payment.purchase_request, form),
+                "attachments": payment.attachments.all(),
+                "can_manage_attachments": _can_manage_payment_attachments(request.user, payment),
             },
         )
 
@@ -327,9 +331,19 @@ class PaymentReleaseUpdateView(View):
 
         form = PaymentReleaseForm(request.POST, instance=payment)
         if form.is_valid():
-            form.save()
-            messages.success(request, "Payment release updated.")
-            return redirect("payments:detail", pk=pk)
+            payment = form.save()
+            action = request.POST.get("action", "draft")
+            if action == "submit":
+                try:
+                    _sync_no_goods_draft_to_advance_payment(payment)
+                    payment = submit_payment_release(payment)
+                    messages.success(request, f"{payment.workflow_number} submitted for approval.")
+                except ValidationError as exc:
+                    messages.warning(request, f"Saved. Could not submit: {_validation_error_message(exc)}")
+            else:
+                payment = reset_to_draft_after_rejection(payment, actor=request.user)
+                messages.success(request, "Payment release updated.")
+            return redirect("payments:detail", pk=payment.pk)
         return render(
             request,
             self.template_name,
@@ -342,6 +356,8 @@ class PaymentReleaseUpdateView(View):
                 "source_purchase_request": payment.purchase_request,
                 "source_purchase_request_summary": _purchase_request_summary(payment.purchase_request),
                 "initial_po_mode": _payment_release_po_mode(payment.purchase_request, form),
+                "attachments": payment.attachments.all(),
+                "can_manage_attachments": _can_manage_payment_attachments(request.user, payment),
             },
         )
 
@@ -448,6 +464,8 @@ def upload_view(request: HttpRequest, pk: int) -> HttpResponse:
     payment = get_object_or_404(PaymentRelease, pk=pk)
     if not _can_manage_payment(request.user, payment):
         return HttpResponseForbidden("Only the requester or admin can upload payment attachments.")
+    if not payment.can_be_edited:
+        return HttpResponseForbidden("Only draft or rejected payment releases can change attachments.")
     uploaded_file = request.FILES.get("file")
     if not uploaded_file:
         messages.error(request, "No file provided.")
@@ -462,7 +480,11 @@ def upload_view(request: HttpRequest, pk: int) -> HttpResponse:
             return render(
                 request,
                 "payments/_attachments_list.html",
-                {"payment": payment, "attachments": payment.attachments.all()},
+                {
+                    "payment": payment,
+                    "attachments": payment.attachments.all(),
+                    "can_manage_attachments": _can_manage_payment_attachments(request.user, payment),
+                },
             )
         return redirect("payments:detail", pk=pk)
 
@@ -482,7 +504,44 @@ def upload_view(request: HttpRequest, pk: int) -> HttpResponse:
         return render(
             request,
             "payments/_attachments_list.html",
-            {"payment": payment, "attachments": payment.attachments.all()},
+            {
+                "payment": payment,
+                "attachments": payment.attachments.all(),
+                "can_manage_attachments": _can_manage_payment_attachments(request.user, payment),
+            },
+        )
+    return redirect("payments:detail", pk=pk)
+
+
+@login_required
+def delete_attachment_view(request: HttpRequest, pk: int, attachment_pk: int) -> HttpResponse:
+    """Delete one payment attachment when the payment is still editable."""
+    if request.method != "POST":
+        return HttpResponseForbidden()
+
+    payment = get_object_or_404(PaymentRelease, pk=pk)
+    if not _can_manage_payment(request.user, payment):
+        return HttpResponseForbidden("Only the requester or admin can delete payment attachments.")
+    if not payment.can_be_edited:
+        return HttpResponseForbidden("Only draft or rejected payment releases can change attachments.")
+
+    attachment = get_object_or_404(payment.attachments, pk=attachment_pk)
+    filename = attachment.original_filename
+    if attachment.file:
+        attachment.file.delete(save=False)
+    attachment.delete()
+    messages.success(request, f"File '{filename}' deleted.")
+
+    if request.headers.get("HX-Request"):
+        payment.refresh_from_db()
+        return render(
+            request,
+            "payments/_attachments_list.html",
+            {
+                "payment": payment,
+                "attachments": payment.attachments.all(),
+                "can_manage_attachments": _can_manage_payment_attachments(request.user, payment),
+            },
         )
     return redirect("payments:detail", pk=pk)
 
@@ -565,6 +624,10 @@ def _can_approve(user, payment: PaymentRelease) -> bool:
 
 def _can_manage_payment(user, payment: PaymentRelease) -> bool:
     return payment.requester == user or _is_admin(user)
+
+
+def _can_manage_payment_attachments(user, payment: PaymentRelease) -> bool:
+    return payment.can_be_edited and _can_manage_payment(user, payment)
 
 
 def _can_delete_payment(user, payment: PaymentRelease) -> bool:

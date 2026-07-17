@@ -73,6 +73,30 @@ class TestSubmitPurchaseRequest:
         with pytest.raises(ValidationError):
             submit_purchase_request(pr)
 
+    def test_submit_rejected_request_resets_current_decisions_and_keeps_number(self):
+        from approvals.models import ApprovalLog
+
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
+        approver = UserFactory()
+        pr = PurchaseRequestFactory(status="pending_pcm")
+        rejected = reject_purchase_request(pr, approver, comment="Too expensive")
+        request_number = rejected.request_number
+        rejection_log_count = ApprovalLog.objects.filter(object_id=rejected.pk).count()
+
+        with patch("orders.services.notify_submission"):
+            updated = submit_purchase_request(rejected)
+
+        assert updated.status == "pending_pcm"
+        assert updated.request_number == request_number
+        assert updated.pcm_approver is None
+        assert updated.pcm_decision == "pending"
+        assert updated.pcm_comment == ""
+        assert updated.pcm_decided_at is None
+        assert updated.final_approver is None
+        assert updated.final_decision == "pending"
+        assert ApprovalLog.objects.filter(object_id=updated.pk).count() == rejection_log_count + 1
+
     def test_submit_updates_po_required_when_above_threshold(self):
         SystemConfig.set_value("po_threshold_sgd", 1000)
         UserFactory(project_approver=True)

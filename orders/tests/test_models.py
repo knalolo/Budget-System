@@ -125,6 +125,11 @@ class TestPurchaseRequestModel:
         assert pr.can_be_edited is True
         assert pr.can_be_deleted is True
 
+    def test_rejected_can_be_edited_but_not_deleted(self):
+        pr = PurchaseRequestFactory(status="rejected")
+        assert pr.can_be_edited is True
+        assert pr.can_be_deleted is False
+
     def test_can_be_edited_and_deleted_non_draft(self):
         pr = PurchaseRequestFactory(status="pending_pcm")
         assert pr.can_be_edited is False

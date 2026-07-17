@@ -602,6 +602,97 @@ class TestPaymentReleaseCreateView:
 
 
 @pytest.mark.django_db
+class TestPaymentReleaseRejectedEdit:
+    def test_requester_can_edit_rejected_payment_back_to_draft(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        from approvals.models import ApprovalLog
+
+        payment = PaymentReleaseFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="rejected",
+            pcm_decision="rejected",
+            pcm_comment="Missing docs",
+        )
+        request_number = payment.request_number
+        client.force_login(regular_user)
+        payload = _payment_release_payload(sample_project, sample_expense_category)
+        payload["vendor"] = "Updated Payment Vendor"
+
+        response = client.post(reverse("payments:update", args=[payment.pk]), data=payload)
+
+        assert response.status_code == 302
+        payment.refresh_from_db()
+        assert payment.request_number == request_number
+        assert payment.status == "draft"
+        assert payment.vendor == "Updated Payment Vendor"
+        assert payment.pcm_decision == "pending"
+        assert payment.pcm_comment == ""
+        assert ApprovalLog.objects.filter(object_id=payment.pk, action="status_changed").exists()
+
+    def test_rejected_payment_edit_page_shows_attachment_controls(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+        settings,
+        tmp_path,
+    ):
+        settings.MEDIA_ROOT = tmp_path
+        payment = PaymentReleaseFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="rejected",
+        )
+        client.force_login(regular_user)
+        upload = SimpleUploadedFile(
+            "old-invoice.pdf",
+            b"%PDF-1.4 old invoice",
+            content_type="application/pdf",
+        )
+        client.post(
+            reverse("payments:upload", args=[payment.pk]),
+            data={"file": upload, "file_type": "invoice"},
+        )
+
+        response = client.get(reverse("payments:update", args=[payment.pk]))
+
+        assert response.status_code == 200
+        assert b"old-invoice.pdf" in response.content
+        assert b"Delete" in response.content
+        assert b"Upload File" in response.content
+
+    def test_rejected_payment_edit_page_places_attachments_before_submit_actions(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        payment = PaymentReleaseFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="rejected",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("payments:update", args=[payment.pk]))
+        content = response.content.decode()
+
+        assert response.status_code == 200
+        assert content.index("Attachments") < content.index("Save &amp; Submit for Approval")
+
+
+@pytest.mark.django_db
 class TestPaymentReleaseUploadView:
     def test_upload_endpoint_accepts_proforma_invoice_type(
         self,
@@ -691,6 +782,98 @@ class TestPaymentReleaseUploadView:
 
         assert response.status_code == 200
         assert not payment.attachments.exists()
+
+    def test_rejected_payment_attachment_can_be_deleted(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+        settings,
+        tmp_path,
+    ):
+        settings.MEDIA_ROOT = tmp_path
+        client.force_login(regular_user)
+
+        payment = PaymentRelease.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Testing rejected payment",
+            vendor="Test Vendor",
+            currency="SGD",
+            total_price="100.00",
+            justification="Validation",
+            po_number="N/A",
+            target_payment="30 days",
+            status="rejected",
+        )
+        upload = SimpleUploadedFile(
+            "old-invoice.pdf",
+            b"%PDF-1.4 old invoice",
+            content_type="application/pdf",
+        )
+        client.post(
+            reverse("payments:upload", args=[payment.pk]),
+            data={"file": upload, "file_type": "invoice"},
+        )
+        attachment = payment.attachments.get()
+        stored_file_name = attachment.file.name
+
+        response = client.post(
+            reverse("payments:delete-attachment", args=[payment.pk, attachment.pk]),
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 200
+        assert not payment.attachments.exists()
+        assert not attachment.file.storage.exists(stored_file_name)
+
+    def test_pending_payment_attachment_cannot_be_deleted(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+        settings,
+        tmp_path,
+    ):
+        settings.MEDIA_ROOT = tmp_path
+        client.force_login(regular_user)
+
+        payment = PaymentRelease.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Testing pending payment",
+            vendor="Test Vendor",
+            currency="SGD",
+            total_price="100.00",
+            justification="Validation",
+            po_number="N/A",
+            target_payment="30 days",
+            status="draft",
+        )
+        upload = SimpleUploadedFile(
+            "submitted-invoice.pdf",
+            b"%PDF-1.4 submitted invoice",
+            content_type="application/pdf",
+        )
+        client.post(
+            reverse("payments:upload", args=[payment.pk]),
+            data={"file": upload, "file_type": "invoice"},
+        )
+        attachment = payment.attachments.get()
+        payment.status = "pending_pcm"
+        payment.save(update_fields=["status"])
+
+        response = client.post(
+            reverse("payments:delete-attachment", args=[payment.pk, attachment.pk]),
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 403
+        assert payment.attachments.filter(pk=attachment.pk).exists()
 
 
 @pytest.mark.django_db

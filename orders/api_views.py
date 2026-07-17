@@ -7,10 +7,11 @@ from django.urls import reverse
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 
-from approvals.services import can_user_approve
+from approvals.services import can_user_approve, reset_to_draft_after_rejection
 from core.permissions import IsOwnerOrApprover
 from core.services.workflow_delete_service import delete_purchase_request_workflow
 
@@ -146,6 +147,15 @@ class PurchaseRequestViewSet(viewsets.ModelViewSet):
         if self.action == "create":
             return PurchaseRequestCreateSerializer
         return PurchaseRequestDetailSerializer
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        if not instance.can_be_edited:
+            raise DRFValidationError(
+                {"detail": "Only draft or rejected purchase requests can be edited."}
+            )
+        updated = serializer.save()
+        reset_to_draft_after_rejection(updated, actor=self.request.user)
 
     # ------------------------------------------------------------------
     # Destroy guard

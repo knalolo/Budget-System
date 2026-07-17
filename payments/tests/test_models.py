@@ -71,6 +71,11 @@ class TestPaymentReleaseModel:
         assert pr.can_be_edited is True
         assert pr.can_be_deleted is True
 
+    def test_rejected_can_be_edited_but_not_deleted(self):
+        pr = PaymentReleaseFactory(status="rejected")
+        assert pr.can_be_edited is True
+        assert pr.can_be_deleted is False
+
     def test_cannot_edit_or_delete_non_draft(self):
         pr = PaymentReleaseFactory(status="pending_pcm")
         assert pr.can_be_edited is False

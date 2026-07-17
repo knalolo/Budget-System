@@ -33,8 +33,8 @@
 
             {# Action buttons – context-dependent #}
             <div class="flex flex-wrap items-center gap-2">
-                {% if can_manage_request and purchase_request.is_draft %}
-                    {# Draft actions #}
+                {% if can_manage_request and purchase_request.can_be_edited %}
+                    {# Draft / rejected amendment actions #}
                     <a
                         href="{% url 'orders:purchase-request-edit' purchase_request.pk %}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
@@ -44,6 +44,7 @@
                         </svg>
                         Edit
                     </a>
+                    {% if purchase_request.is_draft %}
                     <form method="post" action="{% url 'orders:purchase-request-submit' purchase_request.pk %}" {% if attachments.count == 0 %}onsubmit="return window.confirm('No attachment added. Click OK to submit anyway, or Cancel to continue adding attachments.');"{% endif %}>
                         {% csrf_token %}
                         <button
@@ -56,6 +57,7 @@
                             Submit for Approval
                         </button>
                     </form>
+                    {% endif %}
 
                 {% elif can_manage_request and purchase_request.is_execution_ready %}
                     {% if can_submit_goods %}
@@ -258,8 +260,8 @@
                     <span class="text-xs text-gray-400">{{ attachments.count }} file{{ attachments.count|pluralize }}</span>
                 </div>
 
-                {# Upload zone (only for draft) #}
-                {% if can_manage_request and purchase_request.is_draft %}
+                {# Upload zone (only before or after rejected approval) #}
+                {% if can_manage_request and purchase_request.can_be_edited %}
                 <div class="mb-4">
                     {% url 'orders:purchase-request-upload' purchase_request.pk as upload_url %}
                     {% include "components/file_upload.html" with upload_url=upload_url show_file_type_selector=True attachment_type_options=attachment_type_options default_file_type=selected_attachment_type %}

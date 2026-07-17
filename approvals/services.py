@@ -27,6 +27,7 @@ from .models import (
     ACTION_FIRST_STAGE_REJECTED,
     ACTION_FINAL_APPROVED,
     ACTION_FINAL_REJECTED,
+    ACTION_STATUS_CHANGED,
     ACTION_SUBMITTED,
     ApprovalLog,
 )
@@ -120,6 +121,41 @@ def _create_log(
     )
 
 
+def _reset_approval_fields(request_obj) -> None:
+    """Clear the current approval decisions while preserving historical logs."""
+    request_obj.pcm_approver = None
+    request_obj.pcm_decision = "pending"
+    request_obj.pcm_comment = ""
+    request_obj.pcm_decided_at = None
+    request_obj.final_approver = None
+    request_obj.final_decision = "pending"
+    request_obj.final_comment = ""
+    request_obj.final_decided_at = None
+
+
+def reset_to_draft_after_rejection(request_obj, actor=None):
+    """Move a rejected item back to draft so the requester can amend it."""
+    current_status = request_obj.status
+    if current_status != STATUS_REJECTED:
+        return request_obj
+
+    _reset_approval_fields(request_obj)
+    request_obj.status = STATUS_DRAFT
+    request_obj.save()
+
+    if actor is not None:
+        _create_log(
+            obj=request_obj,
+            action=ACTION_STATUS_CHANGED,
+            actor=actor,
+            old_status=current_status,
+            new_status=STATUS_DRAFT,
+            comment="Reopened after rejection for requester amendments.",
+        )
+
+    return request_obj
+
+
 # ---------------------------------------------------------------------------
 # Public service functions
 # ---------------------------------------------------------------------------
@@ -127,22 +163,24 @@ def _create_log(
 
 def submit_for_approval(request_obj):
     """
-    Transition *request_obj* from draft to first-stage approval.
+    Transition *request_obj* from draft or rejected to first-stage approval.
 
-    Raises ValidationError if the object is not in draft status.
+    Raises ValidationError if the object is not in draft or rejected status.
     Returns the saved instance.
     """
     current_status = request_obj.status
 
-    if current_status != STATUS_DRAFT:
+    if current_status not in (STATUS_DRAFT, STATUS_REJECTED):
         raise ValidationError(
-            f"Only draft items can be submitted for approval. "
+            f"Only draft or rejected items can be submitted for approval. "
             f"Current status: '{current_status}'."
         )
 
     _validate_assigned_approver_chain(request_obj)
 
     requester = request_obj.requester
+    if current_status == STATUS_REJECTED:
+        _reset_approval_fields(request_obj)
     request_obj.status = STATUS_PENDING_FIRST_APPROVER
     request_obj.save()
 

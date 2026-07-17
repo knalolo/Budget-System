@@ -28,6 +28,29 @@ class TestSubmitPaymentRelease:
         with pytest.raises(ValidationError):
             submit_payment_release(pr)
 
+    def test_submit_rejected_payment_resets_current_decisions_and_keeps_number(self):
+        from approvals.models import ApprovalLog
+
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
+        approver = UserFactory()
+        payment = PaymentReleaseFactory(status="pending_pcm", payment_type="advance")
+        rejected = reject_payment_release(payment, approver, comment="Missing docs")
+        request_number = rejected.request_number
+        rejection_log_count = ApprovalLog.objects.filter(object_id=rejected.pk).count()
+
+        updated = submit_payment_release(rejected)
+
+        assert updated.status == "pending_pcm"
+        assert updated.request_number == request_number
+        assert updated.pcm_approver is None
+        assert updated.pcm_decision == "pending"
+        assert updated.pcm_comment == ""
+        assert updated.pcm_decided_at is None
+        assert updated.final_approver is None
+        assert updated.final_decision == "pending"
+        assert ApprovalLog.objects.filter(object_id=updated.pk).count() == rejection_log_count + 1
+
     def test_submission_creates_approval_log(self):
         from approvals.models import ApprovalLog
 

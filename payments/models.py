@@ -230,7 +230,7 @@ class PaymentRelease(models.Model):
 
     @property
     def can_be_edited(self) -> bool:
-        return self.status == "draft"
+        return self.status in ("draft", "rejected")
 
     @property
     def can_be_deleted(self) -> bool:

@@ -16,7 +16,7 @@ def submit_payment_release(payment_release):
     Validate and submit *payment_release* for approval.
 
     Validation:
-    - Status must be 'draft'.
+    - Status must be 'draft' or 'rejected'.
     - Logs a warning if no attachments are present.
 
     Delegates to approvals.services.submit_for_approval() to transition
@@ -25,9 +25,9 @@ def submit_payment_release(payment_release):
     Returns the updated instance.
     Raises ValidationError on hard failures.
     """
-    if payment_release.status != "draft":
+    if payment_release.status not in ("draft", "rejected"):
         raise ValidationError(
-            f"Only draft payment releases can be submitted. "
+            f"Only draft or rejected payment releases can be submitted. "
             f"Current status: '{payment_release.status}'."
         )
 

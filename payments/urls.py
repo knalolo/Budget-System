@@ -18,6 +18,11 @@ urlpatterns = [
     path("<int:pk>/approve/", views.approve_view, name="approve"),
     path("<int:pk>/reject/", views.reject_view, name="reject"),
     path("<int:pk>/upload/", views.upload_view, name="upload"),
+    path(
+        "<int:pk>/attachments/<int:attachment_pk>/delete/",
+        views.delete_attachment_view,
+        name="delete-attachment",
+    ),
     # HTMX partial for table refresh
     path("_table/", views.list_table_partial, name="list-table"),
 ]

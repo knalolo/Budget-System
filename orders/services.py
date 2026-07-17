@@ -67,7 +67,7 @@ def submit_purchase_request(purchase_request):
     Validate and submit *purchase_request* for approval.
 
     Validation:
-    - Status must be 'draft'.
+    - Status must be 'draft' or 'rejected'.
     - Must have at least one attachment (logged as a warning; does not block
       submission when relaxed mode is intended but logs clearly).
 
@@ -79,9 +79,9 @@ def submit_purchase_request(purchase_request):
     Returns the updated instance.
     Raises ValidationError on hard failures.
     """
-    if purchase_request.status != "draft":
+    if purchase_request.status not in ("draft", "rejected"):
         raise ValidationError(
-            f"Only draft purchase requests can be submitted. "
+            f"Only draft or rejected purchase requests can be submitted. "
             f"Current status: '{purchase_request.status}'."
         )
 

@@ -4,7 +4,47 @@
 {% block page_title %}{% if is_create %}New Payment Release{% else %}Edit {{ payment.workflow_number }}{% endif %}{% endblock %}
 
 {% block content %}
-<div class="max-w-3xl mx-auto">
+<div
+    class="max-w-3xl mx-auto"
+    x-data="{
+        poMode: '{{ initial_po_mode|default:"na" }}',
+        poCustom: '{{ form.po_number.value|default:'' }}' !== 'N/A' ? '{{ form.po_number.value|default:'' }}' : '',
+        attachmentFileCount: 0,
+        selectedAttachmentNames: [],
+        isSubmitting: false,
+        submitAction: '',
+        get poValue() { return this.poMode === 'na' ? 'N/A' : this.poCustom; },
+        hasAnyAttachments() {
+            return this.attachmentFileCount > 0 || document.querySelectorAll('#attachments-list [data-attachment-row]').length > 0;
+        },
+        handleAttachmentSelection(fileList) {
+            const files = Array.from(fileList || []);
+            this.attachmentFileCount = files.length;
+            this.selectedAttachmentNames = files.map(file => file.name);
+        },
+        confirmSubmitWithoutAttachments(event) {
+            if (this.isSubmitting) {
+                event.preventDefault();
+                return;
+            }
+            const action = event.submitter ? event.submitter.value : 'draft';
+            if (action !== 'submit' || this.hasAnyAttachments()) {
+                this.isSubmitting = true;
+                this.submitAction = action;
+                return;
+            }
+            const confirmed = window.confirm(
+                'No attachment added. Click OK to submit anyway, or Cancel to continue adding attachments.'
+            );
+            if (!confirmed) {
+                event.preventDefault();
+                return;
+            }
+            this.isSubmitting = true;
+            this.submitAction = action;
+        }
+    }"
+>
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
 
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -22,44 +62,6 @@
             enctype="multipart/form-data"
             id="payment-form"
             class="px-6 py-6 space-y-6"
-            x-data="{
-                poMode: '{{ initial_po_mode|default:"na" }}',
-                poCustom: '{{ form.po_number.value|default:'' }}' !== 'N/A' ? '{{ form.po_number.value|default:'' }}' : '',
-                attachmentFileCount: 0,
-                selectedAttachmentNames: [],
-                isSubmitting: false,
-                submitAction: '',
-                get poValue() { return this.poMode === 'na' ? 'N/A' : this.poCustom; },
-                hasAnyAttachments() {
-                    return this.attachmentFileCount > 0;
-                },
-                handleAttachmentSelection(fileList) {
-                    const files = Array.from(fileList || []);
-                    this.attachmentFileCount = files.length;
-                    this.selectedAttachmentNames = files.map(file => file.name);
-                },
-                confirmSubmitWithoutAttachments(event) {
-                    if (this.isSubmitting) {
-                        event.preventDefault();
-                        return;
-                    }
-                    const action = event.submitter ? event.submitter.value : 'draft';
-                    if (action !== 'submit' || this.hasAnyAttachments()) {
-                        this.isSubmitting = true;
-                        this.submitAction = action;
-                        return;
-                    }
-                    const confirmed = window.confirm(
-                        'No attachment added. Click OK to submit anyway, or Cancel to continue adding attachments.'
-                    );
-                    if (!confirmed) {
-                        event.preventDefault();
-                        return;
-                    }
-                    this.isSubmitting = true;
-                    this.submitAction = action;
-                }
-            }"
             @submit="confirmSubmitWithoutAttachments($event)"
         >
             {% csrf_token %}
@@ -460,45 +462,130 @@
             </div>
             {% endif %}
 
-            <div class="flex items-center justify-end gap-3 pt-2 border-t border-gray-100">
-                <a
-                    href="{% if is_create %}{% url 'payments:list' %}{% else %}{% url 'payments:detail' pk=payment.pk %}{% endif %}"
-                    class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                    Cancel
-                </a>
-                {% if is_create %}
-                <button
-                    type="submit"
-                    name="action"
-                    value="draft"
-                    :disabled="isSubmitting"
-                    class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    <span x-show="submitAction !== 'draft'">Save Draft</span>
-                    <span x-show="submitAction === 'draft'">Saving...</span>
-                </button>
-                <button
-                    type="submit"
-                    name="action"
-                    value="submit"
-                    :disabled="isSubmitting"
-                    class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                    <span x-show="submitAction !== 'submit'">Save &amp; Submit for Approval</span>
-                    <span x-show="submitAction === 'submit'">Submitting...</span>
-                </button>
-                {% else %}
-                <button
-                    type="submit"
-                    class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
-                >
-                    Save Changes
-                </button>
-                {% endif %}
-            </div>
-
         </form>
+    </div>
+
+    {% if not is_create and can_manage_attachments %}
+    <div class="mt-6 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800">Attachments</h3>
+        </div>
+        <div class="px-6 py-4 space-y-4">
+            {% include "payments/_attachments_list.html" with attachments=attachments can_manage_attachments=can_manage_attachments %}
+
+            <form
+                method="post"
+                action="{% url 'payments:upload' pk=payment.pk %}"
+                enctype="multipart/form-data"
+                hx-post="{% url 'payments:upload' pk=payment.pk %}"
+                hx-target="#attachments-list"
+                hx-swap="outerHTML"
+                hx-encoding="multipart/form-data"
+                class="mt-4 flex flex-wrap items-end gap-3"
+                x-data="{ selectedFileName: 'No file selected' }"
+            >
+                {% csrf_token %}
+                <div class="flex-1 min-w-0">
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Upload File</label>
+                    <input
+                        type="file"
+                        name="file"
+                        x-ref="editAttachmentInput"
+                        @change="selectedFileName = $event.target.files.length ? $event.target.files[0].name : 'No file selected'"
+                        required
+                        accept=".doc,.docx,.xls,.xlsx,.ppt,.pptx,.pdf,.jpg,.jpeg,.png,.gif,.bmp,.mp4,.avi,.mov,.mp3,.wav"
+                        class="sr-only"
+                    />
+                    <div class="flex flex-col gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 sm:flex-row sm:items-center">
+                        <button
+                            type="button"
+                            @click="$refs.editAttachmentInput.click()"
+                            class="inline-flex items-center justify-center rounded-lg bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-100 transition-colors"
+                        >
+                            Choose File
+                        </button>
+                        <p class="text-sm text-gray-500" x-text="selectedFileName"></p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Attachment Type</label>
+                    <select
+                        name="file_type"
+                        class="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                        {% for value, label in attachment_type_options %}
+                        <option value="{{ value }}" {% if selected_attachment_type == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button
+                    type="submit"
+                    class="rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
+                >
+                    Upload
+                </button>
+            </form>
+            <p class="text-xs text-gray-400">
+                Official Invoice is preferred. Proforma Invoice is acceptable for advance or down payment purposes. PO documents are not accepted here.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="mt-6 flex items-center justify-end gap-3 rounded-xl border border-gray-200 bg-white px-6 py-4 shadow-sm">
+        <a
+            href="{% if is_create %}{% url 'payments:list' %}{% else %}{% url 'payments:detail' pk=payment.pk %}{% endif %}"
+            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+        >
+            Cancel
+        </a>
+        {% if is_create %}
+        <button
+            type="submit"
+            form="payment-form"
+            name="action"
+            value="draft"
+            :disabled="isSubmitting"
+            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        >
+            <span x-show="submitAction !== 'draft'">Save Draft</span>
+            <span x-show="submitAction === 'draft'">Saving...</span>
+        </button>
+        <button
+            type="submit"
+            form="payment-form"
+            name="action"
+            value="submit"
+            :disabled="isSubmitting"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        >
+            <span x-show="submitAction !== 'submit'">Save &amp; Submit for Approval</span>
+            <span x-show="submitAction === 'submit'">Submitting...</span>
+        </button>
+        {% else %}
+        <button
+            type="submit"
+            form="payment-form"
+            name="action"
+            value="draft"
+            :disabled="isSubmitting"
+            class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        >
+            <span x-show="submitAction !== 'draft'">Save Changes</span>
+            <span x-show="submitAction === 'draft'">Saving...</span>
+        </button>
+        <button
+            type="submit"
+            form="payment-form"
+            name="action"
+            value="submit"
+            :disabled="isSubmitting"
+            class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+        >
+            <span x-show="submitAction !== 'submit'">Save &amp; Submit for Approval</span>
+            <span x-show="submitAction === 'submit'">Submitting...</span>
+        </button>
+        {% endif %}
     </div>
 </div>
 {% endblock %}

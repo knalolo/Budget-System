@@ -1,7 +1,7 @@
 <!-- Partial: attachments list for HTMX refresh after upload -->
 <div id="attachments-list" class="space-y-2">
     {% for attachment in attachments %}
-    <div class="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm">
+    <div data-attachment-row class="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-2 text-sm">
         <div class="flex items-center gap-2 min-w-0">
             <svg class="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M18.375 12.739l-7.693 7.693a4.5 4.5 0 01-6.364-6.364l10.94-10.94A3 3 0 1119.5 7.372L8.552 18.32m.009-.01l-.01.01m5.699-9.941l-7.81 7.81a1.5 1.5 0 002.112 2.13" />
@@ -23,6 +23,24 @@
             >
                 Open
             </a>
+            {% if can_manage_attachments %}
+            <form
+                method="post"
+                action="{% url 'payments:delete-attachment' pk=payment.pk attachment_pk=attachment.pk %}"
+                hx-post="{% url 'payments:delete-attachment' pk=payment.pk attachment_pk=attachment.pk %}"
+                hx-target="#attachments-list"
+                hx-swap="outerHTML"
+                class="inline"
+            >
+                {% csrf_token %}
+                <button
+                    type="submit"
+                    class="text-red-600 hover:text-red-800 font-medium transition-colors"
+                >
+                    Delete
+                </button>
+            </form>
+            {% endif %}
         </div>
     </div>
     {% empty %}

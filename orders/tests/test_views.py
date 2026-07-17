@@ -10,6 +10,7 @@ from django.urls import reverse
 from deliveries.models import DeliverySubmission, DeliverySubmissionLineItem
 from orders.models import PurchaseRequest
 from orders.models import PurchaseRequestLineItem
+from orders.tests.factories import PurchaseRequestFactory
 from payments.models import PaymentRelease
 
 
@@ -283,6 +284,81 @@ class TestPurchaseRequestUploadView:
 
         assert response.status_code == 400
         assert not purchase_request.attachments.exists()
+
+
+@pytest.mark.django_db
+class TestPurchaseRequestRejectedEdit:
+    def test_requester_can_edit_rejected_request_back_to_draft(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        from approvals.models import ApprovalLog
+
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="rejected",
+            pcm_decision="rejected",
+            pcm_comment="Too expensive",
+        )
+        request_number = purchase_request.request_number
+        client.force_login(regular_user)
+        payload = _purchase_request_payload(sample_project, sample_expense_category)
+        payload["vendor"] = "Updated Vendor"
+
+        response = client.post(
+            reverse("orders:purchase-request-edit", args=[purchase_request.pk]),
+            data=payload,
+        )
+
+        assert response.status_code == 302
+        purchase_request.refresh_from_db()
+        assert purchase_request.request_number == request_number
+        assert purchase_request.status == "draft"
+        assert purchase_request.vendor == "Updated Vendor"
+        assert purchase_request.pcm_decision == "pending"
+        assert purchase_request.pcm_comment == ""
+        assert ApprovalLog.objects.filter(object_id=purchase_request.pk, action="status_changed").exists()
+
+    def test_rejected_payment_link_opens_original_payment_for_edit(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="approved",
+        )
+        payment = PaymentRelease.objects.create(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Payment release",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            payment_type="advance",
+            payment_quantity=1,
+            total_price="100.00",
+            justification="Payment needed",
+            po_number="N/A",
+            target_payment="2026-01-15",
+            status="rejected",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("orders:purchase-request-detail", args=[purchase_request.pk]))
+
+        assert response.status_code == 200
+        assert response.context["payment_release_create_url"] == reverse("payments:update", args=[payment.pk])
 
 
 @pytest.mark.django_db

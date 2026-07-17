@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from approvals.services import can_user_approve
+from approvals.services import reset_to_draft_after_rejection
 from core.permissions import IsOwnerOrApprover
 from core.services.file_service import save_attachment
 from core.services.workflow_delete_service import delete_payment_workflow
@@ -116,9 +117,10 @@ class PaymentReleaseViewSet(
         instance = self.get_object()
         if not instance.can_be_edited:
             raise DRFValidationError(
-                {"detail": "Only draft payment releases can be edited."}
+                {"detail": "Only draft or rejected payment releases can be edited."}
             )
-        serializer.save()
+        updated = serializer.save()
+        reset_to_draft_after_rejection(updated, actor=self.request.user)
 
     def perform_destroy(self, instance):
         profile = _get_profile(self.request.user)

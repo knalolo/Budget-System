@@ -15,7 +15,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views.generic import CreateView, DetailView, ListView, UpdateView
 
-from approvals.services import can_user_approve, get_approval_history
+from approvals.services import (
+    can_user_approve,
+    get_approval_history,
+    reset_to_draft_after_rejection,
+)
 from core.services.file_service import save_attachment, validate_file
 from core.services.request_number_service import to_internal_number
 
@@ -272,6 +276,11 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         can_approve, _ = can_user_approve(pr, self.request.user)
         latest_payment_release = pr.latest_payment_release
         payment_draft = pr.latest_payment_draft
+        rejected_payment = (
+            latest_payment_release
+            if latest_payment_release is not None and latest_payment_release.status == "rejected"
+            else None
+        )
         has_standard_payment_release = pr.payment_releases.filter(payment_type="standard").exists()
         context["approval_history"] = approval_history
         context["can_approve"] = can_approve
@@ -299,9 +308,10 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
             else f"{reverse('deliveries:create')}?purchase_request={pr.pk}"
         )
         payment_type = "standard" if pr.delivered_quantity > 0 else "advance"
+        editable_payment = payment_draft or rejected_payment
         context["payment_release_create_url"] = (
-            reverse("payments:update", args=[payment_draft.pk])
-            if payment_draft is not None
+            reverse("payments:update", args=[editable_payment.pk])
+            if editable_payment is not None
             else f"{reverse('payments:create')}?purchase_request={pr.pk}&payment_type={payment_type}"
         )
         context["advance_payment_create_url"] = (
@@ -316,7 +326,7 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
 
 
 class PurchaseRequestUpdateView(LoginRequiredMixin, UpdateView):
-    """Form to edit a draft PurchaseRequest."""
+    """Form to edit a draft or rejected PurchaseRequest."""
 
     model = PurchaseRequest
     form_class = PurchaseRequestForm
@@ -327,7 +337,7 @@ class PurchaseRequestUpdateView(LoginRequiredMixin, UpdateView):
         if not _can_manage_purchase_request(request.user, pr):
             return HttpResponse("You do not have permission to edit this purchase request.", status=403)
         if not pr.can_be_edited:
-            messages.error(request, "Only draft purchase requests can be edited.")
+            messages.error(request, "Only draft or rejected purchase requests can be edited.")
             return redirect("orders:purchase-request-detail", pk=pr.pk)
         return super().dispatch(request, *args, **kwargs)
 
@@ -349,6 +359,7 @@ class PurchaseRequestUpdateView(LoginRequiredMixin, UpdateView):
                     f"Saved. Could not submit: {exc.message}",
                 )
         else:
+            instance = reset_to_draft_after_rejection(instance, actor=self.request.user)
             messages.success(self.request, f"Purchase request {instance.workflow_number} saved.")
         return redirect("orders:purchase-request-detail", pk=instance.pk)
 
