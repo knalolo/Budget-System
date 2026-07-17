@@ -90,6 +90,7 @@ class PurchaseRequestListSerializer(serializers.ModelSerializer):
             "currency",
             "total_price",
             "po_required",
+            "execution_mode",
             "status",
             "created_at",
         ]
@@ -140,6 +141,8 @@ class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
             "expense_category",
             "project",
             # request details
+            "purchase_type",
+            "execution_mode",
             "description",
             "vendor",
             "currency",
@@ -209,6 +212,8 @@ class PurchaseRequestCreateSerializer(serializers.ModelSerializer):
         fields = [
             "expense_category",
             "project",
+            "purchase_type",
+            "execution_mode",
             "description",
             "vendor",
             "currency",

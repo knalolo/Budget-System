@@ -92,6 +92,16 @@ def _validate_delivery_and_payment_limits(payment_release) -> None:
     if purchase_request is None:
         return
 
+    if purchase_request.is_delivery_first and payment_release.payment_type == "advance":
+        raise ValidationError(
+            "This purchase request is goods receive first. Submit goods receive before creating the payment release."
+        )
+
+    if purchase_request.is_payment_first and payment_release.payment_type != "advance":
+        raise ValidationError(
+            "This purchase request is payment first. Submit an advance payment release before goods receive."
+        )
+
     if payment_release.payment_quantity > purchase_request.ordered_quantity:
         raise ValidationError(
             "Payment quantity cannot exceed the ordered quantity on the purchase request."
@@ -102,7 +112,8 @@ def _validate_delivery_and_payment_limits(payment_release) -> None:
 
     if purchase_request.delivered_quantity <= 0:
         raise ValidationError(
-            "Standard payments require a goods recieve record first. Use Advance Payment only when the supplier requires prepayment."
+            "Standard payments require a goods recieve record first. "
+            "Use Advance Payment only when the supplier requires prepayment."
         )
 
     available_quantity = purchase_request.available_standard_payment_quantity
@@ -125,5 +136,6 @@ def _validate_delivery_and_payment_limits(payment_release) -> None:
     max_total = purchase_request.max_standard_payment_total
     if payment_release.total_price > max_total:
         raise ValidationError(
-            f"Standard payment cannot exceed {purchase_request.currency} {max_total:.2f} based on the delivered goods currently available."
+            f"Standard payment cannot exceed {purchase_request.currency} {max_total:.2f} "
+            "based on the delivered goods currently available."
         )

@@ -41,6 +41,7 @@ def create_delivery_submission(
     line_items = data.get("line_items", [])
 
     if purchase_request is not None:
+        _validate_delivery_flow(purchase_request)
         if line_items:
             _validate_delivery_line_items(purchase_request, line_items)
             delivered_quantity = sum(item["delivered_quantity"] for item in line_items)
@@ -124,6 +125,7 @@ def update_delivery_submission(
     line_items = data.get("line_items", [])
 
     if purchase_request is not None:
+        _validate_delivery_flow(purchase_request)
         if line_items:
             _validate_delivery_line_items(
                 purchase_request,
@@ -193,6 +195,16 @@ def update_delivery_submission(
         submission.vendor,
     )
     return submission
+
+
+def _validate_delivery_flow(purchase_request) -> None:
+    """Enforce the selected PR execution flow before receiving goods."""
+    if not purchase_request.is_execution_ready:
+        raise ValueError("The purchase request must be approved before goods receive can start.")
+    if purchase_request.is_payment_first and purchase_request.payment_stage != "approved":
+        raise ValueError(
+            "This purchase request is payment first. Submit and approve payment release before goods receive."
+        )
 
 
 def _validate_delivery_line_items(

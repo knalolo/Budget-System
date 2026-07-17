@@ -118,6 +118,10 @@ class PaymentReleaseCreateView(View):
             return HttpResponseForbidden(
                 "You do not have permission to use this purchase request."
             )
+        flow_error = _payment_flow_error(source_purchase_request)
+        if flow_error:
+            messages.info(request, flow_error)
+            return redirect("orders:purchase-request-detail", pk=source_purchase_request.pk)
         requested_payment_type = _requested_payment_type(request, source_purchase_request)
         existing_active_payment = _existing_active_payment_release(source_purchase_request)
         if existing_active_payment is not None:
@@ -158,6 +162,10 @@ class PaymentReleaseCreateView(View):
             return HttpResponseForbidden(
                 "You do not have permission to use this purchase request."
             )
+        flow_error = _payment_flow_error(source_purchase_request)
+        if flow_error:
+            messages.info(request, flow_error)
+            return redirect("orders:purchase-request-detail", pk=source_purchase_request.pk)
         requested_payment_type = _requested_payment_type(request, source_purchase_request)
         existing_active_payment = _existing_active_payment_release(source_purchase_request)
         if existing_active_payment is not None:
@@ -861,11 +869,28 @@ def _requested_payment_type(request: HttpRequest, purchase_request) -> str:
     )
     if purchase_request is None:
         return requested_payment_type if requested_payment_type in ("standard", "advance") else "standard"
+    if purchase_request.is_payment_first:
+        return "advance"
+    if purchase_request.is_delivery_first:
+        return "standard"
     if requested_payment_type == "advance":
         return "advance"
     if requested_payment_type == "standard" and purchase_request.delivered_quantity > 0:
         return "standard"
     return "advance"
+
+
+def _payment_flow_error(purchase_request) -> str:
+    """Return a user-facing reason when payment cannot be started yet."""
+    if purchase_request is None:
+        return ""
+    if not purchase_request.is_execution_ready:
+        return "The purchase request must be approved before payment release can start."
+    if purchase_request.is_delivery_first and purchase_request.delivered_quantity <= 0:
+        return "This purchase request is goods receive first. Submit goods receive before payment release."
+    if purchase_request.is_payment_first and purchase_request.goods_stage != "not_started":
+        return "This purchase request is payment first, and the payment step must happen before goods receive."
+    return ""
 
 
 def _payment_release_po_mode(purchase_request, form: PaymentReleaseForm) -> str:

@@ -316,9 +316,6 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
             if editable_payment is not None
             else f"{reverse('payments:create')}?purchase_request={pr.pk}&payment_type={payment_type}"
         )
-        context["advance_payment_create_url"] = (
-            f"{reverse('payments:create')}?purchase_request={pr.pk}&payment_type=advance"
-        )
         return context
 
 

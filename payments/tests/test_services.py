@@ -64,7 +64,7 @@ class TestSubmitPaymentRelease:
         UserFactory(project_approver=True)
         UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
-            status="ordered",
+            status="approved",
             ordered_quantity=5,
             total_price=500,
         )
@@ -86,7 +86,7 @@ class TestSubmitPaymentRelease:
         UserFactory(project_approver=True)
         UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
             total_price=1000,
         )
@@ -117,7 +117,8 @@ class TestSubmitPaymentRelease:
         UserFactory(project_approver=True)
         UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
-            status="ordered",
+            status="approved",
+            execution_mode="payment_first",
             ordered_quantity=10,
             total_price=1000,
         )
@@ -135,11 +136,34 @@ class TestSubmitPaymentRelease:
         updated = submit_payment_release(payment_release)
         assert updated.status == "pending_pcm"
 
+    def test_delivery_first_rejects_advance_payment_before_delivery(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
+        purchase_request = PurchaseRequestFactory(
+            status="approved",
+            execution_mode="delivery_first",
+            ordered_quantity=10,
+            total_price=1000,
+        )
+        payment_release = PaymentReleaseFactory(
+            status="draft",
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            payment_quantity=10,
+            total_price=1000,
+        )
+
+        with pytest.raises(ValidationError, match="goods receive first"):
+            submit_payment_release(payment_release)
+
     def test_standard_payment_uses_delivered_line_item_value_cap(self):
         UserFactory(project_approver=True)
         UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
             total_price=995,
             currency="SGD",
@@ -214,7 +238,7 @@ class TestSubmitPaymentRelease:
     def test_submit_requires_matching_purchase_type_approver(self):
         UserFactory(final_approver=True)
         purchase_request = PurchaseRequestFactory(
-            status="ordered",
+            status="approved",
             purchase_type="office",
             ordered_quantity=2,
             total_price=200,

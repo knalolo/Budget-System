@@ -217,6 +217,41 @@
                         {% endif %}
                     </div>
 
+                    {# Execution Flow #}
+                    <div class="sm:col-span-2">
+                        <fieldset>
+                            <legend class="block text-sm font-medium text-gray-700 mb-2">
+                                Workflow Sequence <span class="text-red-500">*</span>
+                            </legend>
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                {% for val, label in form.execution_mode.field.choices %}
+                                <label class="flex cursor-pointer items-start gap-3 rounded-md border border-gray-200 bg-gray-50 px-4 py-3 hover:border-brand-300 hover:bg-brand-50">
+                                    <input
+                                        type="radio"
+                                        name="{{ form.execution_mode.html_name }}"
+                                        value="{{ val }}"
+                                        {% if form.execution_mode.value|stringformat:"s" == val|stringformat:"s" %}checked{% endif %}
+                                        class="mt-0.5 h-4 w-4 border-gray-300 text-brand-600 focus:ring-brand-600"
+                                    />
+                                    <span>
+                                        <span class="block text-sm font-medium text-gray-900">{{ label }}</span>
+                                        <span class="mt-1 block text-xs text-gray-500">
+                                            {% if val == "payment_first" %}
+                                            After PR approval, submit Payment Release first. Goods receive opens after payment approval.
+                                            {% else %}
+                                            After PR approval, submit Goods Receive first. Payment Release opens after goods receive.
+                                            {% endif %}
+                                        </span>
+                                    </span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </fieldset>
+                        {% if form.execution_mode.errors %}
+                        <p class="mt-1 text-xs text-red-600">{{ form.execution_mode.errors|join:", " }}</p>
+                        {% endif %}
+                    </div>
+
                     {# Project / MC Number #}
                     <div>
                         <label for="{{ form.project.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">

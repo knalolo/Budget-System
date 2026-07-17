@@ -118,6 +118,7 @@ class PurchaseRequestFactory(factory.django.DjangoModelFactory):
 
     requester = factory.SubFactory(UserFactory)
     purchase_type = settings.PURCHASE_TYPE_PROJECT
+    execution_mode = settings.EXECUTION_MODE_DELIVERY_FIRST
     expense_category = factory.SubFactory(ExpenseCategoryFactory)
     project = factory.SubFactory(ProjectFactory)
     description = "Test purchase request description"

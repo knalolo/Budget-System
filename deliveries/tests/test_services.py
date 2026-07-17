@@ -6,6 +6,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from deliveries.services import create_delivery_submission, update_delivery_submission
 from orders.models import PurchaseRequestLineItem
 from orders.tests.factories import PurchaseRequestFactory, UserFactory
+from payments.tests.factories import PaymentReleaseFactory
 
 
 @pytest.mark.django_db
@@ -14,7 +15,7 @@ class TestCreateDeliverySubmission:
         requester = UserFactory()
         purchase_request = PurchaseRequestFactory(
             requester=requester,
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
             total_price=1000,
         )
@@ -48,7 +49,7 @@ class TestCreateDeliverySubmission:
         requester = UserFactory()
         purchase_request = PurchaseRequestFactory(
             requester=requester,
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
             total_price=1000,
         )
@@ -102,11 +103,63 @@ class TestCreateDeliverySubmission:
         assert submission.purchase_request_id == purchase_request.id
         assert purchase_request.status == "approved"
 
+    def test_payment_first_requires_approved_payment_before_goods_receive(self):
+        requester = UserFactory()
+        purchase_request = PurchaseRequestFactory(
+            requester=requester,
+            status="approved",
+            execution_mode="payment_first",
+            ordered_quantity=5,
+            total_price=500,
+        )
+
+        with pytest.raises(ValueError, match="payment first"):
+            create_delivery_submission(
+                data={
+                    "vendor": purchase_request.vendor,
+                    "currency": purchase_request.currency,
+                    "delivered_quantity": 5,
+                    "total_price": 500,
+                    "status": "fully_delivered",
+                    "notes": "",
+                    "purchase_request": purchase_request,
+                },
+                user=requester,
+                files=[],
+            )
+
+        PaymentReleaseFactory(
+            status="approved",
+            purchase_request=purchase_request,
+            requester=requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            payment_quantity=5,
+            total_price=500,
+        )
+
+        submission = create_delivery_submission(
+            data={
+                "vendor": purchase_request.vendor,
+                "currency": purchase_request.currency,
+                "delivered_quantity": 5,
+                "total_price": 500,
+                "status": "fully_delivered",
+                "notes": "",
+                "purchase_request": purchase_request,
+            },
+            user=requester,
+            files=[],
+        )
+
+        assert submission.status == "fully_delivered"
+
     def test_create_delivery_submission_with_line_items_saves_rows(self):
         requester = UserFactory()
         purchase_request = PurchaseRequestFactory(
             requester=requester,
-            status="ordered",
+            status="approved",
             ordered_quantity=5,
             total_price=350,
             currency="SGD",
@@ -176,7 +229,7 @@ class TestCreateDeliverySubmission:
         requester = UserFactory()
         purchase_request = PurchaseRequestFactory(
             requester=requester,
-            status="ordered",
+            status="approved",
             ordered_quantity=5,
             total_price=350,
             currency="SGD",

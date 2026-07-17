@@ -308,6 +308,15 @@ PURCHASE_TYPE_CHOICES = [
     (PURCHASE_TYPE_OFFICE, "Office"),
 ]
 
+# Execution flow choices
+EXECUTION_MODE_PAYMENT_FIRST = "payment_first"
+EXECUTION_MODE_DELIVERY_FIRST = "delivery_first"
+
+EXECUTION_MODE_CHOICES = [
+    (EXECUTION_MODE_PAYMENT_FIRST, "Pay first"),
+    (EXECUTION_MODE_DELIVERY_FIRST, "Goods receive first"),
+]
+
 # Legacy user-role constants kept for transitional compatibility while the
 # system moves to multi-permission profiles.
 ROLE_REQUESTER = "requester"

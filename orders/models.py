@@ -63,6 +63,11 @@ class PurchaseRequest(models.Model):
         choices=settings.PURCHASE_TYPE_CHOICES,
         default=settings.PURCHASE_TYPE_PROJECT,
     )
+    execution_mode = models.CharField(
+        max_length=20,
+        choices=settings.EXECUTION_MODE_CHOICES,
+        default=settings.EXECUTION_MODE_DELIVERY_FIRST,
+    )
     expense_category = models.ForeignKey(
         ExpenseCategory,
         on_delete=models.PROTECT,
@@ -148,6 +153,21 @@ class PurchaseRequest(models.Model):
             self.purchase_type,
             self.purchase_type,
         )
+
+    @property
+    def execution_mode_display(self) -> str:
+        return dict(settings.EXECUTION_MODE_CHOICES).get(
+            self.execution_mode,
+            self.execution_mode,
+        )
+
+    @property
+    def is_payment_first(self) -> bool:
+        return self.execution_mode == settings.EXECUTION_MODE_PAYMENT_FIRST
+
+    @property
+    def is_delivery_first(self) -> bool:
+        return self.execution_mode == settings.EXECUTION_MODE_DELIVERY_FIRST
 
     @property
     def first_approver_role_label(self) -> str:
@@ -392,12 +412,21 @@ class PurchaseRequest(models.Model):
         goods_stage = self.goods_stage
         payment_stage = self.payment_stage
 
-        if goods_stage == "partially_delivered":
-            return "goods_follow_up_required"
-        if goods_stage == "not_started" and payment_stage == "not_started":
-            return "ready_for_execution"
+        if self.is_payment_first:
+            if payment_stage in ("not_started", "draft", "rejected"):
+                return "payment_pending"
+            if payment_stage != "approved":
+                return "awaiting_payment_approval"
+            if goods_stage == "not_started":
+                return "goods_pending"
+            if goods_stage == "partially_delivered":
+                return "goods_follow_up_required"
+            return "completed" if self.workflow_completed else "goods_pending"
+
         if goods_stage == "not_started":
             return "goods_pending"
+        if goods_stage == "partially_delivered":
+            return "goods_follow_up_required"
         if payment_stage in ("not_started", "draft", "rejected"):
             return "payment_pending"
         return "awaiting_payment_approval"
@@ -419,18 +448,26 @@ class PurchaseRequest(models.Model):
 
     @property
     def can_submit_goods(self) -> bool:
-        return self.is_execution_ready and self.goods_stage not in (
-            "fully_delivered",
-            "short_closed",
-        )
+        if (
+            not self.is_execution_ready
+            or self.goods_stage in ("fully_delivered", "short_closed")
+        ):
+            return False
+        if self.is_payment_first:
+            return self.payment_stage == "approved"
+        return True
 
     @property
     def can_submit_payment(self) -> bool:
-        return self.is_execution_ready and self.payment_stage in (
+        if not self.is_execution_ready or self.payment_stage not in (
             "not_started",
             "draft",
             "rejected",
-        )
+        ):
+            return False
+        if self.is_payment_first:
+            return self.goods_stage == "not_started"
+        return self.delivered_quantity > 0
 
     @property
     def delivery_stage_status(self) -> str:

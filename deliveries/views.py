@@ -74,6 +74,11 @@ def delivery_submission_create(request):
     except PermissionError:
         return HttpResponseForbidden("You do not have permission to use this purchase request.")
 
+    flow_error = _delivery_flow_error(source_purchase_request)
+    if flow_error:
+        messages.info(request, flow_error)
+        return redirect("orders:purchase-request-detail", pk=source_purchase_request.pk)
+
     existing_open_submission = _get_editable_delivery_submission(request.user, source_purchase_request)
     if existing_open_submission is not None:
         messages.info(
@@ -185,7 +190,10 @@ def delivery_submission_update(request, pk: int):
                 else:
                     messages.success(
                         request,
-                        f"Goods recieve record {updated_submission.workflow_number} updated. Continue until all goods arrive.",
+                        (
+                            f"Goods recieve record {updated_submission.workflow_number} "
+                            "updated. Continue until all goods arrive."
+                        ),
                     )
                 return redirect("deliveries:detail", pk=updated_submission.pk)
             except Exception:
@@ -443,3 +451,13 @@ def _delivery_initial_from_purchase_request(purchase_request) -> dict:
         "total_price": purchase_request.unit_price * remaining_quantity,
         "status": "fully_delivered",
     }
+
+
+def _delivery_flow_error(purchase_request) -> str:
+    if purchase_request is None:
+        return ""
+    if not purchase_request.is_execution_ready:
+        return "The purchase request must be approved before goods receive can start."
+    if purchase_request.is_payment_first and purchase_request.payment_stage != "approved":
+        return "This purchase request is payment first. Submit and approve payment release before goods receive."
+    return ""

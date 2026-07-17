@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 
 from django import forms
 from django.conf import settings
@@ -17,6 +17,10 @@ class PurchaseRequestForm(forms.ModelForm):
 
     purchase_type = forms.ChoiceField(
         choices=settings.PURCHASE_TYPE_CHOICES,
+    )
+    execution_mode = forms.ChoiceField(
+        choices=settings.EXECUTION_MODE_CHOICES,
+        widget=forms.RadioSelect,
     )
     description = forms.CharField(required=False, widget=forms.HiddenInput())
     currency = forms.ChoiceField(
@@ -36,7 +40,10 @@ class PurchaseRequestForm(forms.ModelForm):
         widget=forms.DateInput(
             attrs={
                 "type": "date",
-                "class": "block w-full rounded-md border-gray-300 shadow-sm text-sm focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border",
+                "class": (
+                    "block w-full rounded-md border-gray-300 shadow-sm text-sm "
+                    "focus:border-brand-500 focus:ring-brand-500 px-3 py-2 border"
+                ),
             },
             format="%Y-%m-%d",
         ),
@@ -47,6 +54,7 @@ class PurchaseRequestForm(forms.ModelForm):
         model = PurchaseRequest
         fields = [
             "purchase_type",
+            "execution_mode",
             "expense_category",
             "project",
             "description",
@@ -72,8 +80,10 @@ class PurchaseRequestForm(forms.ModelForm):
 
         if self.instance and self.instance.pk:
             self.initial.setdefault("purchase_type", self.instance.purchase_type)
+            self.initial.setdefault("execution_mode", self.instance.execution_mode)
             self.initial.setdefault("expense_category", self.instance.expense_category_id)
         else:
+            self.initial.setdefault("execution_mode", settings.EXECUTION_MODE_DELIVERY_FIRST)
             default_expense_category = self._default_expense_category()
             if default_expense_category is not None:
                 self.initial.setdefault("expense_category", default_expense_category.pk)
@@ -187,7 +197,10 @@ class PurchaseRequestForm(forms.ModelForm):
                 raise forms.ValidationError(f"Line {index}: Product is required.")
 
             quantity = self._parse_positive_int(item.get("quantity"), f"Line {index}: Quantity must be at least 1.")
-            unit_price = self._parse_positive_decimal(item.get("unit_price"), f"Line {index}: Unit price must be greater than zero.")
+            unit_price = self._parse_positive_decimal(
+                item.get("unit_price"),
+                f"Line {index}: Unit price must be greater than zero.",
+            )
             currency = str(item.get("currency", "")).strip().upper()
             valid_currencies = {choice for choice, _ in PurchaseRequest._meta.get_field("currency").choices}
             if currency not in valid_currencies:

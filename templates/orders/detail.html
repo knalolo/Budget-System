@@ -23,6 +23,7 @@
                     {% if purchase_request.po_required %}
                     <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">PO Required</span>
                     {% endif %}
+                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-sky-100 text-sky-800">{{ purchase_request.execution_mode_display }}</span>
                 </div>
                 <p class="mt-1 text-sm text-gray-500">
                     Submitted by
@@ -92,14 +93,6 @@
                     </a>
                     {% endif %}
 
-                    {% if purchase_request.goods_stage != "fully_delivered" and purchase_request.goods_stage != "short_closed" %}
-                    <a
-                        href="{{ advance_payment_create_url }}"
-                        class="inline-flex items-center gap-1.5 rounded-md bg-white px-3 py-2 text-sm font-semibold text-amber-700 ring-1 ring-inset ring-amber-200 hover:bg-amber-50 transition-colors"
-                    >
-                        Request Advance Payment
-                    </a>
-                    {% endif %}
                 {% endif %}
                 {% if can_delete_request %}
                 <form
@@ -142,6 +135,10 @@
                     <div>
                         <dt class="font-medium text-gray-500">Purchase Type</dt>
                         <dd class="mt-1 text-gray-900">{{ purchase_request.purchase_type_display }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Workflow Sequence</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.execution_mode_display }}</dd>
                     </div>
                     <div>
                         <dt class="font-medium text-gray-500">Project (MC Number)</dt>
