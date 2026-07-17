@@ -250,6 +250,9 @@ def _build_requester_action_items(user):
     def _pr_detail_url(purchase_request):
         return reverse("orders:purchase-request-detail", args=[purchase_request.pk])
 
+    def _pr_edit_url(purchase_request):
+        return reverse("orders:purchase-request-edit", args=[purchase_request.pk])
+
     def _delivery_create_url(purchase_request):
         return f"{reverse('deliveries:create')}?purchase_request={purchase_request.pk}"
 
@@ -275,6 +278,19 @@ def _build_requester_action_items(user):
 
     def _payment_edit_url(payment):
         return reverse("payments:update", args=[payment.pk])
+
+    def _rejection_comment(obj) -> str:
+        if getattr(obj, "final_decision", "") == "rejected" and getattr(obj, "final_comment", ""):
+            return obj.final_comment
+        if getattr(obj, "pcm_decision", "") == "rejected" and getattr(obj, "pcm_comment", ""):
+            return obj.pcm_comment
+        return ""
+
+    def _changes_requested_detail(obj, fallback: str) -> str:
+        comment = _rejection_comment(obj)
+        if comment:
+            return f"Changes requested: {comment}"
+        return fallback
 
     def _append_purchase_request_progress_item(purchase_request, *, priority: int):
         latest_payment = purchase_request.latest_payment_release
@@ -378,6 +394,31 @@ def _build_requester_action_items(user):
 
     for purchase_request in (
         _dashboard_purchase_requests_query(user)
+        .filter(status="rejected")
+        .select_related("project")
+        .order_by("-updated_at")
+    ):
+        action_items.append(
+            {
+                "kind": "purchase_request",
+                "label": "PR Changes Requested",
+                "title": purchase_request.workflow_number,
+                "subtitle": _purchase_request_subtitle(purchase_request),
+                "detail": _changes_requested_detail(
+                    purchase_request,
+                    "This purchase request was rejected. Review the comments, edit it, and resubmit for approval.",
+                ),
+                "object": purchase_request,
+                "priority": 0,
+                "primary_text": "Edit PR",
+                "primary_url": _pr_edit_url(purchase_request),
+                "tertiary_text": "Open PR",
+                "tertiary_url": _pr_detail_url(purchase_request),
+            }
+        )
+
+    for purchase_request in (
+        _dashboard_purchase_requests_query(user)
         .filter(status="draft")
         .select_related("project")
         .order_by("-updated_at")
@@ -393,6 +434,31 @@ def _build_requester_action_items(user):
                 "priority": 0,
                 "primary_text": "Open PR",
                 "primary_url": _pr_detail_url(purchase_request),
+            }
+        )
+
+    for payment in (
+        _dashboard_payment_releases_query(user)
+        .filter(status="rejected")
+        .select_related("project", "purchase_request")
+        .order_by("-updated_at")
+    ):
+        action_items.append(
+            {
+                "kind": "payment",
+                "label": "Payment Release Changes Requested",
+                "title": payment.workflow_number,
+                "subtitle": _payment_subtitle(payment),
+                "detail": _changes_requested_detail(
+                    payment,
+                    "This payment release was rejected. Review the comments, edit it, and resubmit for approval.",
+                ),
+                "object": payment,
+                "priority": 1,
+                "primary_text": "Edit Payment",
+                "primary_url": _payment_edit_url(payment),
+                "tertiary_text": "Open Payment",
+                "tertiary_url": _payment_detail_url(payment),
             }
         )
 

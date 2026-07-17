@@ -22,6 +22,7 @@ from approvals.services import (
 )
 from core.services.file_service import save_attachment, validate_file
 from core.services.request_number_service import to_internal_number
+from core.services.workflow_delete_service import delete_purchase_request_workflow
 
 from .export_service import (
     export_purchase_request_dataset,
@@ -285,6 +286,7 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         context["approval_history"] = approval_history
         context["can_approve"] = can_approve
         context["can_manage_request"] = can_manage_request
+        context["can_delete_request"] = _can_delete_purchase_request(self.request.user, pr)
         context["attachments"] = pr.attachments.select_related("uploaded_by")
         context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
         context["selected_attachment_type"] = "quotation"
@@ -465,6 +467,25 @@ def purchase_request_reject(request, pk):
 
 
 @login_required
+def purchase_request_delete(request, pk):
+    """Delete a draft PR or, for admin, the entire linked workflow."""
+    pr = get_object_or_404(PurchaseRequest, pk=pk)
+    if request.method != "POST":
+        return redirect("orders:purchase-request-detail", pk=pk)
+    if not _can_delete_purchase_request(request.user, pr):
+        return HttpResponse("You do not have permission to delete this purchase request.", status=403)
+
+    workflow_number = pr.workflow_number
+    if _is_admin(request.user):
+        delete_purchase_request_workflow(pr)
+        messages.success(request, f"{workflow_number} workflow deleted.")
+    else:
+        pr.delete()
+        messages.success(request, f"{workflow_number} draft purchase request deleted.")
+    return redirect("orders:purchase-request-list")
+
+
+@login_required
 def purchase_request_upload(request, pk):
     """Handle file upload via HTMX POST and return updated attachments partial."""
     pr = get_object_or_404(PurchaseRequest, pk=pk)
@@ -539,6 +560,17 @@ def _user_can_view_all_purchase_requests(user) -> bool:
 def _can_manage_purchase_request(user, purchase_request: PurchaseRequest) -> bool:
     profile = _get_profile(user)
     return purchase_request.requester == user or bool(profile and profile.is_admin)
+
+
+def _is_admin(user) -> bool:
+    profile = _get_profile(user)
+    return bool(profile and profile.is_admin)
+
+
+def _can_delete_purchase_request(user, purchase_request: PurchaseRequest) -> bool:
+    if _is_admin(user):
+        return True
+    return purchase_request.requester == user and purchase_request.can_be_deleted
 
 
 def _clean_purchase_request_attachment_type(raw_value: str) -> str:

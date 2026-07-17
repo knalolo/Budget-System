@@ -101,6 +101,21 @@
                     </a>
                     {% endif %}
                 {% endif %}
+                {% if can_delete_request %}
+                <form
+                    method="post"
+                    action="{% url 'orders:purchase-request-delete' purchase_request.pk %}"
+                    onsubmit="return confirm('{% if request.user.profile.is_admin %}Delete this entire workflow? This removes linked payment releases, goods recieve records, and asset records. This action cannot be undone.{% else %}Delete this draft purchase request? This action cannot be undone.{% endif %}');"
+                >
+                    {% csrf_token %}
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100 transition-colors"
+                    >
+                        {% if request.user.profile.is_admin %}Delete Workflow{% else %}Delete Draft{% endif %}
+                    </button>
+                </form>
+                {% endif %}
             </div>
         </div>
 

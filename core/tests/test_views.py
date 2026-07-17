@@ -372,6 +372,61 @@ class TestDashboardView:
         assert "Submit Payment" in content
         assert "Open PR" in content
 
+    def test_requester_dashboard_moves_rejected_pr_to_next_actions(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="rejected",
+            pcm_decision="rejected",
+            pcm_comment="Too expensive",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        action_items = response.context["requester_action_items"]
+        waiting_items = response.context["requester_waiting_items"]
+        assert len(action_items) == 1
+        assert action_items[0]["kind"] == "purchase_request"
+        assert action_items[0]["label"] == "PR Changes Requested"
+        assert action_items[0]["primary_text"] == "Edit PR"
+        assert action_items[0]["primary_url"] == reverse(
+            "orders:purchase-request-edit",
+            args=[purchase_request.pk],
+        )
+        assert action_items[0]["detail"] == "Changes requested: Too expensive"
+        assert waiting_items == []
+
+    def test_requester_dashboard_moves_rejected_payment_to_next_actions(
+        self,
+        client,
+        regular_user,
+    ):
+        payment = PaymentReleaseFactory(
+            requester=regular_user,
+            status="rejected",
+            pcm_decision="rejected",
+            pcm_comment="No invoice",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        action_items = response.context["requester_action_items"]
+        waiting_items = response.context["requester_waiting_items"]
+        assert len(action_items) == 1
+        assert action_items[0]["kind"] == "payment"
+        assert action_items[0]["label"] == "Payment Release Changes Requested"
+        assert action_items[0]["primary_text"] == "Edit Payment"
+        assert action_items[0]["primary_url"] == reverse("payments:update", args=[payment.pk])
+        assert action_items[0]["detail"] == "Changes requested: No invoice"
+        assert waiting_items == []
+
     def test_requester_dashboard_keeps_payment_only_after_goods_submission(
         self,
         client,

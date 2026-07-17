@@ -7,6 +7,7 @@ import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
+from assets.models import AssetRegistration
 from deliveries.models import DeliverySubmission, DeliverySubmissionLineItem
 from orders.models import PurchaseRequest
 from orders.models import PurchaseRequestLineItem
@@ -359,6 +360,92 @@ class TestPurchaseRequestRejectedEdit:
 
         assert response.status_code == 200
         assert response.context["payment_release_create_url"] == reverse("payments:update", args=[payment.pk])
+
+
+@pytest.mark.django_db
+class TestPurchaseRequestDeleteView:
+    def test_admin_detail_page_shows_delete_workflow_for_non_draft_pr(
+        self,
+        client,
+        admin_user,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="approved",
+        )
+        client.force_login(admin_user)
+
+        response = client.get(reverse("orders:purchase-request-detail", args=[purchase_request.pk]))
+
+        assert response.status_code == 200
+        assert b"Delete Workflow" in response.content
+
+    def test_requester_detail_page_does_not_show_delete_for_non_draft_pr(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="approved",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("orders:purchase-request-detail", args=[purchase_request.pk]))
+
+        assert response.status_code == 200
+        assert b"Delete Workflow" not in response.content
+        assert b"Delete Draft" not in response.content
+
+    def test_admin_delete_removes_entire_purchase_request_workflow(
+        self,
+        client,
+        admin_user,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="approved",
+        )
+        payment = PaymentRelease.objects.create(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            description="Linked payment",
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            total_price="100.00",
+            justification="Linked payment",
+            po_number="N/A",
+            target_payment="30 days",
+            status="pending_pcm",
+        )
+        delivery = DeliverySubmission.objects.create(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            delivered_quantity=1,
+            total_price="100.00",
+            status="partially_delivered",
+        )
+        AssetRegistration.objects.create(
+            requester=admin_user,
+            purchase_request=purchase_request,
+            payment_release=payment,
+        )
+        client.force_login(admin_user)
+
+        response = client.post(reverse("orders:purchase-request-delete", args=[purchase_request.pk]))
+
+        assert response.status_code == 302
+        assert response.url == reverse("orders:purchase-request-list")
+        assert not PurchaseRequest.objects.filter(pk=purchase_request.pk).exists()
+        assert not PaymentRelease.objects.filter(pk=payment.pk).exists()
+        assert not DeliverySubmission.objects.filter(pk=delivery.pk).exists()
+        assert AssetRegistration.objects.count() == 0
 
 
 @pytest.mark.django_db

@@ -693,6 +693,31 @@ class TestPaymentReleaseRejectedEdit:
 
 
 @pytest.mark.django_db
+class TestPaymentReleaseDeleteView:
+    def test_admin_detail_page_labels_delete_as_workflow_delete(
+        self,
+        client,
+        admin_user,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        payment = PaymentReleaseFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            status="approved",
+        )
+        client.force_login(admin_user)
+
+        response = client.get(reverse("payments:detail", args=[payment.pk]))
+
+        assert response.status_code == 200
+        assert b"Delete Workflow" in response.content
+        assert b"Delete Draft" not in response.content
+
+
+@pytest.mark.django_db
 class TestPaymentReleaseUploadView:
     def test_upload_endpoint_accepts_proforma_invoice_type(
         self,

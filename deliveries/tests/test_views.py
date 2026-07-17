@@ -93,6 +93,23 @@ class TestDeliverySubmissionDeleteView:
         assert not payment.__class__.objects.filter(pk=payment.pk).exists()
         assert AssetRegistration.objects.count() == 0
 
+    def test_admin_detail_page_labels_delete_as_workflow_delete(self, client, admin_user, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="approved",
+        )
+        submission = DeliverySubmissionFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+        )
+        client.force_login(admin_user)
+
+        response = client.get(reverse("deliveries:detail", args=[submission.pk]))
+
+        assert response.status_code == 200
+        assert b"Delete Workflow" in response.content
+        assert b"Delete Record" not in response.content
+
 
 @pytest.mark.django_db
 class TestDeliverySubmissionListView:
