@@ -94,6 +94,29 @@
                     {% endif %}
 
                 {% endif %}
+                {% if can_request_cancellation %}
+                <form
+                    method="post"
+                    action="{% url 'orders:purchase-request-request-cancellation' purchase_request.pk %}"
+                    class="flex flex-wrap items-center gap-2 rounded-md border border-orange-200 bg-orange-50 px-3 py-2"
+                    onsubmit="return confirm('Request cancellation for this approved PR? It will wait for Final Approver review.');"
+                >
+                    {% csrf_token %}
+                    <input
+                        type="text"
+                        name="reason"
+                        required
+                        placeholder="Cancellation reason"
+                        class="min-w-48 rounded-md border border-orange-200 bg-white px-2 py-1 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                    />
+                    <button
+                        type="submit"
+                        class="inline-flex items-center gap-1.5 rounded-md bg-orange-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-orange-500 transition-colors"
+                    >
+                        Request Cancellation
+                    </button>
+                </form>
+                {% endif %}
                 {% if can_delete_request %}
                 <form
                     method="post"
@@ -116,6 +139,64 @@
         {% if can_approve %}
         <div class="mt-5 pt-5 border-t border-gray-100">
             {% include "components/approval_actions.html" with purchase_request=purchase_request can_approve=can_approve %}
+        </div>
+        {% endif %}
+
+        {% if purchase_request.status == "cancellation_pending" %}
+        <div class="mt-5 pt-5 border-t border-gray-100">
+            <div class="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3">
+                <p class="text-sm font-semibold text-orange-900">Cancellation Requested</p>
+                <p class="mt-1 text-sm text-orange-800">{{ purchase_request.cancellation_reason }}</p>
+                <p class="mt-1 text-xs text-orange-700">
+                    Waiting for Final Approver review.
+                    {% if purchase_request.cancellation_requested_by %}
+                    Requested by {{ purchase_request.cancellation_requested_by.get_full_name|default:purchase_request.cancellation_requested_by.username }}
+                    {% endif %}
+                    {% if purchase_request.cancellation_requested_at %}
+                    on {{ purchase_request.cancellation_requested_at|date:"d M Y, H:i" }}.
+                    {% endif %}
+                </p>
+                {% if can_decide_cancellation %}
+                <div class="mt-3 flex flex-wrap items-end gap-3">
+                    <form method="post" action="{% url 'orders:purchase-request-approve-cancellation' purchase_request.pk %}" class="flex flex-wrap items-end gap-2">
+                        {% csrf_token %}
+                        <input
+                            type="text"
+                            name="comment"
+                            placeholder="Comment optional"
+                            class="rounded-md border border-orange-200 bg-white px-2 py-1 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                        />
+                        <button type="submit" class="rounded-md bg-green-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-green-500 transition-colors">
+                            Approve Cancellation
+                        </button>
+                    </form>
+                    <form method="post" action="{% url 'orders:purchase-request-reject-cancellation' purchase_request.pk %}" class="flex flex-wrap items-end gap-2">
+                        {% csrf_token %}
+                        <input
+                            type="text"
+                            name="comment"
+                            placeholder="Comment optional"
+                            class="rounded-md border border-orange-200 bg-white px-2 py-1 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                        />
+                        <button type="submit" class="rounded-md bg-white px-3 py-1.5 text-sm font-semibold text-red-700 ring-1 ring-inset ring-red-200 hover:bg-red-50 transition-colors">
+                            Reject Cancellation
+                        </button>
+                    </form>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% elif purchase_request.status == "cancelled" %}
+        <div class="mt-5 pt-5 border-t border-gray-100">
+            <div class="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <p class="text-sm font-semibold text-gray-900">Cancelled</p>
+                {% if purchase_request.cancellation_reason %}
+                <p class="mt-1 text-sm text-gray-700">Reason: {{ purchase_request.cancellation_reason }}</p>
+                {% endif %}
+                {% if purchase_request.cancellation_decision_comment %}
+                <p class="mt-1 text-sm text-gray-700">Decision comment: {{ purchase_request.cancellation_decision_comment }}</p>
+                {% endif %}
+            </div>
         </div>
         {% endif %}
     </div>

@@ -33,6 +33,7 @@ def _line_items_json(*items) -> str:
 def _purchase_request_payload(project, category, *, action="draft") -> dict:
     return {
         "purchase_type": "project",
+        "execution_mode": "delivery_first",
         "expense_category": category.pk,
         "project": project.pk,
         "vendor": "Acme Components",
@@ -155,6 +156,7 @@ class TestPurchaseRequestCreateView:
 
         payload = {
             "purchase_type": "project",
+            "execution_mode": "delivery_first",
             "expense_category": sample_expense_category.pk,
             "project": sample_project.pk,
             "vendor": "Acme Components",
@@ -449,6 +451,103 @@ class TestPurchaseRequestDeleteView:
 
 
 @pytest.mark.django_db
+class TestPurchaseRequestCancellationView:
+    def test_requester_can_request_cancellation_for_approved_pr(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="approved",
+        )
+        client.force_login(regular_user)
+
+        response = client.post(
+            reverse("orders:purchase-request-request-cancellation", args=[purchase_request.pk]),
+            data={"reason": "Quotation needs to be replaced"},
+        )
+
+        assert response.status_code == 302
+        purchase_request.refresh_from_db()
+        assert purchase_request.status == "cancellation_pending"
+        assert purchase_request.cancellation_reason == "Quotation needs to be replaced"
+        assert purchase_request.cancellation_requested_by == regular_user
+
+    def test_final_approver_can_approve_cancellation(
+        self,
+        client,
+        regular_user,
+        final_approver,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="cancellation_pending",
+            cancellation_requested_by=regular_user,
+            cancellation_reason="Wrong quotation",
+        )
+        client.force_login(final_approver)
+
+        response = client.post(
+            reverse("orders:purchase-request-approve-cancellation", args=[purchase_request.pk]),
+            data={"comment": "Cancel and recreate"},
+        )
+
+        assert response.status_code == 302
+        purchase_request.refresh_from_db()
+        assert purchase_request.status == "cancelled"
+        assert purchase_request.cancellation_decision == "approved"
+        assert purchase_request.cancellation_decided_by == final_approver
+
+    def test_final_approver_can_reject_cancellation(
+        self,
+        client,
+        regular_user,
+        final_approver,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="cancellation_pending",
+            cancellation_requested_by=regular_user,
+            cancellation_reason="Wrong quotation",
+        )
+        client.force_login(final_approver)
+
+        response = client.post(
+            reverse("orders:purchase-request-reject-cancellation", args=[purchase_request.pk]),
+            data={"comment": "Use current quotation"},
+        )
+
+        assert response.status_code == 302
+        purchase_request.refresh_from_db()
+        assert purchase_request.status == "approved"
+        assert purchase_request.cancellation_decision == "rejected"
+        assert purchase_request.cancellation_decided_by == final_approver
+
+    def test_cancelled_pr_does_not_show_goods_or_payment_actions(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="cancelled",
+            cancellation_reason="Wrong quotation",
+            cancellation_decision="approved",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("orders:purchase-request-detail", args=[purchase_request.pk]))
+        content = response.content.decode()
+
+        assert response.status_code == 200
+        assert "Cancelled" in content
+        assert "Submit Goods recieve" not in content
+        assert "Submit Payment Release" not in content
+        assert "Request Cancellation" not in content
+
+
+@pytest.mark.django_db
 class TestPurchaseRequestVisibility:
     def test_pcm_approver_list_shows_other_users_requests(
         self,
@@ -617,6 +716,43 @@ class TestPurchaseRequestDatasetExport:
         assert f"{purchase_request.workflow_number},{regular_user.username},{purchase_request.created_at.strftime('%Y-%m-%d %H:%M:%S')}" in content
         assert ",AAA,USD,100.00,5,5,0,500.00,675.00,PO-123,2026-05-20,Partially Delivered,Payment Approved,Partial Delivery Follow-up,No" in content
         assert ",BBB,USD,33.00,15,14,1,495.00,668.25,PO-123,2026-05-20,Partially Delivered,Payment Approved,Partial Delivery Follow-up,No" in content
+
+    def test_dataset_export_shows_cancellation_status(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+        monkeypatch,
+    ):
+        client.force_login(regular_user)
+        purchase_request = PurchaseRequest.objects.create(
+            requester=regular_user,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            description="Cancelled request",
+            vendor="Cancel Vendor",
+            currency="SGD",
+            ordered_quantity=1,
+            total_price=Decimal("100.00"),
+            justification="Wrong quotation.",
+            po_required=False,
+            target_payment="2026-05-20",
+            status="cancelled",
+            cancellation_reason="Wrong quotation.",
+            cancellation_decision="approved",
+        )
+        monkeypatch.setattr(
+            "orders.export_service.convert_amount_to_sgd",
+            lambda amount, currency: Decimal(str(amount)),
+        )
+
+        response = client.get(reverse("orders:purchase-request-dataset-export"))
+
+        assert response.status_code == 200
+        content = response.content.decode("utf-8")
+        assert purchase_request.workflow_number in content
+        assert ",Cancelled,No" in content
 
     def test_requester_dataset_export_only_includes_own_requests(
         self,

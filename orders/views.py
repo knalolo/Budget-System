@@ -31,8 +31,11 @@ from .export_service import (
 from .forms import PurchaseRequestForm
 from .models import Project, PurchaseRequest
 from .services import (
+    approve_purchase_request_cancellation,
     approve_purchase_request,
+    reject_purchase_request_cancellation,
     reject_purchase_request,
+    request_purchase_request_cancellation,
     submit_purchase_request,
 )
 
@@ -287,6 +290,8 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         context["can_approve"] = can_approve
         context["can_manage_request"] = can_manage_request
         context["can_delete_request"] = _can_delete_purchase_request(self.request.user, pr)
+        context["can_request_cancellation"] = _can_request_purchase_request_cancellation(self.request.user, pr)
+        context["can_decide_cancellation"] = _can_decide_purchase_request_cancellation(self.request.user, pr)
         context["attachments"] = pr.attachments.select_related("uploaded_by")
         context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
         context["selected_attachment_type"] = "quotation"
@@ -483,6 +488,51 @@ def purchase_request_delete(request, pk):
 
 
 @login_required
+def purchase_request_request_cancellation(request, pk):
+    """Requester asks Final Approver/Admin to cancel an approved PR."""
+    pr = get_object_or_404(PurchaseRequest, pk=pk)
+    if request.method != "POST":
+        return redirect("orders:purchase-request-detail", pk=pk)
+    reason = request.POST.get("reason", "")
+    try:
+        request_purchase_request_cancellation(pr, request.user, reason)
+        messages.success(request, f"Cancellation requested for {pr.workflow_number}.")
+    except ValidationError as exc:
+        messages.error(request, _validation_error_message(exc))
+    return redirect("orders:purchase-request-detail", pk=pk)
+
+
+@login_required
+def purchase_request_approve_cancellation(request, pk):
+    """Final Approver/Admin approves a pending PR cancellation."""
+    pr = get_object_or_404(PurchaseRequest, pk=pk)
+    if request.method != "POST":
+        return redirect("orders:purchase-request-detail", pk=pk)
+    comment = request.POST.get("comment", "")
+    try:
+        approve_purchase_request_cancellation(pr, request.user, comment)
+        messages.success(request, f"Cancellation approved for {pr.workflow_number}.")
+    except ValidationError as exc:
+        messages.error(request, _validation_error_message(exc))
+    return redirect("orders:purchase-request-detail", pk=pk)
+
+
+@login_required
+def purchase_request_reject_cancellation(request, pk):
+    """Final Approver/Admin rejects a pending PR cancellation."""
+    pr = get_object_or_404(PurchaseRequest, pk=pk)
+    if request.method != "POST":
+        return redirect("orders:purchase-request-detail", pk=pk)
+    comment = request.POST.get("comment", "")
+    try:
+        reject_purchase_request_cancellation(pr, request.user, comment)
+        messages.success(request, f"Cancellation rejected for {pr.workflow_number}.")
+    except ValidationError as exc:
+        messages.error(request, _validation_error_message(exc))
+    return redirect("orders:purchase-request-detail", pk=pk)
+
+
+@login_required
 def purchase_request_upload(request, pk):
     """Handle file upload via HTMX POST and return updated attachments partial."""
     pr = get_object_or_404(PurchaseRequest, pk=pk)
@@ -568,6 +618,21 @@ def _can_delete_purchase_request(user, purchase_request: PurchaseRequest) -> boo
     if _is_admin(user):
         return True
     return purchase_request.requester == user and purchase_request.can_be_deleted
+
+
+def _can_request_purchase_request_cancellation(user, purchase_request: PurchaseRequest) -> bool:
+    return (
+        purchase_request.requester == user
+        and purchase_request.status == "approved"
+        and not purchase_request.workflow_completed
+    )
+
+
+def _can_decide_purchase_request_cancellation(user, purchase_request: PurchaseRequest) -> bool:
+    if purchase_request.status != "cancellation_pending":
+        return False
+    profile = _get_profile(user)
+    return bool(profile and (profile.is_final_approver or profile.is_admin))
 
 
 def _clean_purchase_request_attachment_type(raw_value: str) -> str:

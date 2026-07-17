@@ -347,7 +347,7 @@ class TestDashboardView:
         content = response.content.decode()
         assert "Ready For Payment" not in content
 
-    def test_requester_dashboard_shows_approved_pr_as_next_action_before_execution(
+    def test_requester_dashboard_shows_delivery_first_pr_as_goods_next_action(
         self,
         client,
         regular_user,
@@ -366,10 +366,9 @@ class TestDashboardView:
         action_items = response.context["requester_action_items"]
         assert len(action_items) == 1
         assert action_items[0]["title"] == purchase_request.workflow_number
-        assert action_items[0]["label"] == "Choose Next Step"
+        assert action_items[0]["label"] == "Goods recieve Still Required"
         content = response.content.decode()
         assert "Submit Goods recieve" in content
-        assert "Submit Payment" in content
         assert "Open PR" in content
 
     def test_requester_dashboard_moves_rejected_pr_to_next_actions(
@@ -426,6 +425,49 @@ class TestDashboardView:
         assert action_items[0]["primary_url"] == reverse("payments:update", args=[payment.pk])
         assert action_items[0]["detail"] == "Changes requested: No invoice"
         assert waiting_items == []
+
+    def test_requester_dashboard_shows_pending_cancellation_in_waiting(
+        self,
+        client,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="cancellation_pending",
+            cancellation_reason="Quotation needs to be replaced",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        assert response.context["requester_action_items"] == []
+        waiting_items = response.context["requester_waiting_items"]
+        assert len(waiting_items) == 1
+        assert waiting_items[0]["object"] == purchase_request
+        assert waiting_items[0]["label"] == "Cancellation Requested"
+        assert waiting_items[0]["detail"] == "Cancellation is waiting for Final Approver review."
+
+    def test_final_approver_dashboard_shows_cancellation_requests_in_approval_queue(
+        self,
+        client,
+        final_approver,
+        regular_user,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="cancellation_pending",
+            cancellation_reason="Quotation needs to be replaced",
+        )
+        client.force_login(final_approver)
+
+        response = client.get(reverse("core:dashboard"))
+
+        assert response.status_code == 200
+        assert list(response.context["pr_pending_approvals"]) == [purchase_request]
+        content = response.content.decode()
+        assert "Cancellation Requested" in content
+        assert purchase_request.workflow_number in content
 
     def test_requester_dashboard_keeps_payment_only_after_goods_submission(
         self,

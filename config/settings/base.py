@@ -251,6 +251,8 @@ PR_STATUS_PENDING_PCM = PR_STATUS_PENDING_FIRST_APPROVER
 PR_STATUS_PENDING_FINAL = "pending_final"
 PR_STATUS_APPROVED = "approved"
 PR_STATUS_REJECTED = "rejected"
+PR_STATUS_CANCELLATION_PENDING = "cancellation_pending"
+PR_STATUS_CANCELLED = "cancelled"
 PR_STATUS_PO_SENT = "po_sent"
 PR_STATUS_ORDERED = "ordered"
 PR_STATUS_COMPLETED = "completed"
@@ -261,6 +263,8 @@ PR_STATUS_CHOICES = [
     (PR_STATUS_PENDING_FINAL, "Pending Final Approver Review"),
     (PR_STATUS_APPROVED, "Approved"),
     (PR_STATUS_REJECTED, "Rejected"),
+    (PR_STATUS_CANCELLATION_PENDING, "Cancellation Requested"),
+    (PR_STATUS_CANCELLED, "Cancelled"),
     (PR_STATUS_PO_SENT, "Legacy PO Sent"),
     (PR_STATUS_ORDERED, "Legacy Ordered"),
     (PR_STATUS_COMPLETED, "Legacy Completed"),

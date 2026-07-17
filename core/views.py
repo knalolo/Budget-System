@@ -68,8 +68,10 @@ def _build_pending_approvals_query(user):
         pr_q |= Q(status="pending_pcm", purchase_type="office")
         payment_q |= Q(status="pending_pcm", purchase_request__purchase_type="office")
     if profile.is_final_approver:
-        pr_q |= Q(status="pending_final")
+        pr_q |= Q(status="pending_final") | Q(status="cancellation_pending")
         payment_q |= Q(status="pending_final")
+    if profile.is_admin:
+        pr_q |= Q(status="cancellation_pending")
 
     pr_qs = PurchaseRequest.objects.filter(pr_q) if pr_q else PurchaseRequest.objects.none()
     payment_qs = PaymentRelease.objects.filter(payment_q) if payment_q else PaymentRelease.objects.none()
@@ -106,7 +108,13 @@ def _dashboard_delivery_stage_query(user):
     return [
         purchase_request
         for purchase_request in purchase_requests
-        if purchase_request.workflow_stage not in ("draft", "awaiting_pr_approval", "rejected")
+        if purchase_request.workflow_stage not in (
+            "draft",
+            "awaiting_pr_approval",
+            "rejected",
+            "cancellation_pending",
+            "cancelled",
+        )
     ]
 
 
@@ -546,6 +554,23 @@ def _build_requester_waiting_items(user):
                     purchase_request.first_approver_role_label,
                     payment=False,
                 ),
+                "object": purchase_request,
+            }
+        )
+
+    for purchase_request in (
+        _dashboard_purchase_requests_query(user)
+        .filter(status="cancellation_pending")
+        .select_related("project")
+        .order_by("-updated_at")
+    ):
+        waiting_items.append(
+            {
+                "kind": "purchase_request",
+                "label": "Cancellation Requested",
+                "title": purchase_request.workflow_number,
+                "subtitle": _purchase_request_subtitle(purchase_request),
+                "detail": "Cancellation is waiting for Final Approver review.",
                 "object": purchase_request,
             }
         )

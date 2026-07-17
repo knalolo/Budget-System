@@ -5,9 +5,12 @@ from unittest.mock import patch
 
 from core.models import SystemConfig
 from orders.services import (
+    approve_purchase_request_cancellation,
     approve_purchase_request,
     check_po_threshold,
+    reject_purchase_request_cancellation,
     reject_purchase_request,
+    request_purchase_request_cancellation,
     submit_purchase_request,
 )
 from orders.tests.factories import PurchaseRequestFactory, UserFactory
@@ -134,6 +137,76 @@ class TestSubmitPurchaseRequest:
         with patch("orders.services.notify_submission"):
             with pytest.raises(ValidationError, match="Office Approver"):
                 submit_purchase_request(pr)
+
+
+@pytest.mark.django_db
+class TestPurchaseRequestCancellation:
+    def test_requester_can_request_cancellation_for_approved_pr(self):
+        from approvals.models import ApprovalLog
+
+        requester = UserFactory()
+        pr = PurchaseRequestFactory(requester=requester, status="approved")
+
+        updated = request_purchase_request_cancellation(pr, requester, "Quotation is wrong")
+
+        assert updated.status == "cancellation_pending"
+        assert updated.cancellation_requested_by == requester
+        assert updated.cancellation_reason == "Quotation is wrong"
+        assert updated.cancellation_decision == "pending"
+        assert ApprovalLog.objects.filter(
+            object_id=updated.pk,
+            old_status="approved",
+            new_status="cancellation_pending",
+        ).exists()
+
+    def test_requester_cannot_request_cancellation_for_non_approved_pr(self):
+        requester = UserFactory()
+        pr = PurchaseRequestFactory(requester=requester, status="pending_pcm")
+
+        with pytest.raises(ValidationError, match="Only approved"):
+            request_purchase_request_cancellation(pr, requester, "Wrong quote")
+
+    def test_non_requester_cannot_request_cancellation(self):
+        pr = PurchaseRequestFactory(status="approved")
+        other_user = UserFactory()
+
+        with pytest.raises(ValidationError, match="Only the requester"):
+            request_purchase_request_cancellation(pr, other_user, "Wrong quote")
+
+    def test_final_approver_can_approve_cancellation(self):
+        requester = UserFactory()
+        final = UserFactory(final_approver=True)
+        pr = PurchaseRequestFactory(requester=requester, status="approved")
+        request_purchase_request_cancellation(pr, requester, "Wrong quote")
+
+        updated = approve_purchase_request_cancellation(pr, final, "Agreed")
+
+        assert updated.status == "cancelled"
+        assert updated.cancellation_decision == "approved"
+        assert updated.cancellation_decided_by == final
+        assert updated.cancellation_decision_comment == "Agreed"
+
+    def test_final_approver_can_reject_cancellation(self):
+        requester = UserFactory()
+        final = UserFactory(final_approver=True)
+        pr = PurchaseRequestFactory(requester=requester, status="approved")
+        request_purchase_request_cancellation(pr, requester, "Wrong quote")
+
+        updated = reject_purchase_request_cancellation(pr, final, "Keep original")
+
+        assert updated.status == "approved"
+        assert updated.cancellation_decision == "rejected"
+        assert updated.cancellation_decided_by == final
+        assert updated.cancellation_decision_comment == "Keep original"
+
+    def test_regular_user_cannot_decide_cancellation(self):
+        requester = UserFactory()
+        regular = UserFactory()
+        pr = PurchaseRequestFactory(requester=requester, status="approved")
+        request_purchase_request_cancellation(pr, requester, "Wrong quote")
+
+        with pytest.raises(ValidationError, match="Final Approver or Admin"):
+            approve_purchase_request_cancellation(pr, regular, "No")
 
 
 # ---------------------------------------------------------------------------

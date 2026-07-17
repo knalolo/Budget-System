@@ -154,6 +154,108 @@ def reject_purchase_request(purchase_request, approver, comment: str = ""):
     return purchase_request
 
 
+def request_purchase_request_cancellation(purchase_request, requester, reason: str):
+    """Request final-approver cancellation for an approved purchase request."""
+    if purchase_request.requester_id != requester.pk:
+        raise ValidationError("Only the requester can request cancellation.")
+    if purchase_request.status != "approved":
+        raise ValidationError("Only approved purchase requests can request cancellation.")
+    if purchase_request.workflow_completed:
+        raise ValidationError("Completed workflows cannot request cancellation.")
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValidationError("Cancellation reason is required.")
+
+    old_status = purchase_request.status
+    purchase_request.status = "cancellation_pending"
+    purchase_request.cancellation_requested_by = requester
+    purchase_request.cancellation_requested_at = timezone.now()
+    purchase_request.cancellation_reason = reason
+    purchase_request.cancellation_decision = "pending"
+    purchase_request.cancellation_decided_by = None
+    purchase_request.cancellation_decided_at = None
+    purchase_request.cancellation_decision_comment = ""
+    purchase_request.save(
+        update_fields=[
+            "status",
+            "cancellation_requested_by",
+            "cancellation_requested_at",
+            "cancellation_reason",
+            "cancellation_decision",
+            "cancellation_decided_by",
+            "cancellation_decided_at",
+            "cancellation_decision_comment",
+            "updated_at",
+        ]
+    )
+    _create_status_log(
+        purchase_request,
+        old_status,
+        purchase_request.status,
+        actor=requester,
+        comment=reason,
+    )
+    return purchase_request
+
+
+def approve_purchase_request_cancellation(purchase_request, approver, comment: str = ""):
+    """Approve a pending cancellation request and mark the PR cancelled."""
+    _validate_cancellation_decider(purchase_request, approver)
+    old_status = purchase_request.status
+    purchase_request.status = "cancelled"
+    purchase_request.cancellation_decision = "approved"
+    purchase_request.cancellation_decided_by = approver
+    purchase_request.cancellation_decided_at = timezone.now()
+    purchase_request.cancellation_decision_comment = (comment or "").strip()
+    purchase_request.save(
+        update_fields=[
+            "status",
+            "cancellation_decision",
+            "cancellation_decided_by",
+            "cancellation_decided_at",
+            "cancellation_decision_comment",
+            "updated_at",
+        ]
+    )
+    _create_status_log(
+        purchase_request,
+        old_status,
+        purchase_request.status,
+        actor=approver,
+        comment=comment,
+    )
+    return purchase_request
+
+
+def reject_purchase_request_cancellation(purchase_request, approver, comment: str = ""):
+    """Reject a pending cancellation request and return the PR to approved."""
+    _validate_cancellation_decider(purchase_request, approver)
+    old_status = purchase_request.status
+    purchase_request.status = "approved"
+    purchase_request.cancellation_decision = "rejected"
+    purchase_request.cancellation_decided_by = approver
+    purchase_request.cancellation_decided_at = timezone.now()
+    purchase_request.cancellation_decision_comment = (comment or "").strip()
+    purchase_request.save(
+        update_fields=[
+            "status",
+            "cancellation_decision",
+            "cancellation_decided_by",
+            "cancellation_decided_at",
+            "cancellation_decision_comment",
+            "updated_at",
+        ]
+    )
+    _create_status_log(
+        purchase_request,
+        old_status,
+        purchase_request.status,
+        actor=approver,
+        comment=comment,
+    )
+    return purchase_request
+
+
 def mark_po_sent(purchase_request):
     """
     Compatibility helper retained for historical callers.
@@ -189,15 +291,30 @@ def mark_ordered(purchase_request):
 # ---------------------------------------------------------------------------
 
 
-def _create_status_log(obj, old_status: str, new_status: str) -> ApprovalLog:
+def _validate_cancellation_decider(purchase_request, approver) -> None:
+    if purchase_request.status != "cancellation_pending":
+        raise ValidationError("Only pending cancellation requests can be decided.")
+    profile = getattr(approver, "profile", None)
+    if not (profile and (profile.is_final_approver or profile.is_admin)):
+        raise ValidationError("Only Final Approver or Admin can decide cancellation requests.")
+
+
+def _create_status_log(
+    obj,
+    old_status: str,
+    new_status: str,
+    *,
+    actor=None,
+    comment: str = "",
+) -> ApprovalLog:
     """Create an ApprovalLog entry for a manual status change on *obj*."""
     content_type = ContentType.objects.get_for_model(obj)
     return ApprovalLog.objects.create(
         content_type=content_type,
         object_id=obj.pk,
         action=ACTION_STATUS_CHANGED,
-        action_by=obj.requester,
+        action_by=actor or obj.requester,
         old_status=old_status,
         new_status=new_status,
-        comment="",
+        comment=comment or "",
     )

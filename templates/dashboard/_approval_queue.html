@@ -31,7 +31,11 @@
                 {% for pr in pr_pending_approvals %}
                 <tr class="hover:bg-gray-50 transition-colors">
                     <td class="px-4 py-3">
+                        {% if pr.status == "cancellation_pending" %}
+                        <span class="inline-flex items-center rounded-md bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-700/10">Cancellation</span>
+                        {% else %}
                         <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10">PR</span>
+                        {% endif %}
                     </td>
                     <td class="px-4 py-3 text-sm font-mono text-gray-700">{{ pr.workflow_number }}</td>
                     <td class="px-4 py-3 text-sm text-gray-600">{{ pr.requester.get_full_name|default:pr.requester.username }}</td>
@@ -44,6 +48,9 @@
                             bg-{{ pr.status|status_color }}-100 text-{{ pr.status|status_color }}-800">
                             {{ pr.human_status_label }}
                         </span>
+                        {% if pr.status == "cancellation_pending" and pr.cancellation_reason %}
+                        <p class="mt-1 max-w-xs text-[11px] text-gray-500">{{ pr.cancellation_reason }}</p>
+                        {% endif %}
                     </td>
                     <td class="px-4 py-3 text-sm text-gray-500">{{ pr.created_at|date:"M d, Y" }}</td>
                     <td class="px-4 py-3 text-right">

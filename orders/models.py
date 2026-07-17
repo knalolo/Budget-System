@@ -129,6 +129,31 @@ class PurchaseRequest(models.Model):
     final_comment = models.TextField(blank=True)
     final_decided_at = models.DateTimeField(null=True, blank=True)
 
+    # --- Cancellation request ---
+    cancellation_requested_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="requested_pr_cancellations",
+    )
+    cancellation_requested_at = models.DateTimeField(null=True, blank=True)
+    cancellation_reason = models.TextField(blank=True)
+    cancellation_decided_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="decided_pr_cancellations",
+    )
+    cancellation_decided_at = models.DateTimeField(null=True, blank=True)
+    cancellation_decision = models.CharField(
+        max_length=20,
+        choices=settings.DECISION_CHOICES,
+        default="pending",
+    )
+    cancellation_decision_comment = models.TextField(blank=True)
+
     # --- Timestamps ---
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -238,6 +263,8 @@ class PurchaseRequest(models.Model):
             "pending_final": "Pending Final Approver Review",
             "approved": "Approved",
             "rejected": "Rejected",
+            "cancellation_pending": "Cancellation Requested",
+            "cancelled": "Cancelled",
             "po_sent": "Legacy PO Sent",
             "ordered": "Legacy Ordered",
             "completed": "Legacy Completed",
@@ -404,6 +431,10 @@ class PurchaseRequest(models.Model):
             return "awaiting_pr_approval"
         if self.is_rejected:
             return "rejected"
+        if self.status == "cancellation_pending":
+            return "cancellation_pending"
+        if self.status == "cancelled":
+            return "cancelled"
         if self.workflow_completed:
             return "completed"
         if not self.is_execution_ready:
@@ -437,6 +468,8 @@ class PurchaseRequest(models.Model):
             "draft": "Draft",
             "awaiting_pr_approval": f"Awaiting {self.first_approver_role_label} / Final Approver Approval",
             "rejected": "Rejected",
+            "cancellation_pending": "Cancellation Requested",
+            "cancelled": "Cancelled",
             "ready_for_execution": "Choose Next Step",
             "goods_pending": "Goods recieve Still Required",
             "payment_pending": "Payment Still Required",

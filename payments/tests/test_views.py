@@ -1,6 +1,7 @@
 """View tests for the payment release HTML workflow."""
 
 import pytest
+from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
@@ -69,7 +70,8 @@ class TestPaymentReleaseCreateView:
             justification="Needed to lock the test slot.",
             po_required=False,
             target_payment="2026-04-15",
-            status="ordered",
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
+            status="approved",
         )
 
         response = client.get(
@@ -94,6 +96,7 @@ class TestPaymentReleaseCreateView:
             requester=regular_user,
             project=sample_project,
             expense_category=sample_expense_category,
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
             status="approved",
         )
         draft = PaymentReleaseFactory(
@@ -123,6 +126,7 @@ class TestPaymentReleaseCreateView:
             requester=regular_user,
             project=sample_project,
             expense_category=sample_expense_category,
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
             status="approved",
         )
         payment = PaymentReleaseFactory(
@@ -141,6 +145,29 @@ class TestPaymentReleaseCreateView:
         assert response.status_code == 302
         assert response.url == reverse("payments:detail", args=[payment.pk])
 
+    def test_cancelled_purchase_request_cannot_start_payment_release(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
+            status="cancelled",
+        )
+        client.force_login(regular_user)
+
+        response = client.get(
+            f"{reverse('payments:create')}?purchase_request={purchase_request.pk}"
+        )
+
+        assert response.status_code == 302
+        assert response.url == reverse("orders:purchase-request-detail", args=[purchase_request.pk])
+
     def test_get_prefills_standard_payment_from_delivered_line_item_value(
         self,
         client,
@@ -153,7 +180,7 @@ class TestPaymentReleaseCreateView:
             requester=regular_user,
             project=sample_project,
             expense_category=sample_expense_category,
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
             total_price=995,
             currency="SGD",
@@ -293,7 +320,8 @@ class TestPaymentReleaseCreateView:
             justification="Needed to lock the test slot.",
             po_required=False,
             target_payment="2026-04-15",
-            status="ordered",
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
+            status="approved",
         )
 
         payload = _payment_release_payload(sample_project, sample_expense_category)
@@ -332,6 +360,7 @@ class TestPaymentReleaseCreateView:
             justification="Needed to lock the test slot.",
             po_required=False,
             target_payment="2026-04-15",
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
             status="approved",
         )
         draft = PaymentRelease.objects.create(
@@ -386,7 +415,8 @@ class TestPaymentReleaseCreateView:
             justification="Needed to lock the test slot.",
             po_required=False,
             target_payment="2026-04-15",
-            status="ordered",
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
+            status="approved",
         )
 
         payload = _payment_release_payload(sample_project, sample_expense_category)
@@ -457,7 +487,8 @@ class TestPaymentReleaseCreateView:
             justification="Needed to lock the test slot.",
             po_required=False,
             target_payment="2026-04-15",
-            status="ordered",
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
+            status="approved",
         )
 
         payload = _payment_release_payload(
@@ -501,6 +532,7 @@ class TestPaymentReleaseCreateView:
             justification="Needed to lock the test slot.",
             po_required=False,
             target_payment="2026-04-15",
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
             status="approved",
         )
         payment = PaymentRelease.objects.create(
@@ -552,7 +584,7 @@ class TestPaymentReleaseCreateView:
             justification="Needed to lock the test slot.",
             po_required=False,
             target_payment="2026-04-15",
-            status="ordered",
+            status="approved",
         )
         DeliverySubmissionFactory(
             requester=regular_user,
@@ -909,7 +941,7 @@ class TestPaymentReleaseVisualCues:
         pcm_approver,
     ):
         purchase_request = PurchaseRequestFactory(
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
         )
         PaymentReleaseFactory(
@@ -938,7 +970,7 @@ class TestPaymentReleaseVisualCues:
         pcm_approver,
     ):
         purchase_request = PurchaseRequestFactory(
-            status="ordered",
+            status="approved",
             ordered_quantity=10,
         )
         DeliverySubmissionFactory(

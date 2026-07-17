@@ -19,7 +19,7 @@ class TestDeliverySubmissionDeleteView:
     def test_requester_can_delete_own_delivery_submission(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
             total_price=200,
         )
@@ -126,7 +126,7 @@ class TestDeliverySubmissionListView:
         assert submissions == [own_submission]
 
     def test_pcm_approver_sees_all_delivery_submissions(self, client, pcm_approver, regular_user):
-        PurchaseRequestFactory(requester=regular_user, status="ordered")
+        PurchaseRequestFactory(requester=regular_user, status="approved")
         own_submission = DeliverySubmissionFactory(requester=regular_user)
         other_submission = DeliverySubmissionFactory()
         client.force_login(pcm_approver)
@@ -141,7 +141,7 @@ class TestDeliverySubmissionListView:
     def test_list_shows_quantity_and_value_progress(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
             total_price=100,
             currency="SGD",
@@ -167,7 +167,7 @@ class TestDeliverySubmissionListView:
     def test_list_keeps_plain_values_for_fully_delivered_rows(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
             total_price=100,
             currency="SGD",
@@ -193,7 +193,7 @@ class TestDeliverySubmissionListView:
     def test_requester_cannot_delete_after_payment_enters_approval_flow(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=20,
             total_price=200,
         )
@@ -239,7 +239,7 @@ class TestDeliverySubmissionCreateView:
             requester=regular_user,
             project=sample_project,
             expense_category=sample_expense_category,
-            status="ordered",
+            status="approved",
             ordered_quantity=5,
             total_price=350,
             currency="SGD",
@@ -347,7 +347,7 @@ class TestDeliverySubmissionCreateView:
     def test_create_redirects_to_existing_partial_submission(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=8,
             total_price=800,
         )
@@ -367,6 +367,19 @@ class TestDeliverySubmissionCreateView:
         assert response.status_code == 302
         assert response.url == reverse("deliveries:update", args=[submission.pk])
 
+    def test_cancelled_purchase_request_cannot_start_goods_receive(self, client, regular_user):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            status="cancelled",
+            ordered_quantity=5,
+        )
+        client.force_login(regular_user)
+
+        response = client.get(reverse("deliveries:create"), {"purchase_request": purchase_request.pk})
+
+        assert response.status_code == 302
+        assert response.url == reverse("orders:purchase-request-detail", args=[purchase_request.pk])
+
 
 @pytest.mark.django_db
 class TestDeliverySubmissionUpdateView:
@@ -374,7 +387,7 @@ class TestDeliverySubmissionUpdateView:
         settings.MEDIA_ROOT = tmp_path
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=5,
             total_price=350,
             currency="SGD",
@@ -457,7 +470,7 @@ class TestDeliverySubmissionUpdateView:
     def test_requester_cannot_edit_fully_delivered_submission(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,
-            status="ordered",
+            status="approved",
             ordered_quantity=5,
         )
         submission = DeliverySubmissionFactory(
