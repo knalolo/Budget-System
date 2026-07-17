@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import logging
+import secrets
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.http import HttpResponse
@@ -41,6 +43,7 @@ PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES = {
     "quotation": "Quotation",
     "new_order_list": "New Order List",
 }
+PR_CREATE_TOKEN_TIMEOUT_SECONDS = 60 * 30
 
 
 def _purchase_request_status_choices() -> list[tuple[str, str]]:
@@ -157,7 +160,37 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
             )
         return super().dispatch(request, *args, **kwargs)
 
+    def _dedupe_cache_key(self, token: str) -> str:
+        return f"purchase-request-create:{self.request.user.pk}:{token}"
+
+    def _is_duplicate_create_submission(self) -> bool:
+        token = self.request.POST.get("create_token", "").strip()
+        if not token:
+            return False
+        return not cache.add(
+            self._dedupe_cache_key(token),
+            "submitted",
+            timeout=PR_CREATE_TOKEN_TIMEOUT_SECONDS,
+        )
+
+    def _redirect_after_duplicate_submission(self):
+        latest_request = (
+            PurchaseRequest.objects.filter(requester=self.request.user)
+            .order_by("-created_at")
+            .first()
+        )
+        messages.info(
+            self.request,
+            "This purchase request was already submitted. Opening the existing request.",
+        )
+        if latest_request is None:
+            return redirect("orders:purchase-request-list")
+        return redirect("orders:purchase-request-detail", pk=latest_request.pk)
+
     def form_valid(self, form):
+        if self._is_duplicate_create_submission():
+            return self._redirect_after_duplicate_submission()
+
         uploaded_files = self.request.FILES.getlist("attachment_files")
 
         try:
@@ -204,6 +237,7 @@ class PurchaseRequestCreateView(LoginRequiredMixin, CreateView):
         context = super().get_context_data(**kwargs)
         context["page_title"] = "New Purchase Request"
         context["is_create"] = True
+        context["create_token"] = secrets.token_urlsafe(24)
         context["attachment_type_options"] = PURCHASE_REQUEST_ATTACHMENT_FILE_TYPES.items()
         context["selected_attachment_type"] = self.request.POST.get(
             "attachment_file_type",

@@ -253,6 +253,24 @@ class TestPaymentReleaseCreateView:
         assert attachment.file_type == "invoice"
         assert attachment.original_filename == "official-invoice.pdf"
 
+    def test_duplicate_create_token_does_not_create_second_payment_release(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        client.force_login(regular_user)
+        payload = _payment_release_payload(sample_project, sample_expense_category)
+        payload["create_token"] = "same-payment-submit-token"
+
+        first_response = client.post(reverse("payments:create"), data=payload)
+        second_response = client.post(reverse("payments:create"), data=payload)
+
+        assert first_response.status_code == 302
+        assert second_response.status_code == 302
+        assert PaymentRelease.objects.filter(requester=regular_user).count() == 1
+
     def test_create_links_payment_to_purchase_request(
         self,
         client,

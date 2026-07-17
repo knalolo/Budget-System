@@ -292,6 +292,41 @@ class TestDeliverySubmissionCreateView:
         assert str(submission.total_price) == "250.00"
         assert submission.line_items.count() == 2
 
+    def test_duplicate_create_token_does_not_create_second_delivery_submission(
+        self,
+        client,
+        regular_user,
+        settings,
+        tmp_path,
+    ):
+        settings.MEDIA_ROOT = tmp_path
+        client.force_login(regular_user)
+
+        def payload(file_bytes):
+            return {
+                "vendor": "Manual Vendor",
+                "currency": "SGD",
+                "delivered_quantity": "1",
+                "total_price": "100.00",
+                "status": "fully_delivered",
+                "notes": "Manual goods recieve.",
+                "create_token": "same-delivery-submit-token",
+                "files": [
+                    SimpleUploadedFile(
+                        "delivery-order.pdf",
+                        file_bytes,
+                        content_type="application/pdf",
+                    )
+                ],
+            }
+
+        first_response = client.post(reverse("deliveries:create"), data=payload(b"%PDF-1.4 first"))
+        second_response = client.post(reverse("deliveries:create"), data=payload(b"%PDF-1.4 second"))
+
+        assert first_response.status_code == 302
+        assert second_response.status_code == 302
+        assert DeliverySubmission.objects.filter(requester=regular_user).count() == 1
+
     def test_create_redirects_to_existing_partial_submission(self, client, regular_user):
         purchase_request = PurchaseRequestFactory(
             requester=regular_user,

@@ -175,8 +175,17 @@
         </div>
         {% endif %}
 
-        <form method="post" enctype="multipart/form-data" class="space-y-5" x-data="fileUpload()">
+        <form
+            method="post"
+            enctype="multipart/form-data"
+            class="space-y-5"
+            x-data="fileUpload()"
+            @submit="if (isSubmitting) { $event.preventDefault(); } else { syncLineItems(); isSubmitting = true; }"
+        >
             {% csrf_token %}
+            {% if not is_edit and create_token %}
+            <input type="hidden" name="create_token" value="{{ create_token }}">
+            {% endif %}
             {% if source_purchase_request %}
             <input type="hidden" name="purchase_request" value="{{ source_purchase_request.pk }}" />
             <input type="hidden" name="{{ form.vendor.html_name }}" value="{{ source_purchase_request.vendor }}" />
@@ -426,9 +435,11 @@
             <div class="pt-2 flex items-center gap-3">
                 <button
                     type="submit"
-                    class="bg-brand-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors"
+                    :disabled="isSubmitting"
+                    class="bg-brand-600 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    {% if is_edit %}Update Goods recieve{% else %}Submit{% endif %}
+                    <span x-show="!isSubmitting">{% if is_edit %}Update Goods recieve{% else %}Submit{% endif %}</span>
+                    <span x-show="isSubmitting">{% if is_edit %}Updating...{% else %}Submitting...{% endif %}</span>
                 </button>
                 <a href="{% url 'deliveries:list' %}" class="text-sm text-gray-500 hover:text-gray-800 transition-colors">Cancel</a>
             </div>
@@ -444,6 +455,7 @@ function fileUpload() {
         dragOver: false,
         selectedFiles: [],
         dataTransfer: new DataTransfer(),
+        isSubmitting: false,
 
         handleFiles(fileList) {
             Array.from(fileList).forEach(f => {

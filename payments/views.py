@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import logging
+import secrets
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
@@ -32,6 +34,7 @@ PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES = {
 }
 LINKED_PURCHASE_REQUEST_PARAM = "purchase_request"
 ACTIVE_PAYMENT_STATUSES = ("pending_pcm", "pending_final", "approved")
+PAYMENT_CREATE_TOKEN_TIMEOUT_SECONDS = 60 * 30
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +78,33 @@ class PaymentReleaseCreateView(View):
     """Create a new PaymentRelease."""
 
     template_name = "payments/form.html"
+
+    def _dedupe_cache_key(self, request: HttpRequest, token: str) -> str:
+        return f"payment-release-create:{request.user.pk}:{token}"
+
+    def _is_duplicate_create_submission(self, request: HttpRequest) -> bool:
+        token = request.POST.get("create_token", "").strip()
+        if not token:
+            return False
+        return not cache.add(
+            self._dedupe_cache_key(request, token),
+            "submitted",
+            timeout=PAYMENT_CREATE_TOKEN_TIMEOUT_SECONDS,
+        )
+
+    def _redirect_after_duplicate_submission(self, request: HttpRequest) -> HttpResponse:
+        latest_payment = (
+            PaymentRelease.objects.filter(requester=request.user)
+            .order_by("-created_at")
+            .first()
+        )
+        messages.info(
+            request,
+            "This payment release was already submitted. Opening the existing payment release.",
+        )
+        if latest_payment is None:
+            return redirect("payments:list")
+        return redirect("payments:detail", pk=latest_payment.pk)
 
     def get(self, request: HttpRequest) -> HttpResponse:
         if _is_approval_only_role(request.user):
@@ -162,6 +192,9 @@ class PaymentReleaseCreateView(View):
             )
 
         if form.is_valid():
+            if self._is_duplicate_create_submission(request):
+                return self._redirect_after_duplicate_submission(request)
+
             payment = form.save(commit=False)
             payment.requester = request.user
             payment.purchase_request = source_purchase_request
@@ -559,12 +592,14 @@ def _render_payment_create_form(
     source_purchase_request=None,
 ) -> HttpResponse:
     """Render the create form, preserving linked purchase-request context."""
+    create_token = request.POST.get("create_token") or secrets.token_urlsafe(24)
     return render(
         request,
         PaymentReleaseCreateView.template_name,
         {
             "form": form,
             "is_create": True,
+            "create_token": create_token,
             "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
             "selected_attachment_type": request.POST.get(
                 "attachment_file_type",

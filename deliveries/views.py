@@ -1,10 +1,12 @@
 """Template views for the deliveries app."""
 
 import logging
+import secrets
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -17,6 +19,7 @@ from .models import DeliverySubmission
 from .services import create_delivery_submission, update_delivery_submission
 
 logger = logging.getLogger(__name__)
+DELIVERY_CREATE_TOKEN_TIMEOUT_SECONDS = 60 * 30
 
 
 class DeliverySubmissionListView(LoginRequiredMixin, ListView):
@@ -93,6 +96,9 @@ def delivery_submission_create(request):
             form.add_error(None, "At least one DO/SO document must be attached.")
 
         if form.is_valid() and files:
+            if _is_duplicate_delivery_create_submission(request):
+                return _redirect_after_duplicate_delivery_submission(request)
+
             try:
                 submission = create_delivery_submission(
                     data={
@@ -124,6 +130,7 @@ def delivery_submission_create(request):
             "form": form,
             "source_purchase_request": source_purchase_request,
             "is_edit": False,
+            "create_token": request.POST.get("create_token") or secrets.token_urlsafe(24),
         },
     )
 
@@ -382,6 +389,36 @@ def _can_delete_submission(user, submission: DeliverySubmission) -> bool:
     if _is_admin(user):
         return True
     return submission.requester == user and submission.requester_can_delete
+
+
+def _delivery_create_dedupe_cache_key(user, token: str) -> str:
+    return f"delivery-submission-create:{user.pk}:{token}"
+
+
+def _is_duplicate_delivery_create_submission(request) -> bool:
+    token = request.POST.get("create_token", "").strip()
+    if not token:
+        return False
+    return not cache.add(
+        _delivery_create_dedupe_cache_key(request.user, token),
+        "submitted",
+        timeout=DELIVERY_CREATE_TOKEN_TIMEOUT_SECONDS,
+    )
+
+
+def _redirect_after_duplicate_delivery_submission(request) -> HttpResponse:
+    latest_submission = (
+        DeliverySubmission.objects.filter(requester=request.user)
+        .order_by("-created_at")
+        .first()
+    )
+    messages.info(
+        request,
+        "This goods recieve record was already submitted. Opening the existing record.",
+    )
+    if latest_submission is None:
+        return redirect("deliveries:list")
+    return redirect("deliveries:detail", pk=latest_submission.pk)
 
 
 def _get_editable_delivery_submission(user, purchase_request):

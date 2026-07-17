@@ -90,6 +90,8 @@ class TestPurchaseRequestCreateView:
         self,
         client,
         regular_user,
+        pcm_approver,
+        final_approver,
         sample_project,
         sample_expense_category,
         settings,
@@ -121,6 +123,24 @@ class TestPurchaseRequestCreateView:
         attachment = purchase_request.attachments.get()
         assert purchase_request.status == "pending_pcm"
         assert attachment.file_type == "new_order_list"
+
+    def test_duplicate_create_token_does_not_create_second_purchase_request(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        client.force_login(regular_user)
+        payload = _purchase_request_payload(sample_project, sample_expense_category)
+        payload["create_token"] = "same-browser-submit-token"
+
+        first_response = client.post(reverse("orders:purchase-request-create"), data=payload)
+        second_response = client.post(reverse("orders:purchase-request-create"), data=payload)
+
+        assert first_response.status_code == 302
+        assert second_response.status_code == 302
+        assert PurchaseRequest.objects.filter(requester=regular_user).count() == 1
 
     def test_create_with_multiple_line_items_aggregates_totals_and_saves_rows(
         self,

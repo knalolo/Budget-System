@@ -13,6 +13,8 @@
         existingAttachmentCount: {% if purchase_request %}{{ purchase_request.attachments.count }}{% else %}0{% endif %},
         attachmentFileCount: 0,
         selectedAttachmentNames: [],
+        isSubmitting: false,
+        submitAction: '',
         thresholds: { SGD: 1300, USD: 900, EUR: 800 },
         blankLineItem(currency='SGD') {
             return {
@@ -121,9 +123,15 @@
             this.selectedAttachmentNames = files.map(file => file.name);
         },
         confirmSubmitWithoutAttachments(event) {
+            if (this.isSubmitting) {
+                event.preventDefault();
+                return;
+            }
             this.syncLineItems();
             const action = event.submitter ? event.submitter.value : 'draft';
             if (action !== 'submit' || this.hasAnyAttachments()) {
+                this.isSubmitting = true;
+                this.submitAction = action;
                 return;
             }
             const confirmed = window.confirm(
@@ -131,7 +139,10 @@
             );
             if (!confirmed) {
                 event.preventDefault();
+                return;
             }
+            this.isSubmitting = true;
+            this.submitAction = action;
         },
         init() {
             try {
@@ -152,6 +163,10 @@
 
     <form method="post" enctype="multipart/form-data" id="pr-form" @submit="confirmSubmitWithoutAttachments($event)">
         {% csrf_token %}
+        {% if is_create and create_token %}
+        <input type="hidden" name="create_token" value="{{ create_token }}">
+        {% endif %}
+        <input type="hidden" name="action" :value="submitAction">
         {{ form.expense_category }}
         <input type="hidden" name="{{ form.description.html_name }}" x-ref="hiddenDescription" value="{{ form.description.value|default:'' }}">
         <input type="hidden" name="{{ form.ordered_quantity.html_name }}" x-ref="hiddenQuantity" value="{{ form.ordered_quantity.value|default:'' }}">
@@ -551,18 +566,22 @@
                 type="submit"
                 name="action"
                 value="draft"
-                class="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+                :disabled="isSubmitting"
+                class="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             >
-                Save as Draft
+                <span x-show="submitAction !== 'draft'">Save as Draft</span>
+                <span x-show="submitAction === 'draft'">Saving...</span>
             </button>
 
             <button
                 type="submit"
                 name="action"
                 value="submit"
-                class="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 transition-colors"
+                :disabled="isSubmitting"
+                class="rounded-md bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             >
-                Save &amp; Submit for Approval
+                <span x-show="submitAction !== 'submit'">Save &amp; Submit for Approval</span>
+                <span x-show="submitAction === 'submit'">Submitting...</span>
             </button>
         </div>
 

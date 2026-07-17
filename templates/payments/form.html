@@ -27,6 +27,8 @@
                 poCustom: '{{ form.po_number.value|default:'' }}' !== 'N/A' ? '{{ form.po_number.value|default:'' }}' : '',
                 attachmentFileCount: 0,
                 selectedAttachmentNames: [],
+                isSubmitting: false,
+                submitAction: '',
                 get poValue() { return this.poMode === 'na' ? 'N/A' : this.poCustom; },
                 hasAnyAttachments() {
                     return this.attachmentFileCount > 0;
@@ -37,8 +39,14 @@
                     this.selectedAttachmentNames = files.map(file => file.name);
                 },
                 confirmSubmitWithoutAttachments(event) {
+                    if (this.isSubmitting) {
+                        event.preventDefault();
+                        return;
+                    }
                     const action = event.submitter ? event.submitter.value : 'draft';
                     if (action !== 'submit' || this.hasAnyAttachments()) {
+                        this.isSubmitting = true;
+                        this.submitAction = action;
                         return;
                     }
                     const confirmed = window.confirm(
@@ -46,12 +54,19 @@
                     );
                     if (!confirmed) {
                         event.preventDefault();
+                        return;
                     }
+                    this.isSubmitting = true;
+                    this.submitAction = action;
                 }
             }"
             @submit="confirmSubmitWithoutAttachments($event)"
         >
             {% csrf_token %}
+            {% if is_create and create_token %}
+            <input type="hidden" name="create_token" value="{{ create_token }}">
+            {% endif %}
+            <input type="hidden" name="action" :value="submitAction">
             {% if source_purchase_request %}
             <input type="hidden" name="purchase_request" value="{{ source_purchase_request.pk }}" />
             {% endif %}
@@ -457,17 +472,21 @@
                     type="submit"
                     name="action"
                     value="draft"
-                    class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    :disabled="isSubmitting"
+                    class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    Save Draft
+                    <span x-show="submitAction !== 'draft'">Save Draft</span>
+                    <span x-show="submitAction === 'draft'">Saving...</span>
                 </button>
                 <button
                     type="submit"
                     name="action"
                     value="submit"
-                    class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
+                    :disabled="isSubmitting"
+                    class="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                    Save &amp; Submit for Approval
+                    <span x-show="submitAction !== 'submit'">Save &amp; Submit for Approval</span>
+                    <span x-show="submitAction === 'submit'">Submitting...</span>
                 </button>
                 {% else %}
                 <button
