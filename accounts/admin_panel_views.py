@@ -13,9 +13,10 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator
+from django.core.validators import validate_email
 from django.db import transaction
 from django.db.models import Count
-from django.core.paginator import Paginator
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import ListView, TemplateView
@@ -403,17 +404,12 @@ def update_user_role(request: HttpRequest, pk: int) -> HttpResponse:
     )
     profile, _ = UserProfile.objects.get_or_create(user=target_user)
 
-    selected_permissions = {
-        field["field"]: request.POST.get(field["field"]) == "on"
-        for field in USER_PERMISSION_CHOICES
-    }
+    selected_permissions = _selected_permissions_from_post(request)
     is_active = request.POST.get("is_active") == "on"
     requested_admin = selected_permissions["is_admin"]
 
     if requested_admin:
-        for field in selected_permissions:
-            if field != "is_admin":
-                selected_permissions[field] = False
+        _clear_non_admin_permissions(selected_permissions)
 
     try:
         with transaction.atomic():
@@ -470,6 +466,93 @@ def update_user_role(request: HttpRequest, pk: int) -> HttpResponse:
 
     return redirect("admin-panel:admin-users")
 
+def create_user(request: HttpRequest) -> HttpResponse:
+    """Create a local Django user from the custom admin panel."""
+    if not request.user.is_authenticated or not _is_admin_user(request.user):
+        return HttpResponseForbidden("Permission denied.")
+
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    username = request.POST.get("username", "").strip()
+    email = request.POST.get("email", "").strip()
+    password = request.POST.get("password", "")
+    display_name = request.POST.get("display_name", "").strip()
+    is_active = request.POST.get("is_active") == "on"
+    selected_permissions = _selected_permissions_from_post(request)
+
+    if selected_permissions["is_admin"]:
+        _clear_non_admin_permissions(selected_permissions)
+
+    errors = _validate_create_user_input(username, email, password)
+    if errors:
+        for error in errors:
+            messages.error(request, error)
+        return redirect("admin-panel:admin-users")
+
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+            )
+            user.is_active = is_active
+            user.save(update_fields=["is_active"])
+
+            profile = user.profile
+            profile.display_name = display_name
+            for field, value in selected_permissions.items():
+                setattr(profile, field, value)
+            profile.save()
+    except ValidationError as exc:
+        error_message = "; ".join(exc.messages) if getattr(exc, "messages", None) else str(exc)
+        messages.error(request, error_message)
+        return redirect("admin-panel:admin-users")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "Admin %s failed to create user %s: %s",
+            request.user.username,
+            username,
+            exc,
+        )
+        messages.error(request, "Could not create user. Please check the details and try again.")
+        return redirect("admin-panel:admin-users")
+
+    messages.success(request, f"User {user.username} created successfully.")
+    return redirect("admin-panel:admin-users")
+
+
+def _selected_permissions_from_post(request: HttpRequest) -> dict[str, bool]:
+    return {
+        field["field"]: request.POST.get(field["field"]) == "on"
+        for field in USER_PERMISSION_CHOICES
+    }
+
+
+def _clear_non_admin_permissions(selected_permissions: dict[str, bool]) -> None:
+    for field in selected_permissions:
+        if field != "is_admin":
+            selected_permissions[field] = False
+
+
+def _validate_create_user_input(username: str, email: str, password: str) -> list[str]:
+    errors: list[str] = []
+    if not username:
+        errors.append("Username is required.")
+    elif User.objects.filter(username__iexact=username).exists():
+        errors.append("Username already exists.")
+
+    if email:
+        try:
+            validate_email(email)
+        except ValidationError:
+            errors.append("Enter a valid email address.")
+
+    if not password:
+        errors.append("Password is required.")
+
+    return errors
 
 def update_config(request: HttpRequest) -> HttpResponse:
     """Standalone POST endpoint for config updates."""

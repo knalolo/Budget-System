@@ -1,9 +1,10 @@
 """Integration tests for the custom admin panel."""
 
 import pytest
+from django.contrib.auth.models import User
 from django.urls import reverse
 
-from orders.tests.factories import PurchaseRequestFactory, ProjectFactory
+from orders.tests.factories import ProjectFactory, PurchaseRequestFactory
 
 
 @pytest.mark.django_db
@@ -69,7 +70,9 @@ class TestUpdateUserRole:
         regular_user.profile.refresh_from_db()
         assert regular_user.profile.is_final_approver is False
 
-    def test_failed_permission_change_does_not_partially_save_is_active(self, client, admin_user, final_approver, regular_user):
+    def test_failed_permission_change_does_not_partially_save_is_active(
+        self, client, admin_user, final_approver, regular_user
+    ):
         client.force_login(admin_user)
         regular_user.is_active = False
         regular_user.save(update_fields=["is_active"])
@@ -132,6 +135,68 @@ class TestUpdateUserRole:
         assert "Final Approver" in content
         assert final_approver.username in content
 
+@pytest.mark.django_db
+class TestCreateUserFromAdminPanel:
+    def test_admin_can_create_requester(self, client, admin_user):
+        client.force_login(admin_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-user-create"),
+            {
+                "username": "new_requester",
+                "email": "new_requester@example.com",
+                "display_name": "New Requester",
+                "password": "temp-pass-123",
+                "is_active": "on",
+                "is_requester": "on",
+            },
+        )
+
+        assert response.status_code == 302
+        user = User.objects.get(username="new_requester")
+        assert user.email == "new_requester@example.com"
+        assert user.check_password("temp-pass-123") is True
+        assert user.is_active is True
+        assert user.profile.display_name == "New Requester"
+        assert user.profile.is_requester is True
+        assert user.profile.is_admin is False
+
+    def test_admin_permission_clears_other_flags_on_create(self, client, admin_user):
+        client.force_login(admin_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-user-create"),
+            {
+                "username": "next_admin",
+                "password": "temp-pass-123",
+                "is_requester": "on",
+                "is_project_approver": "on",
+                "is_admin": "on",
+            },
+        )
+
+        assert response.status_code == 302
+        user = User.objects.get(username="next_admin")
+        assert user.is_active is False
+        assert user.profile.is_admin is True
+        assert user.profile.is_requester is False
+        assert user.profile.is_project_approver is False
+
+    def test_create_unique_permission_conflict_rolls_back_user(self, client, admin_user, final_approver):
+        client.force_login(admin_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-user-create"),
+            {
+                "username": "second_final",
+                "password": "temp-pass-123",
+                "is_active": "on",
+                "is_final_approver": "on",
+            },
+        )
+
+        assert response.status_code == 302
+        assert not User.objects.filter(username="second_final").exists()
 
 @pytest.mark.django_db
 class TestProjectMasterDataManagement:

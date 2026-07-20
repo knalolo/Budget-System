@@ -6,6 +6,7 @@ from accounts.admin_panel_views import (
     AuditLogsView,
     SystemConfigView,
     UserManagementView,
+    create_user,
     delete_project,
     save_project,
     update_config,
@@ -21,6 +22,7 @@ urlpatterns = [
         name="admin-index",
     ),
     path("users/", UserManagementView.as_view(), name="admin-users"),
+    path("users/new/", create_user, name="admin-user-create"),
     path("config/", SystemConfigView.as_view(), name="admin-config"),
     path("logs/", AuditLogsView.as_view(), name="admin-logs"),
     path(
