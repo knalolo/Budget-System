@@ -19,7 +19,8 @@
             <tr class="hover:bg-gray-50 transition-colors">
                 <td class="px-4 py-3 font-mono font-medium text-brand-700">
                     <a href="{% url 'payments:detail' pk=payment.pk %}" class="hover:underline">
-                        {{ payment.workflow_number }}
+                        {{ payment.request_number }}
+                        {% if payment.purchase_request %}<span class="block text-xs font-normal text-gray-500">{{ payment.purchase_request.workflow_number }} · Payment #{{ payment.installment_number }}</span>{% endif %}
                     </a>
                 </td>
                 <td class="px-4 py-3 text-gray-700">{{ payment.vendor }}</td>

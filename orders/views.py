@@ -280,10 +280,15 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         can_approve, _ = can_user_approve(pr, self.request.user)
         latest_payment_release = pr.latest_payment_release
         payment_draft = pr.latest_payment_draft
+        pending_payment = (
+            pr.payment_releases.filter(status__in=("pending_pcm", "pending_final"))
+            .order_by("-updated_at", "-created_at")
+            .first()
+        )
         rejected_payment = (
-            latest_payment_release
-            if latest_payment_release is not None and latest_payment_release.status == "rejected"
-            else None
+            pr.payment_releases.filter(status="rejected")
+            .order_by("-updated_at", "-created_at")
+            .first()
         )
         has_standard_payment_release = pr.payment_releases.filter(payment_type="standard").exists()
         context["approval_history"] = approval_history
@@ -297,7 +302,10 @@ class PurchaseRequestDetailView(LoginRequiredMixin, DetailView):
         context["selected_attachment_type"] = "quotation"
         context["has_payment_release"] = latest_payment_release is not None
         context["has_standard_payment_release"] = has_standard_payment_release
-        context["first_payment_release"] = latest_payment_release
+        context["first_payment_release"] = (
+            pending_payment or payment_draft or latest_payment_release
+        )
+        context["payment_releases"] = pr.payment_releases.order_by("created_at", "pk")
         latest_delivery_submission = pr.latest_delivery_submission
         open_delivery_submission = pr.latest_open_delivery_submission
         context["latest_delivery_submission"] = latest_delivery_submission

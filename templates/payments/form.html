@@ -109,8 +109,6 @@
             <input type="hidden" name="{{ form.vendor.html_name }}" value="{{ form.vendor.value|default:'' }}">
             <input type="hidden" name="{{ form.currency.html_name }}" value="{{ form.currency.value|default:'' }}">
             <input type="hidden" name="{{ form.payment_type.html_name }}" value="{{ form.payment_type.value|default:'standard' }}">
-            <input type="hidden" name="{{ form.payment_quantity.html_name }}" value="{{ form.payment_quantity.value|default:'' }}">
-            <input type="hidden" name="{{ form.total_price.html_name }}" value="{{ form.total_price.value|default:'' }}">
             <input type="hidden" name="{{ form.justification.html_name }}" value="{{ form.justification.value|default:'' }}">
 
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6 space-y-6">
@@ -187,12 +185,12 @@
                             </dd>
                         </div>
                         <div>
-                            <dt class="font-medium text-gray-500">Quantity To Pay</dt>
-                            <dd class="mt-1 text-gray-900">{{ form.payment_quantity.value }}</dd>
+                            <dt class="font-medium text-gray-500">Payment Release</dt>
+                            <dd class="mt-1 text-gray-900">Payment #{{ source_purchase_request_summary.next_payment_number }}</dd>
                         </div>
                         <div>
-                            <dt class="font-medium text-gray-500">Total Price</dt>
-                            <dd class="mt-1 text-gray-900">{{ form.currency.value|default:"SGD" }} {{ form.total_price.value }}</dd>
+                            <dt class="font-medium text-gray-500">Expected Payments</dt>
+                            <dd class="mt-1 text-gray-900">{{ source_purchase_request_summary.planned_payment_count }} (estimate)</dd>
                         </div>
                         <div>
                             <dt class="font-medium text-gray-500">Payment Basis</dt>
@@ -206,27 +204,45 @@
                         </div>
                         {% if source_purchase_request_summary %}
                         <div>
-                            <dt class="font-medium text-gray-500">Ordered</dt>
-                            <dd class="mt-1 text-gray-900">{{ source_purchase_request_summary.ordered_quantity }}</dd>
+                            <dt class="font-medium text-gray-500">PR Total</dt>
+                            <dd class="mt-1 text-gray-900">{{ form.currency.value|default:"SGD" }} {{ source_purchase_request.total_price|floatformat:2 }}</dd>
+                        </div>
+                        <div>
+                            <dt class="font-medium text-gray-500">Approved</dt>
+                            <dd class="mt-1 text-gray-900">{{ form.currency.value|default:"SGD" }} {{ source_purchase_request_summary.approved_payment_total|floatformat:2 }}</dd>
+                        </div>
+                        <div>
+                            <dt class="font-medium text-gray-500">Under Approval</dt>
+                            <dd class="mt-1 text-gray-900">{{ form.currency.value|default:"SGD" }} {{ source_purchase_request_summary.pending_payment_total|floatformat:2 }}</dd>
+                        </div>
+                        <div>
+                            <dt class="font-medium text-gray-500">Remaining Available</dt>
+                            <dd class="mt-1 font-semibold text-emerald-700">{{ form.currency.value|default:"SGD" }} {{ source_purchase_request_summary.remaining_payable_total|floatformat:2 }}</dd>
                         </div>
                         <div>
                             <dt class="font-medium text-gray-500">Delivered</dt>
-                            <dd class="mt-1 text-gray-900">{{ source_purchase_request_summary.delivered_quantity }}</dd>
-                        </div>
-                        <div>
-                            <dt class="font-medium text-gray-500">Delivered Goods Value</dt>
-                            <dd class="mt-1 text-gray-900">{{ form.currency.value|default:"SGD" }} {{ source_purchase_request_summary.delivered_total_value|floatformat:2 }}</dd>
-                        </div>
-                        <div>
-                            <dt class="font-medium text-gray-500">Outstanding</dt>
-                            <dd class="mt-1 text-gray-900">{{ source_purchase_request_summary.remaining_quantity }}</dd>
-                        </div>
-                        <div>
-                            <dt class="font-medium text-gray-500">Stage</dt>
-                            <dd class="mt-1 text-gray-900">{{ source_purchase_request_summary.workflow_stage_display }}</dd>
+                            <dd class="mt-1 text-gray-900">{{ source_purchase_request_summary.delivered_quantity }} / {{ source_purchase_request_summary.ordered_quantity }}</dd>
                         </div>
                         {% endif %}
                     </dl>
+                </div>
+
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">This Payment</h3>
+                    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                        <div>
+                            <label for="{{ form.payment_quantity.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">Quantity To Pay <span class="text-red-500">*</span></label>
+                            {{ form.payment_quantity }}
+                            {% if form.payment_quantity.errors %}<p class="mt-1 text-xs text-red-600">{{ form.payment_quantity.errors.0 }}</p>{% endif %}
+                            {% if form.payment_type.value != "advance" %}<p class="mt-1 text-xs text-gray-500">Available delivered quantity: {{ source_purchase_request_summary.available_standard_payment_quantity }}.</p>{% endif %}
+                        </div>
+                        <div>
+                            <label for="{{ form.total_price.id_for_label }}" class="block text-sm font-medium text-gray-700 mb-1">This Payment Amount <span class="text-red-500">*</span></label>
+                            {{ form.total_price }}
+                            {% if form.total_price.errors %}<p class="mt-1 text-xs text-red-600">{{ form.total_price.errors.0 }}</p>{% endif %}
+                            <p class="mt-1 text-xs text-gray-500">Maximum currently available: {{ form.currency.value|default:"SGD" }} {% if form.payment_type.value == "advance" %}{{ source_purchase_request_summary.remaining_payable_total|floatformat:2 }}{% else %}{{ source_purchase_request_summary.max_standard_payment_total|floatformat:2 }}{% endif %}.</p>
+                        </div>
+                    </div>
                 </div>
             </div>
             {% else %}
@@ -372,6 +388,7 @@
                     <input
                         type="text"
                         x-model="poCustom"
+                        :required="poMode === 'other'"
                         placeholder="e.g. PO-2026-001"
                         class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     />

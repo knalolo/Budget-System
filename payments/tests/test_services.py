@@ -1,4 +1,6 @@
 """Unit tests for payments.services (PaymentRelease workflow)."""
+from decimal import Decimal
+
 import pytest
 from django.core.exceptions import ValidationError
 
@@ -134,6 +136,107 @@ class TestSubmitPaymentRelease:
         )
 
         updated = submit_payment_release(payment_release)
+        assert updated.status == "pending_pcm"
+
+    def test_second_advance_payment_is_limited_to_remaining_pr_balance(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
+        purchase_request = PurchaseRequestFactory(
+            status="approved",
+            execution_mode="payment_first",
+            total_price=Decimal("1000.00"),
+        )
+        PaymentReleaseFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            total_price=Decimal("200.00"),
+            status="approved",
+        )
+        second_payment = PaymentReleaseFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            total_price=Decimal("801.00"),
+            status="draft",
+        )
+
+        with pytest.raises(ValidationError, match="remaining payable amount"):
+            submit_payment_release(second_payment)
+
+    def test_another_payment_cannot_submit_while_one_is_under_approval(self):
+        purchase_request = PurchaseRequestFactory(
+            status="approved",
+            execution_mode="payment_first",
+            total_price="1000.00",
+        )
+        PaymentReleaseFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            total_price="200.00",
+            status="pending_pcm",
+        )
+        second_payment = PaymentReleaseFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            total_price="300.00",
+            status="draft",
+        )
+
+        with pytest.raises(ValidationError, match="still under approval"):
+            submit_payment_release(second_payment)
+
+    def test_payment_first_request_can_pay_remaining_balance_after_delivery(self):
+        UserFactory(project_approver=True)
+        UserFactory(final_approver=True)
+        purchase_request = PurchaseRequestFactory(
+            status="approved",
+            execution_mode="payment_first",
+            ordered_quantity=1,
+            total_price=Decimal("1000.00"),
+        )
+        PaymentReleaseFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="advance",
+            payment_quantity=1,
+            total_price=Decimal("200.00"),
+            status="approved",
+        )
+        DeliverySubmissionFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            vendor=purchase_request.vendor,
+            currency=purchase_request.currency,
+            delivered_quantity=1,
+            total_price=Decimal("1000.00"),
+            status="fully_delivered",
+        )
+        final_payment = PaymentReleaseFactory(
+            purchase_request=purchase_request,
+            requester=purchase_request.requester,
+            project=purchase_request.project,
+            expense_category=purchase_request.expense_category,
+            payment_type="standard",
+            payment_quantity=1,
+            total_price=Decimal("800.00"),
+            status="draft",
+        )
+
+        updated = submit_payment_release(final_payment)
+
         assert updated.status == "pending_pcm"
 
     def test_delivery_first_rejects_advance_payment_before_delivery(self):

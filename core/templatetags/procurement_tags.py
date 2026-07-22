@@ -21,6 +21,7 @@ _STATUS_COLOR_MAP: dict[str, str] = {
     "pending_pcm": "yellow",
     "pending_final": "orange",
     "approved": "green",
+    "partially_paid": "cyan",
     "rejected": "red",
     "cancellation_pending": "orange",
     "cancelled": "gray",

@@ -91,6 +91,7 @@ class PurchaseRequestListSerializer(serializers.ModelSerializer):
             "total_price",
             "po_required",
             "execution_mode",
+            "planned_payment_count",
             "status",
             "created_at",
         ]
@@ -143,6 +144,7 @@ class PurchaseRequestDetailSerializer(serializers.ModelSerializer):
             # request details
             "purchase_type",
             "execution_mode",
+            "planned_payment_count",
             "description",
             "vendor",
             "currency",
@@ -214,6 +216,7 @@ class PurchaseRequestCreateSerializer(serializers.ModelSerializer):
             "project",
             "purchase_type",
             "execution_mode",
+            "planned_payment_count",
             "description",
             "vendor",
             "currency",

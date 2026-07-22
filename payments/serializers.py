@@ -38,6 +38,8 @@ class PaymentReleaseListSerializer(serializers.ModelSerializer):
     """Minimal fields for list views and embedded representations."""
 
     request_number = serializers.CharField(source="workflow_number", read_only=True)
+    payment_number = serializers.CharField(source="request_number", read_only=True)
+    installment_number = serializers.IntegerField(read_only=True)
     requester_username = serializers.CharField(
         source="requester.username",
         read_only=True,
@@ -57,12 +59,16 @@ class PaymentReleaseListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "request_number",
+            "payment_number",
+            "installment_number",
             "requester",
             "requester_username",
             "requester_full_name",
             "vendor",
             "currency",
             "currency_display",
+            "payment_type",
+            "payment_quantity",
             "total_price",
             "status",
             "status_display",
@@ -84,6 +90,8 @@ class PaymentReleaseDetailSerializer(serializers.ModelSerializer):
     """Full representation including approval fields, attachments, and logs."""
 
     request_number = serializers.CharField(source="workflow_number", read_only=True)
+    payment_number = serializers.CharField(source="request_number", read_only=True)
+    installment_number = serializers.IntegerField(read_only=True)
     requester_username = serializers.CharField(
         source="requester.username",
         read_only=True,
@@ -113,6 +121,8 @@ class PaymentReleaseDetailSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "request_number",
+            "payment_number",
+            "installment_number",
             "purchase_request",
             "requester",
             "requester_username",
@@ -123,6 +133,8 @@ class PaymentReleaseDetailSerializer(serializers.ModelSerializer):
             "vendor",
             "currency",
             "currency_display",
+            "payment_type",
+            "payment_quantity",
             "total_price",
             "justification",
             "po_number",
@@ -195,6 +207,8 @@ class PaymentReleaseCreateSerializer(serializers.ModelSerializer):
             "description",
             "vendor",
             "currency",
+            "payment_type",
+            "payment_quantity",
             "total_price",
             "justification",
             "po_number",

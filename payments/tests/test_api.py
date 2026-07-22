@@ -80,6 +80,19 @@ class TestCreatePaymentRelease:
         assert pr is not None
         assert pr.requester == regular_user
 
+    def test_create_accepts_payment_type_and_quantity(self, api_client):
+        project = ProjectFactory()
+        category = ExpenseCategoryFactory()
+        payload = _create_payload(project, category)
+        payload.update(payment_type="advance", payment_quantity=3)
+
+        resp = api_client.post(_BASE, payload, format="json")
+
+        assert resp.status_code == 201
+        payment = PaymentRelease.objects.latest("pk")
+        assert payment.payment_type == "advance"
+        assert payment.payment_quantity == 3
+
     def test_create_unauthenticated_returns_403(self, anon_client):
         project = ProjectFactory()
         category = ExpenseCategoryFactory()
@@ -127,6 +140,7 @@ class TestRetrievePaymentRelease:
         resp = api_client.get(_detail(pr.pk))
         assert "request_number" in resp.data
         assert resp.data["request_number"] == pr.workflow_number
+        assert resp.data["payment_number"] == pr.request_number
 
 
 # ---------------------------------------------------------------------------

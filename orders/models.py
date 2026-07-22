@@ -86,6 +86,10 @@ class PurchaseRequest(models.Model):
     )
     ordered_quantity = models.PositiveIntegerField(default=1)
     total_price = models.DecimalField(max_digits=14, decimal_places=2)
+    planned_payment_count = models.PositiveSmallIntegerField(
+        default=1,
+        help_text="Expected number of payment releases. This is a planning estimate only.",
+    )
     justification = models.TextField()
     po_required = models.BooleanField(default=False)
     target_payment = models.CharField(max_length=50)
@@ -398,10 +402,20 @@ class PurchaseRequest(models.Model):
 
     @property
     def payment_stage(self) -> str:
-        payment = self.latest_payment_release
-        if payment is None:
-            return "not_started"
-        return payment.status
+        if self.payment_releases.filter(status="pending_final").exists():
+            return "pending_final"
+        if self.payment_releases.filter(status="pending_pcm").exists():
+            return "pending_pcm"
+        if self.remaining_payment_required_total <= Decimal("0.00"):
+            return "approved"
+        if self.latest_payment_draft is not None:
+            return "draft"
+        if self.has_approved_payment:
+            return "partially_paid"
+        latest_submitted = self.latest_submitted_payment_release
+        if latest_submitted is not None and latest_submitted.status == "rejected":
+            return "rejected"
+        return "not_started"
 
     @property
     def payment_stage_display(self) -> str:
@@ -411,6 +425,7 @@ class PurchaseRequest(models.Model):
             "pending_pcm": f"Pending {self.first_approver_role_label} Review",
             "pending_final": "Pending Final Approver Review",
             "approved": "Payment Approved",
+            "partially_paid": "Partially Paid",
             "rejected": "Payment Rejected",
         }
         return labels.get(self.payment_stage, "Payment")
@@ -419,8 +434,9 @@ class PurchaseRequest(models.Model):
     def workflow_completed(self) -> bool:
         return (
             self.status == "approved"
-            and self.payment_stage == "approved"
             and self.goods_stage in ("fully_delivered", "short_closed")
+            and not self.has_pending_payment
+            and self.remaining_payment_required_total <= Decimal("0.00")
         )
 
     @property
@@ -444,10 +460,10 @@ class PurchaseRequest(models.Model):
         payment_stage = self.payment_stage
 
         if self.is_payment_first:
-            if payment_stage in ("not_started", "draft", "rejected"):
-                return "payment_pending"
-            if payment_stage != "approved":
+            if payment_stage in ("pending_pcm", "pending_final"):
                 return "awaiting_payment_approval"
+            if payment_stage in ("not_started", "draft", "rejected", "partially_paid"):
+                return "payment_pending"
             if goods_stage == "not_started":
                 return "goods_pending"
             if goods_stage == "partially_delivered":
@@ -458,7 +474,7 @@ class PurchaseRequest(models.Model):
             return "goods_pending"
         if goods_stage == "partially_delivered":
             return "goods_follow_up_required"
-        if payment_stage in ("not_started", "draft", "rejected"):
+        if payment_stage in ("not_started", "draft", "rejected", "partially_paid"):
             return "payment_pending"
         return "awaiting_payment_approval"
 
@@ -487,20 +503,23 @@ class PurchaseRequest(models.Model):
         ):
             return False
         if self.is_payment_first:
-            return self.payment_stage == "approved"
+            return self.has_approved_payment
         return True
 
     @property
     def can_submit_payment(self) -> bool:
-        if not self.is_execution_ready or self.payment_stage not in (
-            "not_started",
-            "draft",
-            "rejected",
+        if (
+            not self.is_execution_ready
+            or self.has_pending_payment
+            or self.remaining_payable_total <= Decimal("0.00")
         ):
             return False
-        if self.is_payment_first:
+        if self.is_payment_first and self.goods_stage == "not_started":
             return self.goods_stage == "not_started"
-        return self.delivered_quantity > 0
+        return (
+            self.available_standard_payment_quantity > 0
+            and self.max_standard_payment_total > Decimal("0.00")
+        )
 
     @property
     def delivery_stage_status(self) -> str:
@@ -514,7 +533,7 @@ class PurchaseRequest(models.Model):
             return "do_pending"
         if self.goods_stage == "partially_delivered":
             return "partially_delivered"
-        if self.payment_stage in ("draft", "pending_pcm", "pending_final", "approved"):
+        if self.payment_stage in ("draft", "pending_pcm", "pending_final"):
             return "payment_in_progress"
         return "ready_for_payment"
 
@@ -532,12 +551,10 @@ class PurchaseRequest(models.Model):
 
     @property
     def available_standard_payment_quantity(self) -> int:
-        requested_total = self.payment_releases.filter(
-            payment_type="standard",
-            status__in=("pending_pcm", "pending_final", "approved"),
-        ).aggregate(total=models.Sum("payment_quantity"))["total"]
-        requested_quantity = int(requested_total or 0)
-        return max(self.delivered_quantity - requested_quantity, 0)
+        # A delivered unit may be referenced by more than one cash instalment.
+        # Cumulative overpayment is prevented by the delivered-value and PR
+        # balance checks, so quantity itself must not be consumed per release.
+        return max(self.delivered_quantity, 0)
 
     @property
     def delivered_total_value(self) -> Decimal:
@@ -576,6 +593,47 @@ class PurchaseRequest(models.Model):
             status__in=("pending_pcm", "pending_final", "approved"),
         ).aggregate(total=models.Sum("total_price"))["total"]
         return requested_total or Decimal("0.00")
+
+    @property
+    def approved_payment_total(self) -> Decimal:
+        approved_total = self.payment_releases.filter(status="approved").aggregate(
+            total=models.Sum("total_price")
+        )["total"]
+        return approved_total or Decimal("0.00")
+
+    @property
+    def pending_payment_total(self) -> Decimal:
+        pending_total = self.payment_releases.filter(
+            status__in=("pending_pcm", "pending_final")
+        ).aggregate(total=models.Sum("total_price"))["total"]
+        return pending_total or Decimal("0.00")
+
+    @property
+    def has_pending_payment(self) -> bool:
+        return self.payment_releases.filter(
+            status__in=("pending_pcm", "pending_final")
+        ).exists()
+
+    @property
+    def has_approved_payment(self) -> bool:
+        return self.payment_releases.filter(status="approved").exists()
+
+    @property
+    def actual_payment_count(self) -> int:
+        return self.payment_releases.exclude(status="rejected").count()
+
+    @property
+    def payment_completion_target(self) -> Decimal:
+        if self.has_short_close:
+            return min(self.total_price, self.delivered_total_value)
+        return self.total_price
+
+    @property
+    def remaining_payment_required_total(self) -> Decimal:
+        return max(
+            self.payment_completion_target - self.approved_payment_total,
+            Decimal("0.00"),
+        )
 
     @property
     def remaining_payable_total(self) -> Decimal:

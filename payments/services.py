@@ -92,12 +92,25 @@ def _validate_delivery_and_payment_limits(payment_release) -> None:
     if purchase_request is None:
         return
 
+    other_pending_payment = purchase_request.payment_releases.filter(
+        status__in=("pending_pcm", "pending_final")
+    ).exclude(pk=payment_release.pk).first()
+    if other_pending_payment is not None:
+        raise ValidationError(
+            f"Payment release {other_pending_payment.request_number} is still under approval. "
+            "Complete or reject it before submitting another payment."
+        )
+
     if purchase_request.is_delivery_first and payment_release.payment_type == "advance":
         raise ValidationError(
             "This purchase request is goods receive first. Submit goods receive before creating the payment release."
         )
 
-    if purchase_request.is_payment_first and payment_release.payment_type != "advance":
+    if (
+        purchase_request.is_payment_first
+        and purchase_request.delivered_quantity <= 0
+        and payment_release.payment_type != "advance"
+    ):
         raise ValidationError(
             "This purchase request is payment first. Submit an advance payment release before goods receive."
         )
@@ -105,6 +118,18 @@ def _validate_delivery_and_payment_limits(payment_release) -> None:
     if payment_release.payment_quantity > purchase_request.ordered_quantity:
         raise ValidationError(
             "Payment quantity cannot exceed the ordered quantity on the purchase request."
+        )
+
+    remaining_payable_total = purchase_request.remaining_payable_total
+    if remaining_payable_total <= Decimal("0.00"):
+        raise ValidationError(
+            "This purchase request has already been fully covered by existing payment releases."
+        )
+
+    if payment_release.total_price > remaining_payable_total:
+        raise ValidationError(
+            f"This payment cannot exceed the remaining payable amount of "
+            f"{purchase_request.currency} {remaining_payable_total:.2f}."
         )
 
     if payment_release.payment_type == "advance":
@@ -120,12 +145,6 @@ def _validate_delivery_and_payment_limits(payment_release) -> None:
     if available_quantity <= 0:
         raise ValidationError(
             "There is no goods recieve quantity left to pay against this purchase request."
-        )
-
-    remaining_payable_total = purchase_request.remaining_payable_total
-    if remaining_payable_total <= Decimal("0.00"):
-        raise ValidationError(
-            "This purchase request has already been fully covered by existing payment releases."
         )
 
     if payment_release.payment_quantity > available_quantity:

@@ -35,6 +35,14 @@ class PurchaseRequestForm(forms.ModelForm):
         decimal_places=2,
         widget=forms.HiddenInput(),
     )
+    planned_payment_count = forms.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=99,
+        initial=1,
+        widget=forms.NumberInput(attrs={"min": 1, "max": 99}),
+        help_text="Expected only. Actual payment releases may differ.",
+    )
     line_items_json = forms.CharField(required=False, widget=forms.HiddenInput())
     target_payment = forms.DateField(
         widget=forms.DateInput(
@@ -62,6 +70,7 @@ class PurchaseRequestForm(forms.ModelForm):
             "currency",
             "ordered_quantity",
             "total_price",
+            "planned_payment_count",
             "justification",
             "po_required",
             "target_payment",
@@ -100,6 +109,9 @@ class PurchaseRequestForm(forms.ModelForm):
         if isinstance(target_payment, date):
             return target_payment.isoformat()
         return target_payment
+
+    def clean_planned_payment_count(self):
+        return self.cleaned_data.get("planned_payment_count") or 1
 
     def clean(self):
         cleaned_data = super().clean()

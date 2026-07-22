@@ -49,6 +49,24 @@ def _purchase_request_payload(project, category, *, action="draft") -> dict:
 
 @pytest.mark.django_db
 class TestPurchaseRequestCreateView:
+    def test_create_form_uses_browser_validation_before_upload_submission(
+        self,
+        client,
+        regular_user,
+    ):
+        client.force_login(regular_user)
+
+        response = client.get(reverse("orders:purchase-request-create"))
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        justification = content[content.index('id="id_justification"') :]
+        assert "required" in justification.split(">", 1)[0]
+        vendor = content[content.index('id="id_vendor"') :]
+        assert "required" in vendor.split(">", 1)[0]
+        assert 'x-model="item.product"' in content
+        assert 'type="text"\n                                            required\n                                            x-model="item.product"' in content
+
     def test_pcm_approver_cannot_open_create_page(self, client, pcm_approver):
         client.force_login(pcm_approver)
 
@@ -322,6 +340,7 @@ class TestPurchaseRequestRejectedEdit:
         purchase_request.refresh_from_db()
         assert purchase_request.request_number == request_number
         assert purchase_request.status == "draft"
+        assert purchase_request.planned_payment_count == 1
         assert purchase_request.vendor == "Updated Vendor"
         assert purchase_request.pcm_decision == "pending"
         assert purchase_request.pcm_comment == ""
@@ -714,8 +733,8 @@ class TestPurchaseRequestDatasetExport:
         content = response.content.decode("utf-8")
         assert "Request No.,Requester,Submitted Date,Last Updated,Project,MC Number,Expense Category,Vendor,Product,Currency,Unit Price,Quantity Ordered,Quantity Delivered,Outstanding Quantity,Line Total,Line Total in SGD,PO Number,Target Payment Date,Goods Recieve Status,Payment Release Status,Workflow Stage,Workflow Completed" in content
         assert f"{purchase_request.workflow_number},{regular_user.username},{purchase_request.created_at.strftime('%Y-%m-%d %H:%M:%S')}" in content
-        assert ",AAA,USD,100.00,5,5,0,500.00,675.00,PO-123,2026-05-20,Partially Delivered,Payment Approved,Partial Delivery Follow-up,No" in content
-        assert ",BBB,USD,33.00,15,14,1,495.00,668.25,PO-123,2026-05-20,Partially Delivered,Payment Approved,Partial Delivery Follow-up,No" in content
+        assert ",AAA,USD,100.00,5,5,0,500.00,675.00,PO-123,2026-05-20,Partially Delivered,Partially Paid,Partial Delivery Follow-up,No" in content
+        assert ",BBB,USD,33.00,15,14,1,495.00,668.25,PO-123,2026-05-20,Partially Delivered,Partially Paid,Partial Delivery Follow-up,No" in content
 
     def test_dataset_export_shows_cancellation_status(
         self,

@@ -131,6 +131,12 @@ class PaymentRelease(models.Model):
         return to_workflow_number(self.request_number)
 
     @property
+    def installment_number(self) -> int | None:
+        if not self.purchase_request_id or not self.pk:
+            return None
+        return self.purchase_request.payment_releases.filter(pk__lte=self.pk).count()
+
+    @property
     def purchase_type(self) -> str:
         if self.purchase_request_id and self.purchase_request:
             return self.purchase_request.purchase_type

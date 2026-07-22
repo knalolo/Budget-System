@@ -1,4 +1,6 @@
 """Unit tests for orders app models."""
+from decimal import Decimal
+
 import pytest
 
 from core.models import SystemConfig
@@ -183,3 +185,48 @@ class TestPurchaseRequestModel:
 
         assert pr.payment_stage == "approved"
         assert pr.latest_payment_release == approved_payment
+
+    def test_partial_approved_payments_leave_request_open_for_another_release(self):
+        pr = PurchaseRequestFactory(
+            status="approved",
+            execution_mode="payment_first",
+            total_price=Decimal("1000.00"),
+            planned_payment_count=2,
+        )
+        PaymentReleaseFactory(
+            purchase_request=pr,
+            requester=pr.requester,
+            expense_category=pr.expense_category,
+            project=pr.project,
+            payment_type="advance",
+            total_price=Decimal("200.00"),
+            status="approved",
+        )
+
+        assert pr.payment_stage == "partially_paid"
+        assert pr.approved_payment_total == Decimal("200.00")
+        assert pr.remaining_payable_total == Decimal("800.00")
+        assert pr.can_submit_payment is True
+        assert pr.workflow_completed is False
+
+    def test_expected_payment_count_does_not_limit_actual_releases(self):
+        pr = PurchaseRequestFactory(
+            status="approved",
+            execution_mode="payment_first",
+            total_price=Decimal("1000.00"),
+            planned_payment_count=2,
+        )
+        for amount in ("200.00", "300.00"):
+            PaymentReleaseFactory(
+                purchase_request=pr,
+                requester=pr.requester,
+                expense_category=pr.expense_category,
+                project=pr.project,
+                payment_type="advance",
+                total_price=Decimal(amount),
+                status="approved",
+            )
+
+        assert pr.actual_payment_count == 2
+        assert pr.remaining_payable_total == Decimal("500.00")
+        assert pr.can_submit_payment is True

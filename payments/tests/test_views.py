@@ -1,4 +1,5 @@
 """View tests for the payment release HTML workflow."""
+from decimal import Decimal
 
 import pytest
 from django.conf import settings
@@ -595,7 +596,7 @@ class TestPaymentReleaseCreateView:
             currency=purchase_request.currency,
             total_price=purchase_request.total_price,
         )
-        active_payment = PaymentRelease.objects.create(
+        PaymentRelease.objects.create(
             requester=regular_user,
             purchase_request=purchase_request,
             expense_category=sample_expense_category,
@@ -629,8 +630,51 @@ class TestPaymentReleaseCreateView:
             status="draft",
         ).exists()
         assert PaymentRelease.objects.filter(purchase_request=purchase_request).count() == 1
-        assert response.resolver_match.view_name == "payments:detail"
-        assert response.context["payment"] == active_payment
+        assert response.resolver_match.view_name == "orders:purchase-request-detail"
+        assert response.context["purchase_request"] == purchase_request
+
+    def test_approved_partial_payment_allows_second_payment_with_own_amount(
+        self,
+        client,
+        regular_user,
+        sample_project,
+        sample_expense_category,
+    ):
+        purchase_request = PurchaseRequestFactory(
+            requester=regular_user,
+            project=sample_project,
+            expense_category=sample_expense_category,
+            execution_mode=settings.EXECUTION_MODE_PAYMENT_FIRST,
+            status="approved",
+            total_price="1000.00",
+            planned_payment_count=2,
+        )
+        first_payment = PaymentReleaseFactory(
+            requester=regular_user,
+            purchase_request=purchase_request,
+            expense_category=sample_expense_category,
+            project=sample_project,
+            payment_type="advance",
+            total_price="200.00",
+            status="approved",
+        )
+        client.force_login(regular_user)
+        payload = _payment_release_payload(sample_project, sample_expense_category)
+        payload.update(
+            purchase_request=purchase_request.pk,
+            total_price="800.00",
+            action="draft",
+        )
+
+        response = client.post(reverse("payments:create"), data=payload)
+
+        assert response.status_code == 302
+        payments = list(purchase_request.payment_releases.order_by("pk"))
+        assert len(payments) == 2
+        assert payments[0] == first_payment
+        assert payments[1].total_price == Decimal("800.00")
+        assert payments[1].request_number != first_payment.request_number
+        assert payments[1].installment_number == 2
 
 
 @pytest.mark.django_db

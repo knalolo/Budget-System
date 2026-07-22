@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load procurement_tags %}
 
-{% block title %}{{ payment.workflow_number }} - Payment Release{% endblock %}
+{% block title %}{{ payment.request_number }} - Payment Release{% endblock %}
 {% block page_title %}Payment Release Detail{% endblock %}
 
 {% block content %}
@@ -17,7 +17,7 @@
     <div class="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
             <div>
-                <h2 class="text-lg font-semibold text-gray-900 font-mono">{{ payment.workflow_number }}</h2>
+                <h2 class="text-lg font-semibold text-gray-900">{% if payment.purchase_request %}Payment #{{ payment.installment_number }}{% else %}Payment Release{% endif %} <span class="ml-2 font-mono text-sm font-medium text-gray-500">{{ payment.request_number }}</span></h2>
                 <p class="text-sm text-gray-500 mt-0.5">
                     Submitted by {{ payment.requester.get_full_name|default:payment.requester.username }}
                     on {{ payment.created_at|date:"d M Y H:i" }}
@@ -115,6 +115,10 @@
             </div>
 
             {% if payment.purchase_request %}
+            <div>
+                <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Payment Sequence</dt>
+                <dd class="mt-1 text-sm text-gray-900">Payment #{{ payment.installment_number }} of an expected {{ payment.purchase_request.planned_payment_count }}</dd>
+            </div>
             <div>
                 <dt class="text-xs font-medium uppercase tracking-wider text-gray-400">Goods recieve</dt>
                 <dd class="mt-1 text-sm text-gray-900">

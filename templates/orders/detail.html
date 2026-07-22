@@ -82,7 +82,7 @@
                         href="{{ payment_release_create_url }}"
                         class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-emerald-500 transition-colors"
                     >
-                        {% if payment_draft %}Open Payment Draft{% else %}Submit Payment Release{% endif %}
+                        {% if payment_draft %}Open Payment Draft{% else %}Process Payment · {{ purchase_request.currency }} {{ purchase_request.remaining_payable_total|floatformat:2 }}{% endif %}
                     </a>
                     {% elif has_payment_release %}
                     <a
@@ -222,6 +222,10 @@
                         <dd class="mt-1 text-gray-900">{{ purchase_request.execution_mode_display }}</dd>
                     </div>
                     <div>
+                        <dt class="font-medium text-gray-500">Expected Payments</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.planned_payment_count }} <span class="text-xs text-gray-500">estimate only</span></dd>
+                    </div>
+                    <div>
                         <dt class="font-medium text-gray-500">Project (MC Number)</dt>
                         <dd class="mt-1 text-gray-900">{{ purchase_request.project }}</dd>
                     </div>
@@ -276,7 +280,7 @@
             {# Product Detail Summary #}
             <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
                 <h3 class="text-sm font-semibold text-gray-900 mb-4 pb-2 border-b border-gray-100">Product Detail Summary</h3>
-                <dl class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-4 text-sm">
+                <dl class="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4 text-sm">
                     <div>
                         <dt class="font-medium text-gray-500">Currency</dt>
                         <dd class="mt-1 text-gray-900">{{ purchase_request.get_currency_display }}</dd>
@@ -326,7 +330,50 @@
                             {% include "components/status_badge.html" with status=purchase_request.workflow_stage status_display=purchase_request.workflow_stage_display %}
                         </dd>
                     </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Expected Payments</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.planned_payment_count }} <span class="text-xs text-gray-500">estimate</span></dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Approved</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.currency }} {{ purchase_request.approved_payment_total|floatformat:2 }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Under Approval</dt>
+                        <dd class="mt-1 text-gray-900">{{ purchase_request.currency }} {{ purchase_request.pending_payment_total|floatformat:2 }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-medium text-gray-500">Remaining Available</dt>
+                        <dd class="mt-1 font-semibold text-emerald-700">{{ purchase_request.currency }} {{ purchase_request.remaining_payable_total|floatformat:2 }}</dd>
+                    </div>
                 </dl>
+
+                {% if payment_releases %}
+                <div class="mt-5 overflow-x-auto rounded-lg border border-gray-200">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr class="text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <th class="px-4 py-3">Payment</th>
+                                <th class="px-4 py-3">Payment No.</th>
+                                <th class="px-4 py-3">Amount</th>
+                                <th class="px-4 py-3">Type</th>
+                                <th class="px-4 py-3">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200 bg-white">
+                            {% for payment_release in payment_releases %}
+                            <tr>
+                                <td class="px-4 py-3 font-medium text-gray-900">#{{ forloop.counter }}</td>
+                                <td class="px-4 py-3 font-mono text-brand-600"><a href="{% url 'payments:detail' payment_release.pk %}" class="hover:underline">{{ payment_release.request_number }}</a></td>
+                                <td class="px-4 py-3 text-gray-900">{{ payment_release.currency }} {{ payment_release.total_price|floatformat:2 }}</td>
+                                <td class="px-4 py-3 text-gray-700">{{ payment_release.get_payment_type_display }}</td>
+                                <td class="px-4 py-3">{% include "components/status_badge.html" with status=payment_release.status status_display=payment_release.get_status_display %}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
 
                 <div class="mt-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-sm text-gray-700">
                     {% if purchase_request.workflow_completed %}

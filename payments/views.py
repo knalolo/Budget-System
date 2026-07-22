@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+from decimal import Decimal
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -34,7 +35,7 @@ PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES = {
     "proforma_invoice": "Proforma Invoice",
 }
 LINKED_PURCHASE_REQUEST_PARAM = "purchase_request"
-ACTIVE_PAYMENT_STATUSES = ("pending_pcm", "pending_final", "approved")
+PENDING_PAYMENT_STATUSES = ("pending_pcm", "pending_final")
 PAYMENT_CREATE_TOKEN_TIMEOUT_SECONDS = 60 * 30
 
 
@@ -118,21 +119,21 @@ class PaymentReleaseCreateView(View):
             return HttpResponseForbidden(
                 "You do not have permission to use this purchase request."
             )
+        existing_pending_payment = _existing_pending_payment_release(source_purchase_request)
+        if existing_pending_payment is not None:
+            messages.info(
+                request,
+                (
+                    f"Payment release {existing_pending_payment.request_number} is still "
+                    "under approval for this request."
+                ),
+            )
+            return redirect("payments:detail", pk=existing_pending_payment.pk)
         flow_error = _payment_flow_error(source_purchase_request)
         if flow_error:
             messages.info(request, flow_error)
             return redirect("orders:purchase-request-detail", pk=source_purchase_request.pk)
         requested_payment_type = _requested_payment_type(request, source_purchase_request)
-        existing_active_payment = _existing_active_payment_release(source_purchase_request)
-        if existing_active_payment is not None:
-            messages.info(
-                request,
-                (
-                    f"Payment release {existing_active_payment.workflow_number} already "
-                    "exists for this request."
-                ),
-            )
-            return redirect("payments:detail", pk=existing_active_payment.pk)
 
         existing_draft = _existing_payment_draft(source_purchase_request, request.user)
         if existing_draft is not None:
@@ -162,21 +163,21 @@ class PaymentReleaseCreateView(View):
             return HttpResponseForbidden(
                 "You do not have permission to use this purchase request."
             )
+        existing_pending_payment = _existing_pending_payment_release(source_purchase_request)
+        if existing_pending_payment is not None:
+            messages.info(
+                request,
+                (
+                    f"Payment release {existing_pending_payment.request_number} is still "
+                    "under approval for this request."
+                ),
+            )
+            return redirect("payments:detail", pk=existing_pending_payment.pk)
         flow_error = _payment_flow_error(source_purchase_request)
         if flow_error:
             messages.info(request, flow_error)
             return redirect("orders:purchase-request-detail", pk=source_purchase_request.pk)
         requested_payment_type = _requested_payment_type(request, source_purchase_request)
-        existing_active_payment = _existing_active_payment_release(source_purchase_request)
-        if existing_active_payment is not None:
-            messages.info(
-                request,
-                (
-                    f"Payment release {existing_active_payment.workflow_number} already "
-                    "exists for this request."
-                ),
-            )
-            return redirect("payments:detail", pk=existing_active_payment.pk)
 
         existing_draft = _existing_payment_draft(source_purchase_request, request.user)
         form_data = _payment_release_form_data(
@@ -321,7 +322,10 @@ class PaymentReleaseUpdateView(View):
                 "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
                 "selected_attachment_type": "invoice",
                 "source_purchase_request": payment.purchase_request,
-                "source_purchase_request_summary": _purchase_request_summary(payment.purchase_request),
+                "source_purchase_request_summary": _purchase_request_summary(
+                    payment.purchase_request,
+                    payment_release=payment,
+                ),
                 "initial_po_mode": _payment_release_po_mode(payment.purchase_request, form),
                 "attachments": payment.attachments.all(),
                 "can_manage_attachments": _can_manage_payment_attachments(request.user, payment),
@@ -362,7 +366,10 @@ class PaymentReleaseUpdateView(View):
                 "attachment_type_options": PAYMENT_RELEASE_ATTACHMENT_FILE_TYPES.items(),
                 "selected_attachment_type": "invoice",
                 "source_purchase_request": payment.purchase_request,
-                "source_purchase_request_summary": _purchase_request_summary(payment.purchase_request),
+                "source_purchase_request_summary": _purchase_request_summary(
+                    payment.purchase_request,
+                    payment_release=payment,
+                ),
                 "initial_po_mode": _payment_release_po_mode(payment.purchase_request, form),
                 "attachments": payment.attachments.all(),
                 "can_manage_attachments": _can_manage_payment_attachments(request.user, payment),
@@ -677,7 +684,10 @@ def _render_payment_create_form(
                 "invoice",
             ),
             "source_purchase_request": source_purchase_request,
-            "source_purchase_request_summary": _purchase_request_summary(source_purchase_request),
+            "source_purchase_request_summary": _purchase_request_summary(
+                source_purchase_request,
+                payment_release=form.instance if form.instance.pk else None,
+            ),
             "initial_po_mode": _payment_release_po_mode(source_purchase_request, form),
         },
     )
@@ -710,15 +720,14 @@ def _get_linkable_purchase_request(request: HttpRequest):
     return purchase_request
 
 
-def _existing_active_payment_release(purchase_request):
-    """Return the active payment that should own this PR payment step."""
+def _existing_pending_payment_release(purchase_request):
+    """Return the payment currently occupying this PR's approval step."""
     if purchase_request is None:
         return None
     return (
-        purchase_request.payment_releases.filter(status__in=ACTIVE_PAYMENT_STATUSES)
+        purchase_request.payment_releases.filter(status__in=PENDING_PAYMENT_STATUSES)
         .annotate(
             workflow_priority=models.Case(
-                models.When(status="approved", then=models.Value(30)),
                 models.When(status="pending_final", then=models.Value(20)),
                 models.When(status="pending_pcm", then=models.Value(10)),
                 default=models.Value(0),
@@ -752,7 +761,7 @@ def _payment_release_initial_from_purchase_request(
 
     if requested_payment_type == "advance":
         payment_quantity = purchase_request.ordered_quantity
-        total_price = purchase_request.total_price
+        total_price = purchase_request.remaining_payable_total
     else:
         payment_quantity = max(purchase_request.available_standard_payment_quantity, 1)
         total_price = (
@@ -787,9 +796,9 @@ def _payment_release_form_data(
 ):
     """Return POST data with server-owned linked-PR fields re-synced.
 
-    The linked purchase request is the source of truth for amount, quantity,
-    vendor, project, and payment type. This prevents stale pages or hidden
-    fields from creating an invalid Standard Payment before goods are received.
+    The linked purchase request remains the source of truth for classification
+    fields. Amount and quantity are entered for this specific payment release
+    and validated against the current balance when it is submitted.
     """
     form_data = request.POST.copy()
     if purchase_request is None:
@@ -806,12 +815,12 @@ def _payment_release_form_data(
         "vendor",
         "currency",
         "payment_type",
-        "payment_quantity",
-        "total_price",
         "justification",
     ):
         value = initial.get(field_name)
         form_data[field_name] = "" if value is None else str(value)
+    if requested_payment_type == PAYMENT_TYPE_ADVANCE:
+        form_data["payment_quantity"] = str(initial["payment_quantity"])
     return form_data
 
 
@@ -833,11 +842,10 @@ def _sync_no_goods_draft_to_advance_payment(payment: PaymentRelease) -> None:
 
     payment.payment_type = PAYMENT_TYPE_ADVANCE
     payment.payment_quantity = purchase_request.ordered_quantity
-    payment.total_price = purchase_request.total_price
-    payment.save(update_fields=["payment_type", "payment_quantity", "total_price", "updated_at"])
+    payment.save(update_fields=["payment_type", "payment_quantity", "updated_at"])
 
 
-def _purchase_request_summary(purchase_request) -> dict | None:
+def _purchase_request_summary(purchase_request, *, payment_release=None) -> dict | None:
     """Return unified workflow guidance for a linked purchase request."""
     if purchase_request is None:
         return None
@@ -858,6 +866,15 @@ def _purchase_request_summary(purchase_request) -> dict | None:
         "available_standard_payment_total": purchase_request.available_standard_payment_total,
         "max_standard_payment_total": purchase_request.max_standard_payment_total,
         "remaining_payable_total": purchase_request.remaining_payable_total,
+        "approved_payment_total": purchase_request.approved_payment_total,
+        "pending_payment_total": purchase_request.pending_payment_total,
+        "planned_payment_count": purchase_request.planned_payment_count,
+        "actual_payment_count": purchase_request.actual_payment_count,
+        "next_payment_number": (
+            payment_release.installment_number
+            if payment_release is not None
+            else purchase_request.payment_releases.count() + 1
+        ),
     }
 
 
@@ -870,7 +887,7 @@ def _requested_payment_type(request: HttpRequest, purchase_request) -> str:
     if purchase_request is None:
         return requested_payment_type if requested_payment_type in ("standard", "advance") else "standard"
     if purchase_request.is_payment_first:
-        return "advance"
+        return "standard" if purchase_request.delivered_quantity > 0 else "advance"
     if purchase_request.is_delivery_first:
         return "standard"
     if requested_payment_type == "advance":
@@ -886,10 +903,10 @@ def _payment_flow_error(purchase_request) -> str:
         return ""
     if not purchase_request.is_execution_ready:
         return "The purchase request must be approved before payment release can start."
+    if purchase_request.remaining_payable_total <= Decimal("0.00"):
+        return "This purchase request has already been fully covered by payment releases."
     if purchase_request.is_delivery_first and purchase_request.delivered_quantity <= 0:
         return "This purchase request is goods receive first. Submit goods receive before payment release."
-    if purchase_request.is_payment_first and purchase_request.goods_stage != "not_started":
-        return "This purchase request is payment first, and the payment step must happen before goods receive."
     return ""
 
 
