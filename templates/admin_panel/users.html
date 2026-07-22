@@ -101,6 +101,8 @@
                     <input
                         type="email"
                         name="email"
+                        required
+                        placeholder="requester@example.test"
                         class="block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
                     />
                 </div>
@@ -238,6 +240,17 @@
                                 hx-swap="innerHTML"
                             >
                                 {% csrf_token %}
+
+                                <div>
+                                    <label class="block text-xs font-medium text-gray-600 mb-1">Notification Email</label>
+                                    <input
+                                        type="email"
+                                        name="email"
+                                        value="{{ u.email }}"
+                                        placeholder="approver@example.test"
+                                        class="block w-full rounded-md border border-gray-300 px-2.5 py-1.5 text-xs shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                                    />
+                                </div>
 
                                 <label class="flex items-center gap-2 text-xs text-gray-600">
                                     <input

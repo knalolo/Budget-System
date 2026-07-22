@@ -4,11 +4,29 @@ import pytest
 from django.contrib.auth.models import User
 from django.urls import reverse
 
+from core.models import SystemConfig
 from orders.tests.factories import ProjectFactory, PurchaseRequestFactory
 
 
 @pytest.mark.django_db
 class TestUpdateUserRole:
+    def test_admin_can_update_notification_email(self, client, admin_user, regular_user):
+        client.force_login(admin_user)
+
+        response = client.post(
+            f"/admin-panel/users/{regular_user.pk}/update-role/",
+            {
+                "email": "requester@example.test",
+                "is_active": "on",
+                "is_requester": "on",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 204
+        regular_user.refresh_from_db()
+        assert regular_user.email == "requester@example.test"
+
     def test_admin_can_assign_requester_plus_project_approver(self, client, admin_user, regular_user):
         client.force_login(admin_user)
 
@@ -168,6 +186,7 @@ class TestCreateUserFromAdminPanel:
             reverse("admin-panel:admin-user-create"),
             {
                 "username": "next_admin",
+                "email": "next_admin@example.test",
                 "password": "temp-pass-123",
                 "is_requester": "on",
                 "is_project_approver": "on",
@@ -181,6 +200,39 @@ class TestCreateUserFromAdminPanel:
         assert user.profile.is_admin is True
         assert user.profile.is_requester is False
         assert user.profile.is_project_approver is False
+
+
+@pytest.mark.django_db
+class TestSystemConfiguration:
+    def test_notification_email_fields_save_the_keys_used_by_outbox(self, client, admin_user):
+        client.force_login(admin_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-update-config"),
+            {
+                "notify_li_mei_email": "limei@wago.com",
+                "notify_jolly_email": "jolly@wago.com",
+                "notify_jess_email": "jess@wago.com",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 204
+        assert SystemConfig.get_value("notify_li_mei_email") == "limei@wago.com"
+        assert SystemConfig.get_value("notify_jolly_email") == "jolly@wago.com"
+        assert SystemConfig.get_value("notify_jess_email") == "jess@wago.com"
+
+    def test_invalid_notification_email_is_rejected(self, client, admin_user):
+        client.force_login(admin_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-update-config"),
+            {"notify_jolly_email": "not-an-email"},
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 400
+        assert SystemConfig.get_value("notify_jolly_email") == "jolly@wago.com"
 
     def test_create_unique_permission_conflict_rolls_back_user(self, client, admin_user, final_approver):
         client.force_login(admin_user)

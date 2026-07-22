@@ -181,14 +181,10 @@
                             {{ log.subject }}
                         </td>
                         <td class="px-3 py-3 text-sm text-gray-600">
-                            {% for r in log.recipients %}
-                            <span class="block text-xs">{{ r }}</span>
-                            {% empty %}
-                            —
-                            {% endfor %}
-                            {% if log.cc_recipients %}
+                            <span class="block text-xs">{{ log.to_emails }}</span>
+                            {% if log.cc_emails %}
                             <span class="block text-xs text-gray-400 mt-0.5">
-                                CC: {% for r in log.cc_recipients %}{{ r }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                                CC: {{ log.cc_emails }}
                             </span>
                             {% endif %}
                         </td>
@@ -199,14 +195,14 @@
                                 {% else %}bg-yellow-100 text-yellow-800{% endif %}">
                                 {{ log.get_status_display }}
                             </span>
-                            {% if log.status == 'failed' and log.error_message %}
-                            <p class="mt-1 text-xs text-red-500 max-w-xs truncate" title="{{ log.error_message }}">
-                                {{ log.error_message }}
+                            {% if log.status == 'failed' and log.last_error %}
+                            <p class="mt-1 text-xs text-red-500 max-w-xs truncate" title="{{ log.last_error }}">
+                                {{ log.last_error }}
                             </p>
                             {% endif %}
                         </td>
                         <td class="px-3 py-3 text-sm text-gray-500">
-                            {{ log.sent_at|date:"d M Y, H:i"|default:"—" }}
+                            {{ log.processed_at|date:"d M Y, H:i"|default:"—" }}
                         </td>
                     </tr>
                     {% empty %}

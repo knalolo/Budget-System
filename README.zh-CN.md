@@ -51,7 +51,7 @@ python manage.py runserver
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填入生产环境配置（SECRET_KEY、DB_PASSWORD、Azure AD、SMTP...）
+# 编辑 .env，填入生产环境配置（SECRET_KEY、DB_PASSWORD、Azure AD、Outlook...）
 
 docker compose up -d --build
 ```
@@ -88,7 +88,7 @@ docker compose up -d --build
 
 ### ⚙️ 管理面板
 
-用户管理、运行时系统配置（PO 阈值、通知邮箱、授信平台），以及完整的审计日志查看 — 全部在浏览器中完成。
+用户管理、运行时系统配置（PO 阈值、通知邮箱），以及完整的审计日志查看 — 全部在浏览器中完成。
 
 ---
 
@@ -140,7 +140,7 @@ deliveries（交付提交）                assets（资产登记、资产明细
 | 模式 | 应用方式 |
 |------|---------|
 | 🧩 **服务层** | 业务逻辑放在 `{app}/services.py`，而非视图中 |
-| 🔗 **GenericForeignKey** | `FileAttachment`、`ApprovalLog`、`EmailNotificationLog` 可关联任意模型 |
+| 🔗 **GenericForeignKey** | `FileAttachment`、`ApprovalLog` 可关联工作流模型 |
 | 🎛️ **通用审批引擎** | 任何具备必要字段的模型均可通过 `approvals/services.py` 接入审批 |
 | ⚙️ **分层配置** | `base.py`（共享）/ `development.py`（SQLite）/ `production.py`（PostgreSQL + 安全头） |
 | 🔢 **自动编号** | `PR-YYYYMMDD-XXXX`、`RP-YYYYMMDD-XXXX`、`DO-YYYYMMDD-XXXX` 序列号 |
@@ -156,7 +156,7 @@ deliveries（交付提交）                assets（资产登记、资产明细
 | 🎨 前端 | Django Templates、HTMX、Alpine.js、Tailwind CSS（CDN） |
 | 🐘 数据库 | PostgreSQL 16（生产）、SQLite（开发） |
 | 🔐 认证 | MSAL（Microsoft 365 SSO）、DRF Token Auth |
-| 📧 邮件 | SMTP（Office 365）、HTML 模板通知 |
+| 📧 邮件 | 本机 Outlook 桌面 worker + `EmailOutbox` 持久队列 |
 | 💻 命令行 | Click、Rich、httpx |
 | 🧪 测试 | pytest、pytest-django、factory_boy、pytest-cov |
 | 🔍 代码检查 | Ruff |
@@ -247,10 +247,10 @@ Budget-System/
 │       ├── development.py #    SQLite、DEBUG=True
 │       └── production.py  #    PostgreSQL、安全头
 ├── core/                  # 🧩 共享模型 & 服务
-│   ├── models.py          #    FileAttachment、SystemConfig、EmailNotificationLog
+│   ├── models.py          #    FileAttachment、SystemConfig、EmailOutbox
 │   ├── permissions.py     #    基于角色的权限辅助函数
 │   └── services/
-│       ├── email_service.py
+│       ├── outbox_email_service.py
 │       ├── file_service.py
 │       └── request_number_service.py
 ├── deliveries/            # 📦 交付/销售订单跟踪
@@ -300,13 +300,9 @@ Budget-System/
 | `AZURE_AD_CLIENT_ID` | 应用客户端 ID | — |
 | `AZURE_AD_CLIENT_SECRET` | 应用客户端密钥 | — |
 | `AZURE_AD_REDIRECT_URI` | OAuth 回调地址 | — |
-| **邮件（SMTP）** | | |
-| `EMAIL_HOST` | SMTP 服务器 | `smtp.office365.com` |
-| `EMAIL_PORT` | SMTP 端口 | `587` |
-| `EMAIL_USE_TLS` | 启用 TLS | `True` |
-| `EMAIL_HOST_USER` | SMTP 用户名 | — |
-| `EMAIL_HOST_PASSWORD` | SMTP 密码 | — |
-| `DEFAULT_FROM_EMAIL` | 发件人地址 | — |
+| **Outlook EmailOutbox** | | |
+| `OUTLOOK_EMAIL_ENABLED` | 允许创建队列及 worker 处理 | `False` |
+| `OUTLOOK_FROM_MAILBOX` | Outlook 共享邮箱 | `SGRDPR@WAGO.com` |
 | **Docker / Gunicorn** | | |
 | `GUNICORN_WORKERS` | Worker 进程数 | `3` |
 | `GUNICORN_TIMEOUT` | 请求超时时间（秒） | `120` |
@@ -325,10 +321,21 @@ Budget-System/
 | `po_threshold_sgd` | SGD 超过此金额需要 PO | 1,300 |
 | `po_threshold_usd` | USD 超过此金额需要 PO | 900 |
 | `po_threshold_eur` | EUR 超过此金额需要 PO | 800 |
-| `notify_li_mei_email` | 通知收件人 | — |
-| `notify_jolly_email` | 通知收件人 | — |
-| `notify_jess_email` | 通知收件人 | — |
-| `credit_platforms` | 预审批授信平台 | Digikey、RS Components、Element14 |
+| `notify_li_mei_email` | 财务通知收件人 | `limei@wago.com` |
+| `notify_jolly_email` | PO 通知收件人 | `jolly@wago.com` |
+| `notify_jess_email` | Goods Receive 抄送收件人 | `jess@wago.com` |
+
+### Outlook Worker
+
+业务节点会写入 `EmailOutbox`。当 `OUTLOOK_EMAIL_ENABLED=False` 时，worker
+会被阻止运行。Host 电脑完成 Outlook 登录、共享邮箱权限、用户邮箱和通知邮箱确认后，
+将开关改为 `True`，再手动处理一批邮件：
+
+```powershell
+.\.venv\Scripts\python.exe manage.py send_outlook_outbox --send --limit 10
+```
+
+Windows 定时任务可以重复执行同一命令，并应设置为前一次尚未结束时不启动新实例。
 
 ---
 

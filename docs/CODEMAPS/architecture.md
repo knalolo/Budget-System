@@ -11,9 +11,9 @@ Django 5.x procurement approval system. TZ: Asia/Singapore.
 ```
 User → Web/API/CLI → Views/ViewSets → Services → Models → DB
                                           ↓
-                                   Email Service → SMTP
+                                   Outbox Email Service → EmailOutbox
                                           ↓
-                                   EmailNotificationLog
+                                   Local Outlook Worker
 ```
 
 ## Approval Pipeline
@@ -32,7 +32,7 @@ Shared engine: `approvals/services.py` drives both PurchaseRequest and PaymentRe
 ```
 accounts (UserProfile, MSAL SSO)
     ↓
-core (FileAttachment, SystemConfig, EmailNotificationLog, middleware)
+core (FileAttachment, SystemConfig, EmailOutbox, middleware)
     ↓
 approvals (ApprovalLog, generic approval engine)
     ↓
@@ -46,7 +46,7 @@ deliveries (DeliverySubmission)                     assets (AssetRegistration, A
 | Pattern | Implementation |
 |---------|---------------|
 | Service layer | `{app}/services.py` — business logic, not in views |
-| GenericForeignKey | FileAttachment, ApprovalLog, EmailNotificationLog → any model |
+| GenericForeignKey | FileAttachment, ApprovalLog → workflow models |
 | Split settings | base.py / development.py / production.py |
 | Domain constants | `config/settings/base.py` — PR_STATUS_*, ROLE_*, *_CHOICES |
 | Runtime config | SystemConfig key-value store (PO thresholds, emails) |

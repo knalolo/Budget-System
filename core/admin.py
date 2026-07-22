@@ -3,7 +3,11 @@ Django admin registrations for core models.
 """
 from django.contrib import admin
 
-from core.models import EmailNotificationLog, FileAttachment, SystemConfig
+from core.models import (
+    EmailOutbox,
+    FileAttachment,
+    SystemConfig,
+)
 
 
 @admin.register(FileAttachment)
@@ -22,29 +26,10 @@ class SystemConfigAdmin(admin.ModelAdmin):
     ordering = ("key",)
 
 
-@admin.register(EmailNotificationLog)
-class EmailNotificationLogAdmin(admin.ModelAdmin):
-    list_display = ("subject", "status", "recipients_preview", "sent_at", "created_at")
-    list_filter = ("status",)
-    search_fields = ("subject", "recipients")
-    readonly_fields = (
-        "content_type",
-        "object_id",
-        "recipients",
-        "cc_recipients",
-        "subject",
-        "body",
-        "status",
-        "error_message",
-        "sent_at",
-        "created_at",
-    )
+@admin.register(EmailOutbox)
+class EmailOutboxAdmin(admin.ModelAdmin):
+    list_display = ("subject", "status", "to_emails", "attempts", "processed_at", "created_at")
+    list_filter = ("status", "event_type")
+    search_fields = ("subject", "to_emails", "cc_emails", "event_key")
+    readonly_fields = ("attempts", "last_error", "processed_at", "created_at", "updated_at")
     ordering = ("-created_at",)
-
-    @admin.display(description="Recipients")
-    def recipients_preview(self, obj):
-        recipients = obj.recipients or []
-        preview = ", ".join(recipients[:2])
-        if len(recipients) > 2:
-            preview += f" (+{len(recipients) - 2} more)"
-        return preview

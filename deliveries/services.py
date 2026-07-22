@@ -109,6 +109,7 @@ def create_delivery_submission(
         user.pk,
         submission.vendor,
     )
+    _queue_delivery_notification(submission)
     return submission
 
 
@@ -194,7 +195,20 @@ def update_delivery_submission(
         user.pk,
         submission.vendor,
     )
+    _queue_delivery_notification(submission)
     return submission
+
+
+def _queue_delivery_notification(submission: DeliverySubmission) -> None:
+    try:
+        from core.services.outbox_email_service import queue_goods_followup_email
+
+        queue_goods_followup_email(submission)
+    except Exception:
+        logger.exception(
+            "Failed to queue Goods Receive notification for DeliverySubmission #%s.",
+            submission.pk,
+        )
 
 
 def _validate_delivery_flow(purchase_request) -> None:

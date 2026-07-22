@@ -1,10 +1,10 @@
 """
-API views for SystemConfig and EmailNotificationLog.
+API views for SystemConfig and EmailOutbox.
 
 Endpoints:
   GET  /api/v1/config/        – list all SystemConfig entries
   PATCH /api/v1/config/       – bulk-update config values (admin only)
-  GET  /api/v1/email-logs/    – list EmailNotificationLog entries (admin only)
+  GET  /api/v1/email-logs/    – list EmailOutbox entries (admin only)
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.api_views import IsAdminRolePermission
-from core.models import EmailNotificationLog, SystemConfig
+from core.models import EmailOutbox, SystemConfig
 
 logger = logging.getLogger(__name__)
 
@@ -44,19 +44,22 @@ class SystemConfigSerializer(serializers.ModelSerializer):
             return obj.value
 
 
-class EmailNotificationLogSerializer(serializers.ModelSerializer):
-    """Read-only serializer for EmailNotificationLog."""
+class EmailOutboxSerializer(serializers.ModelSerializer):
+    """Read-only serializer for the Outlook email queue."""
 
     class Meta:
-        model = EmailNotificationLog
+        model = EmailOutbox
         fields = [
             "id",
+            "event_type",
             "subject",
-            "recipients",
-            "cc_recipients",
+            "from_mailbox",
+            "to_emails",
+            "cc_emails",
             "status",
-            "error_message",
-            "sent_at",
+            "attempts",
+            "last_error",
+            "processed_at",
             "created_at",
         ]
         read_only_fields = fields
@@ -122,7 +125,7 @@ class SystemConfigListView(APIView):
 
 class EmailLogListView(APIView):
     """
-    GET /api/v1/email-logs/ – list EmailNotificationLog entries.
+    GET /api/v1/email-logs/ – list EmailOutbox entries.
 
     Admin or staff access only.
 
@@ -137,7 +140,7 @@ class EmailLogListView(APIView):
     permission_classes = [IsAdminRolePermission]
 
     def get(self, request: HttpRequest) -> Response:
-        qs = EmailNotificationLog.objects.order_by("-created_at")
+        qs = EmailOutbox.objects.order_by("-created_at")
 
         # Filtering
         status_filter = request.query_params.get("status", "").strip()
@@ -167,7 +170,7 @@ class EmailLogListView(APIView):
         offset = (page_number - 1) * page_size
         page_qs = qs[offset: offset + page_size]
 
-        serializer = EmailNotificationLogSerializer(page_qs, many=True)
+        serializer = EmailOutboxSerializer(page_qs, many=True)
         return Response(
             {
                 "count": total,

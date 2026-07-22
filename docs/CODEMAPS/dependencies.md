@@ -18,7 +18,7 @@
 | Package | Version | Purpose |
 |---------|---------|---------|
 | msal | 1.28+ | Microsoft 365 SSO (Azure AD) |
-| Django SMTP | built-in | Office 365 email (smtp.office365.com:587) |
+| Outlook COM | Windows desktop | Sends queued workflow emails through the shared Outlook mailbox |
 
 ## CLI
 
@@ -60,5 +60,5 @@
 | Service | Config Location | Purpose |
 |---------|----------------|---------|
 | Azure AD (Microsoft 365) | AZURE_AD_* env vars | SSO authentication |
-| Office 365 SMTP | EMAIL_* env vars | Notification emails |
+| Outlook Desktop | `OUTLOOK_EMAIL_ENABLED`, `OUTLOOK_FROM_MAILBOX` | Notification email worker |
 | AssetTiger | CSV export (assets/) | Asset inventory management |

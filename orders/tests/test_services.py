@@ -1,7 +1,6 @@
 """Unit tests for orders.services (PurchaseRequest workflow)."""
 import pytest
 from django.core.exceptions import ValidationError
-from unittest.mock import patch
 
 from core.models import SystemConfig
 from orders.services import (
@@ -67,8 +66,7 @@ class TestSubmitPurchaseRequest:
         UserFactory(project_approver=True)
         UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
-        with patch("orders.services.notify_submission"):
-            updated = submit_purchase_request(pr)
+        updated = submit_purchase_request(pr)
         assert updated.status == "pending_pcm"
 
     def test_submit_non_draft_raises(self):
@@ -87,8 +85,7 @@ class TestSubmitPurchaseRequest:
         request_number = rejected.request_number
         rejection_log_count = ApprovalLog.objects.filter(object_id=rejected.pk).count()
 
-        with patch("orders.services.notify_submission"):
-            updated = submit_purchase_request(rejected)
+        updated = submit_purchase_request(rejected)
 
         assert updated.status == "pending_pcm"
         assert updated.request_number == request_number
@@ -105,8 +102,7 @@ class TestSubmitPurchaseRequest:
         UserFactory(project_approver=True)
         UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(currency="SGD", total_price=2000, po_required=False)
-        with patch("orders.services.notify_submission"):
-            updated = submit_purchase_request(pr)
+        updated = submit_purchase_request(pr)
         assert updated.po_required is True
 
     def test_submit_creates_approval_log(self):
@@ -115,28 +111,17 @@ class TestSubmitPurchaseRequest:
         UserFactory(project_approver=True)
         UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft")
-        with patch("orders.services.notify_submission"):
-            updated = submit_purchase_request(pr)
+        updated = submit_purchase_request(pr)
         logs = ApprovalLog.objects.filter(object_id=updated.pk)
         assert logs.exists()
         assert logs.first().action == "submitted"
-
-    def test_submit_notification_failure_does_not_raise(self):
-        """Email notification failures must not bubble up."""
-        UserFactory(project_approver=True)
-        UserFactory(final_approver=True)
-        pr = PurchaseRequestFactory(status="draft")
-        with patch("orders.services.notify_submission", side_effect=Exception("SMTP down")):
-            updated = submit_purchase_request(pr)
-        assert updated.status == "pending_pcm"
 
     def test_submit_requires_matching_purchase_type_approver(self):
         UserFactory(final_approver=True)
         pr = PurchaseRequestFactory(status="draft", purchase_type="office")
 
-        with patch("orders.services.notify_submission"):
-            with pytest.raises(ValidationError, match="Office Approver"):
-                submit_purchase_request(pr)
+        with pytest.raises(ValidationError, match="Office Approver"):
+            submit_purchase_request(pr)
 
 
 @pytest.mark.django_db

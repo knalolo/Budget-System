@@ -41,7 +41,7 @@ Django 5.x procurement approval system with 7 apps, DRF API, HTMX/Alpine.js fron
 ```
 accounts (UserProfile, SSO)
     ↓
-core (FileAttachment, SystemConfig, EmailNotificationLog, services)
+core (FileAttachment, SystemConfig, EmailOutbox, services)
     ↓
 approvals (ApprovalLog, generic two-level approval engine)
     ↓
@@ -54,7 +54,7 @@ deliveries (DeliverySubmission)                      assets (AssetRegistration, 
 
 - `base.py` — All shared config, domain constants, DRF config, Azure AD / email settings from env
 - `development.py` — SQLite, DEBUG=True, console email, `ALLOWED_HOSTS=["*"]`
-- `production.py` — PostgreSQL, SMTP email, security headers, logging
+- `production.py` — PostgreSQL, Outlook outbox settings, security headers, logging
 
 Domain constants in `base.py` (import these, don't hardcode strings):
 - Status: `PR_STATUS_DRAFT`, `PR_STATUS_PENDING_PCM`, `PR_STATUS_PENDING_FINAL`, `PR_STATUS_APPROVED`, etc.
@@ -81,7 +81,7 @@ Rejection resets status back to `draft` for revision and resubmission.
 
 ### GenericForeignKey Pattern
 
-`FileAttachment`, `ApprovalLog`, and `EmailNotificationLog` use `content_type` + `object_id` + `GenericForeignKey`. Approvable models declare `GenericRelation` for reverse access:
+`FileAttachment` and `ApprovalLog` use `content_type` + `object_id` + `GenericForeignKey`. Approvable models declare `GenericRelation` for reverse access:
 ```python
 attachments = GenericRelation("core.FileAttachment")
 approval_logs = GenericRelation("approvals.ApprovalLog")
@@ -92,7 +92,7 @@ approval_logs = GenericRelation("approvals.ApprovalLog")
 Business logic lives in `{app}/services.py`, not in views:
 - `orders/services.py` — PO threshold check, submit/approve/reject with email triggers
 - `payments/services.py` — same pattern for PaymentRelease
-- `core/services/email_service.py` — renders templates, sends via Django mail, logs to EmailNotificationLog
+- `core/services/outbox_email_service.py` — renders workflow templates and queues EmailOutbox records for the local Outlook worker
 - `core/services/request_number_service.py` — generates `PR-YYYYMMDD-XXXX` / `RP-` / `DO-` sequences (daily sequential counter)
 - `core/services/file_service.py` — validates extensions/size, saves FileAttachment
 
@@ -124,7 +124,7 @@ Templates in `templates/` use Tailwind CSS (Play CDN), HTMX, Alpine.js. Zero bui
 
 ### SystemConfig
 
-Runtime key-value store (`core/models.py`). Access via `SystemConfig.get_value(key, default)` / `SystemConfig.set_value(key, value)`. Keys: `po_threshold_sgd/usd/eur`, `notify_li_mei_email/jolly_email/jess_email`, `credit_platforms`.
+Runtime key-value store (`core/models.py`). Access via `SystemConfig.get_value(key, default)` / `SystemConfig.set_value(key, value)`. Keys: `po_threshold_sgd/usd/eur`, `notify_li_mei_email/jolly_email/jess_email`.
 
 ### Test Fixtures (`conftest.py`)
 

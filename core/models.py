@@ -4,7 +4,7 @@ Core shared models for the procurement approval system.
 Provides:
 - FileAttachment  – generic file attachment via GenericForeignKey
 - SystemConfig    – key-value configuration store (JSON-encoded values)
-- EmailNotificationLog – audit log of all outbound notification emails
+- EmailOutbox – workflow email queue processed by the local Outlook worker
 """
 import json
 
@@ -104,59 +104,61 @@ class SystemConfig(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# EmailNotificationLog
+# EmailOutbox
 # ---------------------------------------------------------------------------
 
-_EMAIL_STATUS_PENDING = "pending"
-_EMAIL_STATUS_SENT = "sent"
-_EMAIL_STATUS_FAILED = "failed"
+class EmailOutbox(models.Model):
+    """Queue of emails waiting for the local Outlook desktop worker."""
 
-EMAIL_STATUS_CHOICES = [
-    (_EMAIL_STATUS_PENDING, "Pending"),
-    (_EMAIL_STATUS_SENT, "Sent"),
-    (_EMAIL_STATUS_FAILED, "Failed"),
-]
+    STATUS_PENDING = "pending"
+    STATUS_PROCESSING = "processing"
+    STATUS_DRAFTED = "drafted"
+    STATUS_SENT = "sent"
+    STATUS_FAILED = "failed"
+    STATUS_CANCELLED = "cancelled"
 
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_PROCESSING, "Processing"),
+        (STATUS_DRAFTED, "Drafted"),
+        (STATUS_SENT, "Sent"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_CANCELLED, "Cancelled"),
+    ]
 
-class EmailNotificationLog(models.Model):
-    """Audit log of every outbound notification email attempted by the system."""
-
-    content_type = models.ForeignKey(
-        ContentType,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="email_notification_logs",
-    )
-    object_id = models.PositiveIntegerField(null=True, blank=True)
-    content_object = GenericForeignKey("content_type", "object_id")
-
-    recipients = models.JSONField(
-        default=list,
-        help_text="List of primary recipient email addresses",
-    )
-    cc_recipients = models.JSONField(
-        default=list,
-        help_text="List of CC recipient email addresses",
-    )
-    subject = models.CharField(max_length=500)
-    body = models.TextField()
+    event_type = models.CharField(max_length=100, blank=True)
+    event_key = models.CharField(max_length=200, blank=True, db_index=True)
+    from_mailbox = models.EmailField(default="SGRDPR@WAGO.com")
+    to_emails = models.TextField(help_text="Semicolon-separated recipient email addresses.")
+    cc_emails = models.TextField(blank=True, help_text="Semicolon-separated CC email addresses.")
+    subject = models.CharField(max_length=255)
+    body_html = models.TextField()
+    attachment_paths = models.JSONField(default=list, blank=True)
     status = models.CharField(
         max_length=20,
-        choices=EMAIL_STATUS_CHOICES,
-        default=_EMAIL_STATUS_PENDING,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+        db_index=True,
     )
-    error_message = models.TextField(blank=True)
-    sent_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["status"]),
-            models.Index(fields=["content_type", "object_id"]),
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["event_type", "event_key"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event_type", "event_key"],
+                condition=~models.Q(event_key=""),
+                name="unique_outbox_workflow_event",
+            ),
         ]
 
     def __str__(self) -> str:
-        recipients_preview = ", ".join(self.recipients[:2])
-        return f"[{self.status}] {self.subject} -> {recipients_preview}"
+        return f"[{self.status}] {self.subject} -> {self.to_emails}"

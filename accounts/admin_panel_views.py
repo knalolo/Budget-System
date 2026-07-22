@@ -23,7 +23,7 @@ from django.views.generic import ListView, TemplateView
 
 from accounts.models import UserProfile
 from approvals.models import ApprovalLog
-from core.models import EmailNotificationLog, SystemConfig
+from core.models import EmailOutbox, SystemConfig
 from orders.models import Project
 
 logger = logging.getLogger(__name__)
@@ -170,35 +170,22 @@ CONFIG_SECTIONS: list[dict] = [
         "description": "Recipients who receive approval notification emails.",
         "fields": [
             {
-                "key": "notification_email_limeimei",
+                "key": "notify_li_mei_email",
                 "label": "Li Mei Email",
                 "input_type": "email",
-                "placeholder": "limei@example.com",
+                "placeholder": "limei@wago.com",
             },
             {
-                "key": "notification_email_jolly",
+                "key": "notify_jolly_email",
                 "label": "Jolly Email",
                 "input_type": "email",
-                "placeholder": "jolly@example.com",
+                "placeholder": "jolly@wago.com",
             },
             {
-                "key": "notification_email_jess",
+                "key": "notify_jess_email",
                 "label": "Jess Email",
                 "input_type": "email",
-                "placeholder": "jess@example.com",
-            },
-        ],
-    },
-    {
-        "id": "credit_platforms",
-        "title": "Credit Platforms",
-        "description": "Comma-separated list of credit card platform names used for purchases.",
-        "fields": [
-            {
-                "key": "credit_platforms",
-                "label": "Platforms",
-                "input_type": "text",
-                "placeholder": "e.g. Stripe, PayPal, Wise",
+                "placeholder": "jess@wago.com",
             },
         ],
     },
@@ -265,9 +252,13 @@ class SystemConfigView(AdminRequiredMixin, TemplateView):
                     if input_type == "number":
                         coerced = float(raw_value) if raw_value else None
                         value_to_store = coerced
+                    elif input_type == "email":
+                        if raw_value:
+                            validate_email(raw_value)
+                        value_to_store = raw_value
                     else:
                         value_to_store = raw_value
-                except ValueError:
+                except (ValueError, ValidationError):
                     errors.append(f"Invalid value for '{field['label']}'.")
                     continue
 
@@ -292,6 +283,8 @@ class SystemConfigView(AdminRequiredMixin, TemplateView):
             )
 
         if request.headers.get("HX-Request"):
+            if errors:
+                return HttpResponse("; ".join(errors), status=400)
             return HttpResponse(
                 status=204,
                 headers={"HX-Trigger": "configSaved"},
@@ -357,7 +350,7 @@ class AuditLogsView(AdminRequiredMixin, TemplateView):
         date_from: str,
         date_to: str,
     ) -> dict:
-        qs = EmailNotificationLog.objects.order_by("-created_at")
+        qs = EmailOutbox.objects.order_by("-created_at")
 
         status_filter = request.GET.get("email_status", "").strip()
         if status_filter:
@@ -378,8 +371,11 @@ class AuditLogsView(AdminRequiredMixin, TemplateView):
             "email_status_choices": [
                 ("", "All statuses"),
                 ("pending", "Pending"),
+                ("processing", "Processing"),
+                ("drafted", "Drafted"),
                 ("sent", "Sent"),
                 ("failed", "Failed"),
+                ("cancelled", "Cancelled"),
             ],
         }
 
@@ -406,7 +402,18 @@ def update_user_role(request: HttpRequest, pk: int) -> HttpResponse:
 
     selected_permissions = _selected_permissions_from_post(request)
     is_active = request.POST.get("is_active") == "on"
+    email = request.POST.get("email", "").strip()
     requested_admin = selected_permissions["is_admin"]
+
+    if email:
+        try:
+            validate_email(email)
+        except ValidationError:
+            return HttpResponse(
+                '<span class="text-red-600 text-xs font-medium">Enter a valid email address.</span>',
+                status=400,
+                content_type="text/html",
+            )
 
     if requested_admin:
         _clear_non_admin_permissions(selected_permissions)
@@ -416,7 +423,8 @@ def update_user_role(request: HttpRequest, pk: int) -> HttpResponse:
             for field, value in selected_permissions.items():
                 setattr(profile, field, value)
             target_user.is_active = is_active
-            target_user.save(update_fields=["is_active"])
+            target_user.email = email
+            target_user.save(update_fields=["is_active", "email"])
             profile.save()
     except ValidationError as exc:
         logger.warning(
@@ -543,7 +551,9 @@ def _validate_create_user_input(username: str, email: str, password: str) -> lis
     elif User.objects.filter(username__iexact=username).exists():
         errors.append("Username already exists.")
 
-    if email:
+    if not email:
+        errors.append("Email is required for workflow notifications.")
+    else:
         try:
             validate_email(email)
         except ValidationError:

@@ -90,7 +90,7 @@ can_user_approve(obj, user) → (bool, reason)
 
 ### core/services/
 ```
-email_service.py     → notify_submission, notify_pcm_approved, notify_final_approved, notify_rejected
+outbox_email_service.py → queue PR, Payment, Goods Receive, and completion notifications
 request_number_service.py → generate_request_number(prefix) → "PR-YYYYMMDD-XXXX"
 file_service.py      → validate_file, save_attachment, get_attachments
 ```

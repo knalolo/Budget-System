@@ -49,28 +49,6 @@ def test_db() -> None:
     )
 
 
-@debug_group.command("test-email")
-@click.argument("to_address")
-def test_email(to_address: str) -> None:
-    """Display email configuration (sending test emails requires server support)."""
-    api_url = get_api_url()
-    token = get_token()
-    print_warning("Note: A dedicated test-email API endpoint is not exposed.")
-    print_detail(
-        {
-            "API URL": api_url,
-            "Authenticated": "Yes" if token else "No",
-            "Would send to": to_address,
-        },
-        title="Email Test (Config Display)",
-    )
-    click.echo(
-        "To test email delivery, use the Django management command:\n"
-        "  python manage.py shell -c \"from django.core.mail import send_mail; "
-        f"send_mail('Test', 'Hello', None, ['{to_address}'])\""
-    )
-
-
 @debug_group.command("seed")
 def seed() -> None:
     """Seed the database with sample data (requires server-side management command)."""

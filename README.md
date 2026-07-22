@@ -51,7 +51,7 @@ Visit `http://localhost:8000`. In dev mode, use `/auth/dev-login/` for quick acc
 
 ```bash
 cp .env.example .env
-# Edit .env with production values (SECRET_KEY, DB_PASSWORD, Azure AD, SMTP...)
+# Edit .env with production values (SECRET_KEY, DB_PASSWORD, Azure AD, Outlook...)
 
 docker compose up -d --build
 ```
@@ -126,7 +126,7 @@ All purchase requests and payment releases flow through the same generic two-lev
 ```
 accounts (UserProfile, SSO)
     ↓
-core (FileAttachment, SystemConfig, EmailNotificationLog, services)
+core (FileAttachment, SystemConfig, EmailOutbox, services)
     ↓
 approvals (ApprovalLog, generic two-level approval engine)
     ↓
@@ -140,7 +140,7 @@ deliveries (DeliverySubmission)                      assets (AssetRegistration, 
 | Pattern | How It's Used |
 |---------|--------------|
 | 🧩 **Service Layer** | Business logic in `{app}/services.py`, not in views |
-| 🔗 **GenericForeignKey** | `FileAttachment`, `ApprovalLog`, `EmailNotificationLog` attach to any model |
+| 🔗 **GenericForeignKey** | `FileAttachment` and `ApprovalLog` attach to workflow models |
 | 🎛️ **Generic Approval Engine** | Any model with required fields becomes "approvable" via `approvals/services.py` |
 | ⚙️ **Split Settings** | `base.py` (shared) / `development.py` (SQLite) / `production.py` (PostgreSQL + security) |
 | 🔢 **Auto Request Numbers** | `PR-YYYYMMDD-XXXX`, `RP-YYYYMMDD-XXXX`, `DO-YYYYMMDD-XXXX` sequences |
@@ -156,7 +156,7 @@ deliveries (DeliverySubmission)                      assets (AssetRegistration, 
 | 🎨 Frontend | Django Templates, HTMX, Alpine.js, Tailwind CSS (CDN) |
 | 🐘 Database | PostgreSQL 16 (production), SQLite (development) |
 | 🔐 Auth | MSAL (Microsoft 365 SSO), DRF Token Auth |
-| 📧 Email | SMTP (Office 365), templated HTML notifications |
+| 📧 Email | Local Outlook desktop worker with a durable `EmailOutbox` queue |
 | 💻 CLI | Click, Rich, httpx |
 | 🧪 Testing | pytest, pytest-django, factory_boy, pytest-cov |
 | 🔍 Linting | Ruff |
@@ -247,10 +247,10 @@ Budget-System/
 │       ├── development.py #    SQLite, DEBUG=True
 │       └── production.py  #    PostgreSQL, security headers
 ├── core/                  # 🧩 Shared models & services
-│   ├── models.py          #    FileAttachment, SystemConfig, EmailNotificationLog
+│   ├── models.py          #    FileAttachment, SystemConfig, EmailOutbox
 │   ├── permissions.py     #    Role-based permission helpers
 │   └── services/
-│       ├── email_service.py
+│       ├── outbox_email_service.py
 │       ├── file_service.py
 │       └── request_number_service.py
 ├── deliveries/            # 📦 Delivery/SO submission tracking
@@ -300,13 +300,9 @@ Budget-System/
 | `AZURE_AD_CLIENT_ID` | Application client ID | — |
 | `AZURE_AD_CLIENT_SECRET` | Application client secret | — |
 | `AZURE_AD_REDIRECT_URI` | OAuth redirect URI | — |
-| **Email (SMTP)** | | |
-| `EMAIL_HOST` | SMTP server | `smtp.office365.com` |
-| `EMAIL_PORT` | SMTP port | `587` |
-| `EMAIL_USE_TLS` | Enable TLS | `True` |
-| `EMAIL_HOST_USER` | SMTP username | — |
-| `EMAIL_HOST_PASSWORD` | SMTP password | — |
-| `DEFAULT_FROM_EMAIL` | From address | — |
+| **Outlook EmailOutbox** | | |
+| `OUTLOOK_EMAIL_ENABLED` | Allow queue creation and worker processing | `False` |
+| `OUTLOOK_FROM_MAILBOX` | Shared Outlook mailbox | `SGRDPR@WAGO.com` |
 | **Docker / Gunicorn** | | |
 | `GUNICORN_WORKERS` | Worker processes | `3` |
 | `GUNICORN_TIMEOUT` | Request timeout (seconds) | `120` |
@@ -325,10 +321,23 @@ Editable from the admin panel — no redeployment needed:
 | `po_threshold_sgd` | PO required above (SGD) | 1,300 |
 | `po_threshold_usd` | PO required above (USD) | 900 |
 | `po_threshold_eur` | PO required above (EUR) | 800 |
-| `notify_li_mei_email` | Notification recipient | — |
-| `notify_jolly_email` | Notification recipient | — |
-| `notify_jess_email` | Notification recipient | — |
-| `credit_platforms` | Pre-approved credit vendors | Digikey, RS Components, Element14 |
+| `notify_li_mei_email` | Finance notification recipient | `limei@wago.com` |
+| `notify_jolly_email` | PO notification recipient | `jolly@wago.com` |
+| `notify_jess_email` | Goods Receive CC recipient | `jess@wago.com` |
+
+### Outlook Worker
+
+Workflow events are written to `EmailOutbox`. The worker is blocked while
+`OUTLOOK_EMAIL_ENABLED=False`. After the Host Outlook profile, shared-mailbox
+permission, user emails, and notification recipients are confirmed, set the
+flag to `True` and run one batch with:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py send_outlook_outbox --send --limit 10
+```
+
+Use the same command as a Windows Task Scheduler action for recurring delivery.
+Configure the task not to start a second instance while the previous run is active.
 
 ---
 

@@ -10,8 +10,8 @@ from django.urls import reverse
 def test_login_view_authenticates_with_local_email_password(client):
     user = User.objects.create_user(
         username="yimeng.wang",
-        email="Yimeng.Wang@wago.com",
-        password="Yimeng.Wang@wago.com",
+        email="yimeng.wang@example.test",
+        password="yimeng.wang@example.test",
         first_name="YIMENG",
         last_name="WANG",
     )
@@ -23,8 +23,8 @@ def test_login_view_authenticates_with_local_email_password(client):
         reverse("accounts:login"),
         data={
             "login_method": "local",
-            "identifier": "Yimeng.Wang@wago.com",
-            "password": "Yimeng.Wang@wago.com",
+            "identifier": "yimeng.wang@example.test",
+            "password": "yimeng.wang@example.test",
         },
     )
 
@@ -36,15 +36,15 @@ def test_login_view_authenticates_with_local_email_password(client):
 def test_login_view_rejects_bad_local_password(client):
     User.objects.create_user(
         username="yimeng.wang",
-        email="Yimeng.Wang@wago.com",
-        password="Yimeng.Wang@wago.com",
+        email="yimeng.wang@example.test",
+        password="yimeng.wang@example.test",
     )
 
     response = client.post(
         reverse("accounts:login"),
         data={
             "login_method": "local",
-            "identifier": "Yimeng.Wang@wago.com",
+            "identifier": "yimeng.wang@example.test",
             "password": "wrong-password",
         },
         follow=True,
@@ -92,8 +92,8 @@ def test_login_view_can_switch_from_existing_session(client):
     )
     requester = User.objects.create_user(
         username="yimeng.wang",
-        email="Yimeng.Wang@wago.com",
-        password="Yimeng.Wang@wago.com",
+        email="yimeng.wang@example.test",
+        password="yimeng.wang@example.test",
         first_name="YIMENG",
         last_name="WANG",
     )
@@ -103,8 +103,8 @@ def test_login_view_can_switch_from_existing_session(client):
         reverse("accounts:login"),
         data={
             "login_method": "local",
-            "identifier": "Yimeng.Wang@wago.com",
-            "password": "Yimeng.Wang@wago.com",
+            "identifier": "yimeng.wang@example.test",
+            "password": "yimeng.wang@example.test",
         },
     )
 

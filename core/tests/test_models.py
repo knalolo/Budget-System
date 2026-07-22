@@ -1,7 +1,7 @@
 """Unit tests for core app models."""
 import pytest
 
-from core.models import EmailNotificationLog, FileAttachment, SystemConfig
+from core.models import EmailOutbox, FileAttachment, SystemConfig
 
 
 # ---------------------------------------------------------------------------
@@ -87,38 +87,37 @@ class TestFileAttachment:
 
 
 # ---------------------------------------------------------------------------
-# EmailNotificationLog
+# EmailOutbox
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-class TestEmailNotificationLog:
-    def test_create_email_log(self):
-        log = EmailNotificationLog.objects.create(
-            recipients=["user@example.com"],
-            cc_recipients=[],
+class TestEmailOutbox:
+    def test_create_email_outbox_item(self):
+        log = EmailOutbox.objects.create(
+            to_emails="user@example.test",
             subject="Test Email",
-            body="Test body",
+            body_html="<p>Test body</p>",
             status="sent",
         )
         assert log.pk is not None
         assert log.status == "sent"
 
     def test_default_status_is_pending(self):
-        log = EmailNotificationLog.objects.create(
-            recipients=["user@example.com"],
+        log = EmailOutbox.objects.create(
+            to_emails="user@example.test",
             subject="Test",
-            body="Body",
+            body_html="<p>Body</p>",
         )
         assert log.status == "pending"
 
     def test_str_representation(self):
-        log = EmailNotificationLog.objects.create(
-            recipients=["alice@example.com"],
+        log = EmailOutbox.objects.create(
+            to_emails="alice@example.test",
             subject="Hello",
-            body="World",
+            body_html="<p>World</p>",
             status="sent",
         )
         result = str(log)
         assert "Hello" in result
-        assert "alice@example.com" in result
+        assert "alice@example.test" in result

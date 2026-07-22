@@ -5,10 +5,9 @@ Extends base settings with development-specific overrides:
 - DEBUG enabled
 - SQLite database (no external dependency)
 - All hosts allowed
-- Console email backend
+- Outlook outbox disabled unless explicitly enabled
 - Additional debugging tools
 """
-import os
 from pathlib import Path
 
 from .base import *  # noqa: F401, F403
@@ -38,15 +37,6 @@ DATABASES = {
         "NAME": BASE_DIR / "db.sqlite3",
     }
 }
-
-# ---------------------------------------------------------------------------
-# Email — print to console
-# ---------------------------------------------------------------------------
-
-if os.environ.get("DEV_EMAIL_USE_SMTP", "False") == "True":
-    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
-else:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # ---------------------------------------------------------------------------
 # CORS — allow everything in development

@@ -23,10 +23,10 @@ from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from .models import (
-    ACTION_FIRST_STAGE_APPROVED,
-    ACTION_FIRST_STAGE_REJECTED,
     ACTION_FINAL_APPROVED,
     ACTION_FINAL_REJECTED,
+    ACTION_FIRST_STAGE_APPROVED,
+    ACTION_FIRST_STAGE_REJECTED,
     ACTION_STATUS_CHANGED,
     ACTION_SUBMITTED,
     ApprovalLog,
@@ -184,7 +184,7 @@ def submit_for_approval(request_obj):
     request_obj.status = STATUS_PENDING_FIRST_APPROVER
     request_obj.save()
 
-    _create_log(
+    submission_log = _create_log(
         obj=request_obj,
         action=ACTION_SUBMITTED,
         actor=requester,
@@ -199,6 +199,11 @@ def submit_for_approval(request_obj):
         requester.pk,
     )
 
+    _fire_notification(
+        request_obj,
+        ACTION_SUBMITTED,
+        event_key=f"approval-log:{submission_log.pk}",
+    )
     return request_obj
 
 
@@ -267,7 +272,7 @@ def _process_first_stage_level(request_obj, approver, decision, comment, now, ol
     request_obj.status = new_status
     request_obj.save()
 
-    _create_log(
+    decision_log = _create_log(
         obj=request_obj,
         action=action,
         actor=approver,
@@ -284,7 +289,11 @@ def _process_first_stage_level(request_obj, approver, decision, comment, now, ol
         decision,
     )
 
-    _fire_notification(request_obj, action, old_status, new_status)
+    _fire_notification(
+        request_obj,
+        action,
+        event_key=f"approval-log:{decision_log.pk}",
+    )
 
     return request_obj
 
@@ -306,7 +315,7 @@ def _process_final_level(request_obj, approver, decision, comment, now, old_stat
     request_obj.status = new_status
     request_obj.save()
 
-    _create_log(
+    decision_log = _create_log(
         obj=request_obj,
         action=action,
         actor=approver,
@@ -323,7 +332,11 @@ def _process_final_level(request_obj, approver, decision, comment, now, old_stat
         decision,
     )
 
-    _fire_notification(request_obj, action, old_status, new_status)
+    _fire_notification(
+        request_obj,
+        action,
+        event_key=f"approval-log:{decision_log.pk}",
+    )
 
     return request_obj
 
@@ -331,8 +344,7 @@ def _process_final_level(request_obj, approver, decision, comment, now, old_stat
 def _fire_notification(
     request_obj,
     action: str,
-    old_status: str,
-    new_status: str,
+    event_key: str,
 ) -> None:
     """
     Fire an email notification for the given action without raising exceptions.
@@ -340,8 +352,9 @@ def _fire_notification(
     Imported lazily to prevent circular imports between core and approvals.
     """
     try:
-        from core.services.email_service import trigger_post_approval_notification
-        trigger_post_approval_notification(request_obj, action, old_status, new_status)
+        from core.services.outbox_email_service import queue_approval_event
+
+        queue_approval_event(request_obj, action, event_key)
     except Exception as exc:  # noqa: BLE001
         logger.error(
             "_fire_notification failed for %s #%s action=%r: %s",
@@ -390,8 +403,10 @@ def can_user_approve(request_obj, user) -> tuple[bool, str]:
 
     if current_status == STATUS_PENDING_FIRST_APPROVER:
         if not _user_can_handle_first_stage(profile, request_obj):
+            role_label = _first_approver_role_label(request_obj)
             return False, (
-                f"Only the assigned { _first_approver_role_label(request_obj) } can review this item at the Purchase Type approval stage."
+                f"Only the assigned {role_label} can review this item at the "
+                "Purchase Type approval stage."
             )
         return True, "User may approve at the Purchase Type approval stage."
 

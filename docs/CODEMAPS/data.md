@@ -24,11 +24,11 @@ SystemConfig
   key (unique), value (JSON-encoded TextField), description
   Class methods: get_value(key, default), set_value(key, value)
 
-EmailNotificationLog [GenericFK → any model, optional]
-  content_type + object_id (both nullable)
-  recipients (JSONField), cc_recipients (JSONField), subject, body
-  status: pending|sent|failed
-  Index: status, (content_type, object_id)
+EmailOutbox
+  event_type + event_key, from_mailbox, to_emails, cc_emails
+  subject, body_html, attachment_paths
+  status: pending|processing|drafted|sent|failed|cancelled
+  Index: status + created_at, event_type + event_key
 ```
 
 ### orders
@@ -111,7 +111,7 @@ PaymentRelease ──1:N──→ AssetRegistration
 ContentType + object_id (GenericFK):
   FileAttachment → PurchaseRequest, PaymentRelease, DeliverySubmission
   ApprovalLog → PurchaseRequest, PaymentRelease
-  EmailNotificationLog → PurchaseRequest, PaymentRelease
+  EmailOutbox stores stable workflow event keys instead of GenericFK relations
 ```
 
 ## Migration Count by App

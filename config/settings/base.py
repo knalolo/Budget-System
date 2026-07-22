@@ -209,12 +209,8 @@ AZURE_AD_SCOPES = ["User.Read"]
 # Email settings
 # ---------------------------------------------------------------------------
 
-EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.office365.com")
-EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
-EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
-EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
-EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
-DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER)
+OUTLOOK_EMAIL_ENABLED = os.environ.get("OUTLOOK_EMAIL_ENABLED", "False").lower() == "true"
+OUTLOOK_FROM_MAILBOX = os.environ.get("OUTLOOK_FROM_MAILBOX", "SGRDPR@WAGO.com")
 
 # ---------------------------------------------------------------------------
 # Domain constants

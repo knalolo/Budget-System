@@ -10,7 +10,6 @@ from django.utils import timezone
 import approvals.services as approval_service
 from approvals.models import ACTION_STATUS_CHANGED, ApprovalLog
 from core.models import SystemConfig
-from core.services.email_service import notify_submission
 
 logger = logging.getLogger(__name__)
 
@@ -105,15 +104,6 @@ def submit_purchase_request(purchase_request):
         purchase_request.pk,
         purchase_request.po_required,
     )
-
-    try:
-        notify_submission(purchase_request, "purchase_request")
-    except Exception as exc:  # noqa: BLE001
-        logger.error(
-            "Failed to send submission notification for PurchaseRequest #%s: %s",
-            purchase_request.pk,
-            exc,
-        )
 
     return purchase_request
 

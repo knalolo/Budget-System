@@ -21,14 +21,9 @@ _DEFAULT_SYSTEM_CONFIGS: list[tuple[str, object, str]] = [
     ("po_threshold_eur", 800, "PO approval threshold in EUR"),
     ("po_threshold_sgd", 1300, "PO approval threshold in SGD"),
     ("po_threshold_usd", 900, "PO approval threshold in USD"),
-    ("notify_li_mei_email", "", "Notification email for Li Mei"),
-    ("notify_jolly_email", "", "Notification email for Jolly"),
-    ("notify_jess_email", "", "Notification email for Jess"),
-    (
-        "credit_platforms",
-        ["Digikey", "RS Components", "Element14"],
-        "Vendors that support credit-term purchasing",
-    ),
+    ("notify_li_mei_email", "limei@wago.com", "Notification email for Li Mei"),
+    ("notify_jolly_email", "jolly@wago.com", "Notification email for Jolly"),
+    ("notify_jess_email", "jess@wago.com", "Notification email for Jess"),
 ]
 
 _DEFAULT_EXPENSE_CATEGORIES: list[str] = [
