@@ -2,6 +2,8 @@
 
 import logging
 import re
+from datetime import date
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -110,6 +112,21 @@ class PaymentRelease(models.Model):
     final_comment = models.TextField(blank=True)
     final_decided_at = models.DateTimeField(null=True, blank=True)
 
+    # --- Approval-time SGD snapshot ---
+    approved_amount_sgd = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+    approval_fx_rate = models.DecimalField(
+        max_digits=18,
+        decimal_places=8,
+        null=True,
+        blank=True,
+    )
+    approval_fx_date = models.DateField(null=True, blank=True)
+
     # --- Timestamps ---
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -194,6 +211,17 @@ class PaymentRelease(models.Model):
                     return synced_number
 
         return generate_request_number("RP")
+
+    def capture_approval_sgd_amount(self, *, approved_on: date | None = None) -> None:
+        """Freeze the SGD value used for budget reporting at final approval."""
+        from core.services.exchange_rate_service import get_latest_rate_to_sgd
+
+        rate = get_latest_rate_to_sgd(self.currency)
+        self.approval_fx_rate = rate
+        self.approved_amount_sgd = (
+            Decimal(str(self.total_price)) * rate
+        ).quantize(Decimal("0.01"))
+        self.approval_fx_date = approved_on or date.today()
 
     # ------------------------------------------------------------------
     # Status properties

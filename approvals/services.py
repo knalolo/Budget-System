@@ -308,6 +308,20 @@ def _process_final_level(request_obj, approver, decision, comment, now, old_stat
     if decision == DECISION_APPROVED:
         new_status = STATUS_APPROVED
         action = ACTION_FINAL_APPROVED
+        capture_sgd_amount = getattr(request_obj, "capture_approval_sgd_amount", None)
+        if capture_sgd_amount is not None:
+            try:
+                capture_sgd_amount(approved_on=timezone.localdate(now))
+            except RuntimeError as exc:
+                # Approval must not depend on the availability of an external FX
+                # service. Missing legacy/snapshot values are surfaced by the
+                # dashboard and can be backfilled later.
+                logger.warning(
+                    "Could not capture approval-time SGD value for %s #%s: %s",
+                    type(request_obj).__name__,
+                    request_obj.pk,
+                    exc,
+                )
     else:
         new_status = STATUS_REJECTED
         action = ACTION_FINAL_REJECTED

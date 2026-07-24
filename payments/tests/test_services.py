@@ -381,11 +381,18 @@ class TestApprovePaymentRelease:
         assert updated.pcm_decision == "approved"
 
     def test_final_approval_transitions_to_approved(self):
-        pr = PaymentReleaseFactory(status="pending_final")
+        pr = PaymentReleaseFactory(
+            status="pending_final",
+            currency="SGD",
+            total_price=321.45,
+        )
         approver = UserFactory()
         updated = approve_payment_release(pr, approver)
         assert updated.status == "approved"
         assert updated.final_decision == "approved"
+        assert updated.approved_amount_sgd == Decimal("321.45")
+        assert updated.approval_fx_rate == Decimal("1")
+        assert updated.approval_fx_date is not None
 
     def test_approval_with_comment(self):
         pr = PaymentReleaseFactory(status="pending_pcm")

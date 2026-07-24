@@ -25,6 +25,9 @@ class PaymentReleaseAdmin(admin.ModelAdmin):
         "updated_at",
         "pcm_decided_at",
         "final_decided_at",
+        "approved_amount_sgd",
+        "approval_fx_rate",
+        "approval_fx_date",
     ]
     fieldsets = [
         (
@@ -70,6 +73,9 @@ class PaymentReleaseAdmin(admin.ModelAdmin):
                     "final_decision",
                     "final_comment",
                     "final_decided_at",
+                    "approved_amount_sgd",
+                    "approval_fx_rate",
+                    "approval_fx_date",
                 ]
             },
         ),
