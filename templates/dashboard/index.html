@@ -40,8 +40,8 @@
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
             <div class="flex items-start justify-between gap-4">
                 <div>
-                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Completed Spend by Year</p>
-                    <p class="mt-1 text-xs text-gray-500">Completed PR + Goods recieve + approved payment. SGD only.</p>
+                    <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Budget by Fiscal Year</p>
+                    <p class="mt-1 text-xs text-gray-500">Published budget, approved payments, open commitments, and available balance. SGD.</p>
                 </div>
                 <div class="flex-shrink-0 w-9 h-9 rounded-lg bg-indigo-50 flex items-center justify-center">
                     <svg class="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
@@ -55,18 +55,42 @@
                 <div class="rounded-lg border border-gray-200 bg-gray-50/70 p-3">
                     <div class="flex items-center justify-between gap-3">
                         <h3 class="text-sm font-semibold text-gray-900">{{ yearly_spend.year }}</h3>
-                        <div class="text-right">
-                            <p class="text-xs font-medium uppercase tracking-wide text-gray-500">Total</p>
-                            <p class="text-sm font-bold text-gray-900">SGD {{ yearly_spend.total_sgd|floatformat:2 }}</p>
+                        <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-right text-xs sm:grid-cols-4">
+                            <div>
+                                <p class="font-medium uppercase tracking-wide text-gray-500">Budget</p>
+                                <p class="font-bold text-gray-900">{{ yearly_spend.total_budget_sgd|floatformat:2 }}</p>
+                            </div>
+                            <div>
+                                <p class="font-medium uppercase tracking-wide text-gray-500">Actual</p>
+                                <p class="font-bold text-gray-900">{{ yearly_spend.total_actual_sgd|floatformat:2 }}</p>
+                            </div>
+                            <div>
+                                <p class="font-medium uppercase tracking-wide text-gray-500">Committed</p>
+                                <p class="font-bold text-gray-900">{{ yearly_spend.total_committed_sgd|floatformat:2 }}</p>
+                            </div>
+                            <div>
+                                <p class="font-medium uppercase tracking-wide text-gray-500">Available</p>
+                                <p class="font-bold {% if yearly_spend.total_available_sgd < 0 %}text-red-600{% else %}text-green-700{% endif %}">
+                                    {{ yearly_spend.total_available_sgd|floatformat:2 }}
+                                </p>
+                            </div>
                         </div>
                     </div>
+                    {% if yearly_spend.fx_missing_count %}
+                    <p class="mt-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                        {{ yearly_spend.fx_missing_count }} item(s) are excluded because an SGD exchange rate is unavailable.
+                    </p>
+                    {% endif %}
                     <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white">
                         <table class="min-w-full divide-y divide-gray-200 text-xs">
                             <thead class="bg-gray-50">
                                 <tr>
                                     <th class="px-3 py-2 text-left font-semibold uppercase tracking-wide text-gray-500">MC Number</th>
                                     <th class="px-3 py-2 text-left font-semibold uppercase tracking-wide text-gray-500">Project</th>
-                                    <th class="px-3 py-2 text-right font-semibold uppercase tracking-wide text-gray-500">Spend</th>
+                                    <th class="px-3 py-2 text-right font-semibold uppercase tracking-wide text-gray-500">Budget</th>
+                                    <th class="px-3 py-2 text-right font-semibold uppercase tracking-wide text-gray-500">Actual</th>
+                                    <th class="px-3 py-2 text-right font-semibold uppercase tracking-wide text-gray-500">Committed</th>
+                                    <th class="px-3 py-2 text-right font-semibold uppercase tracking-wide text-gray-500">Available</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-gray-200 bg-white">
@@ -74,7 +98,13 @@
                                 <tr>
                                     <td class="px-3 py-2 font-mono text-gray-900">{{ project_row.mc_number }}</td>
                                     <td class="px-3 py-2 text-gray-700">{{ project_row.project_name }}</td>
-                                    <td class="px-3 py-2 text-right font-medium text-gray-900">SGD {{ project_row.amount_sgd|floatformat:2 }}</td>
+                                    <td class="px-3 py-2 text-right text-gray-900">{{ project_row.budget_sgd|floatformat:2 }}</td>
+                                    <td class="px-3 py-2 text-right text-gray-900">{{ project_row.actual_sgd|floatformat:2 }}</td>
+                                    <td class="px-3 py-2 text-right text-gray-900">{{ project_row.committed_sgd|floatformat:2 }}</td>
+                                    <td class="px-3 py-2 text-right font-semibold {% if project_row.available_sgd < 0 %}text-red-600{% else %}text-green-700{% endif %}">
+                                        {{ project_row.available_sgd|floatformat:2 }}
+                                        {% if project_row.fx_missing %}<span title="FX rate missing">*</span>{% endif %}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>

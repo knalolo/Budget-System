@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.db.models import Exists, OuterRef, Q, Sum
+from django.db.models import Q, Sum
 from django.urls import reverse
 from django.views.generic import TemplateView
 
@@ -302,11 +303,8 @@ def _build_requester_action_items(user):
 
     def _append_purchase_request_progress_item(purchase_request, *, priority: int):
         latest_payment = purchase_request.latest_payment_release
-        submitted_payment = purchase_request.latest_submitted_payment_release
         payment_draft = purchase_request.latest_payment_draft
         open_delivery_submission = purchase_request.latest_open_delivery_submission
-        latest_delivery_submission = purchase_request.latest_delivery_submission
-        has_submitted_payment = submitted_payment is not None
 
         if purchase_request.workflow_completed:
             return
@@ -345,7 +343,8 @@ def _build_requester_action_items(user):
             label = "Goods recieve Still Required"
             if payment_draft:
                 detail = (
-                    "A payment draft already exists for this request. Goods recieve is still required before the workflow can finish."
+                    "A payment draft already exists for this request. "
+                    "Goods recieve is still required before the workflow can finish."
                 )
                 secondary_text = "Open Payment Draft"
                 secondary_url = _payment_edit_url(payment_draft)
@@ -599,87 +598,181 @@ def _build_requester_waiting_items(user):
     return sorted(waiting_items, key=lambda item: -item["object"].updated_at.timestamp())
 
 
-def _empty_project_spend_row(project):
+def _fiscal_year(value, *, fallback_date) -> int:
+    """Resolve a fiscal year from a target-payment value or fallback date."""
+    match = re.search(r"\b(20\d{2})\b", str(value or ""))
+    if match:
+        return int(match.group(1))
+    return fallback_date.year
+
+
+def _safe_amount_to_sgd(amount, currency: str) -> Decimal | None:
+    try:
+        return convert_amount_to_sgd(amount, currency)
+    except RuntimeError:
+        return None
+
+
+def _payment_amount_sgd(payment) -> Decimal | None:
+    if payment.approved_amount_sgd is not None:
+        return payment.approved_amount_sgd
+    if payment.currency == "SGD":
+        return Decimal(str(payment.total_price))
+    # Never recalculate historical actuals with today's FX rate. Legacy foreign
+    # payments remain explicitly missing until a one-time snapshot is supplied.
+    return None
+
+
+def _empty_project_budget_row(project):
     return {
         "mc_number": project.mc_number,
         "project_name": project.name,
-        "amount_sgd": _ZERO_DECIMAL,
+        "budget_sgd": _ZERO_DECIMAL,
+        "actual_sgd": _ZERO_DECIMAL,
+        "committed_sgd": _ZERO_DECIMAL,
+        "available_sgd": _ZERO_DECIMAL,
+        "budget_status": "",
+        "fx_missing": False,
     }
 
 
-def _build_completed_yearly_spend_rows():
-    """Return yearly SGD spend summaries for completed PR flows."""
-    from orders.models import Project, PurchaseRequest
+def _build_yearly_budget_rows():
+    """Return fiscal-year budget, actual spend, commitment, and balance rows."""
+    from orders.models import Project, ProjectAnnualBudget, PurchaseRequest
+    from payments.models import PaymentRelease
 
     projects = list(Project.objects.order_by("mc_number"))
     current_year = date.today().year
     year_buckets: dict[int, dict] = {}
-
-    completed_purchase_requests = (
-        PurchaseRequest.objects.select_related("project")
-        .prefetch_related("delivery_submissions", "payment_releases")
-        .order_by("-created_at")
-    )
 
     def _ensure_year(year: int) -> dict:
         if year not in year_buckets:
             year_buckets[year] = {
                 "year": year,
                 "projects": {
-                    project.mc_number: _empty_project_spend_row(project)
+                    project.pk: _empty_project_budget_row(project)
                     for project in projects
+                    if project.is_active
                 },
-                "total_sgd": _ZERO_DECIMAL,
+                "total_budget_sgd": _ZERO_DECIMAL,
+                "total_actual_sgd": _ZERO_DECIMAL,
+                "total_committed_sgd": _ZERO_DECIMAL,
+                "total_available_sgd": _ZERO_DECIMAL,
+                "fx_missing_count": 0,
             }
         return year_buckets[year]
 
     _ensure_year(current_year)
 
-    for purchase_request in completed_purchase_requests:
-        if not purchase_request.workflow_completed:
-            continue
+    for budget in ProjectAnnualBudget.objects.exclude(
+        status=ProjectAnnualBudget.STATUS_DRAFT
+    ).select_related("project"):
+        year_bucket = _ensure_year(budget.fiscal_year)
+        project_row = year_bucket["projects"].setdefault(
+            budget.project_id,
+            _empty_project_budget_row(budget.project),
+        )
+        project_row["budget_sgd"] = budget.amount_sgd
+        project_row["budget_status"] = budget.status
+        year_bucket["total_budget_sgd"] += budget.amount_sgd
 
-        year_bucket = _ensure_year(purchase_request.created_at.year)
-        try:
-            amount_sgd = convert_amount_to_sgd(
-                purchase_request.total_price,
-                purchase_request.currency,
-            )
-        except RuntimeError:
+    approved_payments = PaymentRelease.objects.filter(
+        status="approved"
+    ).select_related("project")
+    for payment in approved_payments:
+        fallback_date = payment.final_decided_at or payment.updated_at
+        fiscal_year = _fiscal_year(
+            payment.target_payment,
+            fallback_date=fallback_date,
+        )
+        year_bucket = _ensure_year(fiscal_year)
+        project_row = year_bucket["projects"].setdefault(
+            payment.project_id,
+            _empty_project_budget_row(payment.project),
+        )
+        amount_sgd = _payment_amount_sgd(payment)
+        if amount_sgd is None:
             logger.warning(
-                "Skipping yearly spend conversion for PR %s because %s -> SGD failed.",
-                purchase_request.request_number,
-                purchase_request.currency,
+                "Skipping budget actual for payment %s because %s -> SGD failed.",
+                payment.request_number,
+                payment.currency,
             )
+            project_row["fx_missing"] = True
+            year_bucket["fx_missing_count"] += 1
             continue
-        mc_number = purchase_request.project.mc_number
+        project_row["actual_sgd"] += amount_sgd
+        year_bucket["total_actual_sgd"] += amount_sgd
 
-        if mc_number not in year_bucket["projects"]:
-            year_bucket["projects"][mc_number] = {
-                "mc_number": mc_number,
-                "project_name": purchase_request.project.name,
-                "amount_sgd": _ZERO_DECIMAL,
-            }
-
-        year_bucket["projects"][mc_number]["amount_sgd"] += amount_sgd
-        year_bucket["total_sgd"] += amount_sgd
+    approved_prs = (
+        PurchaseRequest.objects.filter(status="approved")
+        .select_related("project")
+        .prefetch_related("delivery_submissions", "payment_releases")
+    )
+    for purchase_request in approved_prs:
+        if purchase_request.workflow_completed:
+            continue
+        fallback_date = (
+            purchase_request.final_decided_at
+            or purchase_request.updated_at
+        )
+        fiscal_year = _fiscal_year(
+            purchase_request.target_payment,
+            fallback_date=fallback_date,
+        )
+        year_bucket = _ensure_year(fiscal_year)
+        project_row = year_bucket["projects"].setdefault(
+            purchase_request.project_id,
+            _empty_project_budget_row(purchase_request.project),
+        )
+        pr_total_sgd = _safe_amount_to_sgd(
+            purchase_request.total_price,
+            purchase_request.currency,
+        )
+        approved_payment_values = [
+            _payment_amount_sgd(payment)
+            for payment in purchase_request.payment_releases.all()
+            if payment.status == "approved"
+        ]
+        if pr_total_sgd is None or any(
+            value is None for value in approved_payment_values
+        ):
+            project_row["fx_missing"] = True
+            year_bucket["fx_missing_count"] += 1
+            continue
+        committed_sgd = max(
+            pr_total_sgd - sum(approved_payment_values, _ZERO_DECIMAL),
+            _ZERO_DECIMAL,
+        )
+        project_row["committed_sgd"] += committed_sgd
+        year_bucket["total_committed_sgd"] += committed_sgd
 
     yearly_rows = []
     for year in sorted(year_buckets.keys(), reverse=True):
         bucket = year_buckets[year]
+        project_rows = sorted(
+            bucket["projects"].values(),
+            key=lambda row: row["mc_number"],
+        )
+        for project_row in project_rows:
+            project_row["available_sgd"] = (
+                project_row["budget_sgd"]
+                - project_row["actual_sgd"]
+                - project_row["committed_sgd"]
+            )
+        bucket["total_available_sgd"] = (
+            bucket["total_budget_sgd"]
+            - bucket["total_actual_sgd"]
+            - bucket["total_committed_sgd"]
+        )
         yearly_rows.append(
             {
                 "year": year,
-                "project_rows": [
-                    bucket["projects"][project.mc_number]
-                    for project in projects
-                    if project.mc_number in bucket["projects"]
-                ] + [
-                    row
-                    for mc_number, row in bucket["projects"].items()
-                    if mc_number not in {project.mc_number for project in projects}
-                ],
-                "total_sgd": bucket["total_sgd"],
+                "project_rows": project_rows,
+                "total_budget_sgd": bucket["total_budget_sgd"],
+                "total_actual_sgd": bucket["total_actual_sgd"],
+                "total_committed_sgd": bucket["total_committed_sgd"],
+                "total_available_sgd": bucket["total_available_sgd"],
+                "fx_missing_count": bucket["fx_missing_count"],
             }
         )
 
@@ -726,7 +819,6 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         pending_approvals_count = pr_pending_qs.count() + payment_pending_qs.count()
 
         today = date.today()
-        profile = _get_user_profile(user)
         user_role = _get_user_role(user)
         is_approver = _user_can_review_all_requests(user)
 
@@ -770,7 +862,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
         payment_spend_by_currency = _approved_payment_spend_this_month(user)
         total_spend_display = _format_spend_summary(pr_spend_by_currency)
         approved_payment_spend_display = _format_spend_summary(payment_spend_by_currency)
-        approver_yearly_spend_rows = _build_completed_yearly_spend_rows() if is_approver else []
+        approver_yearly_spend_rows = _build_yearly_budget_rows() if is_approver else []
 
         stats = {
             "total_prs": total_prs,

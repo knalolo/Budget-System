@@ -1,10 +1,13 @@
 """Integration tests for the custom admin panel."""
 
+from decimal import Decimal
+
 import pytest
 from django.contrib.auth.models import User
 from django.urls import reverse
 
 from core.models import SystemConfig
+from orders.models import ProjectAnnualBudget
 from orders.tests.factories import ProjectFactory, PurchaseRequestFactory
 
 
@@ -390,3 +393,112 @@ class TestProjectMasterDataManagement:
         assert response.status_code == 302
         project.refresh_from_db()
         assert project.is_active is False
+
+
+@pytest.mark.django_db
+class TestAnnualBudgetManagement:
+    def test_admin_config_renders_selected_budget_year(self, client, admin_user):
+        project = ProjectFactory(mc_number="MC009000")
+        ProjectAnnualBudget.objects.create(
+            project=project,
+            fiscal_year=2027,
+            amount_sgd=50000,
+            status="published",
+        )
+        client.force_login(admin_user)
+
+        response = client.get(
+            reverse("admin-panel:admin-config"),
+            {"budget_year": "2027"},
+        )
+
+        assert response.status_code == 200
+        content = response.content.decode()
+        assert "Annual Budget" in content
+        assert "MC009000" in content
+        assert "50000.00" in content
+
+    def test_admin_can_save_project_budget(self, client, admin_user):
+        project = ProjectFactory(mc_number="MC009001")
+        client.force_login(admin_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-budget-save"),
+            {
+                "project_id": project.pk,
+                "fiscal_year": "2027",
+                "amount_sgd": "125000.50",
+                "status": "published",
+                "notes": "Approved FY27 allocation",
+            },
+        )
+
+        assert response.status_code == 302
+        budget = ProjectAnnualBudget.objects.get(
+            project=project,
+            fiscal_year=2027,
+        )
+        assert budget.amount_sgd == Decimal("125000.50")
+        assert budget.status == "published"
+        assert budget.updated_by == admin_user
+
+    def test_copy_budget_keeps_existing_target_and_creates_missing_rows(
+        self,
+        client,
+        admin_user,
+    ):
+        first_project = ProjectFactory(mc_number="MC009101")
+        second_project = ProjectFactory(mc_number="MC009102")
+        ProjectAnnualBudget.objects.create(
+            project=first_project,
+            fiscal_year=2026,
+            amount_sgd=100,
+            status="published",
+        )
+        ProjectAnnualBudget.objects.create(
+            project=second_project,
+            fiscal_year=2026,
+            amount_sgd=200,
+            status="locked",
+        )
+        ProjectAnnualBudget.objects.create(
+            project=first_project,
+            fiscal_year=2027,
+            amount_sgd=999,
+            status="published",
+        )
+        client.force_login(admin_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-budget-copy"),
+            {"source_year": "2026", "target_year": "2027"},
+        )
+
+        assert response.status_code == 302
+        assert ProjectAnnualBudget.objects.get(
+            project=first_project,
+            fiscal_year=2027,
+        ).amount_sgd == Decimal("999.00")
+        copied = ProjectAnnualBudget.objects.get(
+            project=second_project,
+            fiscal_year=2027,
+        )
+        assert copied.amount_sgd == Decimal("200.00")
+        assert copied.status == "draft"
+
+    def test_non_admin_cannot_save_budget(self, client, regular_user):
+        project = ProjectFactory()
+        client.force_login(regular_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-budget-save"),
+            {
+                "project_id": project.pk,
+                "fiscal_year": "2027",
+                "amount_sgd": "100",
+                "status": "published",
+            },
+        )
+
+        assert response.status_code == 403
+        assert not ProjectAnnualBudget.objects.exists()

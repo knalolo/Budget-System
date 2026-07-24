@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -19,12 +21,13 @@ from django.db import transaction
 from django.db.models import Count
 from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
 from django.views.generic import ListView, TemplateView
 
 from accounts.models import UserProfile
 from approvals.models import ApprovalLog
 from core.models import EmailOutbox, SystemConfig
-from orders.models import Project
+from orders.models import Project, ProjectAnnualBudget
 
 logger = logging.getLogger(__name__)
 
@@ -228,12 +231,47 @@ class SystemConfigView(AdminRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        current_year = date.today().year
+        try:
+            budget_year = int(self.request.GET.get("budget_year", current_year))
+        except (TypeError, ValueError):
+            budget_year = current_year
+        budget_year = min(max(budget_year, 2000), 2100)
+
         context["sections"] = CONFIG_SECTIONS
         context["config_values"] = _load_config_values()
-        context["projects"] = (
+        projects = list(
             Project.objects.annotate(request_count=Count("purchaserequest"))
             .order_by("mc_number")
         )
+        budgets = {
+            budget.project_id: budget
+            for budget in ProjectAnnualBudget.objects.filter(
+                fiscal_year=budget_year
+            ).select_related("updated_by")
+        }
+        context["projects"] = projects
+        context["budget_year"] = budget_year
+        context["budget_year_options"] = sorted(
+            {
+                current_year - 1,
+                current_year,
+                current_year + 1,
+                current_year + 2,
+                budget_year,
+                *ProjectAnnualBudget.objects.values_list(
+                    "fiscal_year",
+                    flat=True,
+                ),
+            }
+        )
+        context["budget_rows"] = [
+            {
+                "project": project,
+                "budget": budgets.get(project.pk),
+            }
+            for project in projects
+        ]
         return context
 
     def post(self, request: HttpRequest, *args, **kwargs) -> HttpResponse:
@@ -723,3 +761,103 @@ def delete_project(request: HttpRequest, pk: int) -> HttpResponse:
         messages.success(request, f"MC Number {project_label} deleted.")
 
     return redirect("admin-panel:admin-config")
+
+
+def save_annual_budget(request: HttpRequest) -> HttpResponse:
+    """Create or update one project's annual SGD budget."""
+    if not request.user.is_authenticated or not _is_admin_user(request.user):
+        return HttpResponseForbidden("Permission denied.")
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    project = get_object_or_404(Project, pk=request.POST.get("project_id"))
+    raw_year = request.POST.get("fiscal_year", "").strip()
+    raw_amount = request.POST.get("amount_sgd", "").replace(",", "").strip()
+    status = request.POST.get(
+        "status",
+        ProjectAnnualBudget.STATUS_DRAFT,
+    ).strip()
+    notes = request.POST.get("notes", "").strip()
+
+    try:
+        fiscal_year = int(raw_year)
+        amount_sgd = Decimal(raw_amount)
+        if not 2000 <= fiscal_year <= 2100:
+            raise ValueError
+        if amount_sgd < 0:
+            raise InvalidOperation
+        if status not in dict(ProjectAnnualBudget.STATUS_CHOICES):
+            raise ValueError
+    except (InvalidOperation, TypeError, ValueError):
+        messages.error(
+            request,
+            "Budget year, non-negative SGD amount, and status are required.",
+        )
+        return redirect(f"{reverse('admin-panel:admin-config')}?budget_year={raw_year}")
+
+    budget, created = ProjectAnnualBudget.objects.update_or_create(
+        project=project,
+        fiscal_year=fiscal_year,
+        defaults={
+            "amount_sgd": amount_sgd,
+            "status": status,
+            "notes": notes,
+            "updated_by": request.user,
+        },
+    )
+    action = "created" if created else "updated"
+    messages.success(
+        request,
+        f"{fiscal_year} budget for {project.mc_number} {action}.",
+    )
+    return redirect(
+        f"{reverse('admin-panel:admin-config')}?budget_year={budget.fiscal_year}"
+    )
+
+
+def copy_annual_budgets(request: HttpRequest) -> HttpResponse:
+    """Copy missing project budgets from one fiscal year into another as drafts."""
+    if not request.user.is_authenticated or not _is_admin_user(request.user):
+        return HttpResponseForbidden("Permission denied.")
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    try:
+        source_year = int(request.POST.get("source_year", ""))
+        target_year = int(request.POST.get("target_year", ""))
+        if (
+            not 2000 <= source_year <= 2100
+            or not 2000 <= target_year <= 2100
+            or source_year == target_year
+        ):
+            raise ValueError
+    except (TypeError, ValueError):
+        messages.error(request, "Choose two different valid fiscal years.")
+        return redirect("admin-panel:admin-config")
+
+    existing_project_ids = set(
+        ProjectAnnualBudget.objects.filter(
+            fiscal_year=target_year
+        ).values_list("project_id", flat=True)
+    )
+    source_budgets = ProjectAnnualBudget.objects.filter(fiscal_year=source_year)
+    new_budgets = [
+        ProjectAnnualBudget(
+            project_id=source.project_id,
+            fiscal_year=target_year,
+            amount_sgd=source.amount_sgd,
+            status=ProjectAnnualBudget.STATUS_DRAFT,
+            notes=f"Copied from FY{source_year}.",
+            updated_by=request.user,
+        )
+        for source in source_budgets
+        if source.project_id not in existing_project_ids
+    ]
+    ProjectAnnualBudget.objects.bulk_create(new_budgets)
+    messages.success(
+        request,
+        f"Copied {len(new_budgets)} budget(s) from {source_year} to {target_year}; existing rows were kept.",
+    )
+    return redirect(
+        f"{reverse('admin-panel:admin-config')}?budget_year={target_year}"
+    )

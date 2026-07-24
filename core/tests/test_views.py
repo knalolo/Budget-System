@@ -4,13 +4,14 @@ import pytest
 from django.urls import reverse
 
 from deliveries.tests.factories import DeliverySubmissionFactory
+from orders.models import ProjectAnnualBudget
 from orders.tests.factories import ProjectFactory, PurchaseRequestFactory
 from payments.tests.factories import PaymentReleaseFactory
 
 
 @pytest.mark.django_db
 class TestDashboardView:
-    def test_approver_dashboard_shows_yearly_completed_spend_by_mc_number(
+    def test_approver_dashboard_shows_budget_actual_commitment_and_available_by_fiscal_year(
         self,
         client,
         pcm_approver,
@@ -27,6 +28,7 @@ class TestDashboardView:
             currency="SGD",
             total_price=100,
             ordered_quantity=5,
+            target_payment="2026-06-30",
         )
         completed_power = PurchaseRequestFactory(
             project=power_project,
@@ -34,13 +36,15 @@ class TestDashboardView:
             currency="USD",
             total_price=50,
             ordered_quantity=2,
+            target_payment="2026-06-30",
         )
-        incomplete_display = PurchaseRequestFactory(
+        PurchaseRequestFactory(
             project=display_project,
             status="approved",
             currency="SGD",
             total_price=300,
             ordered_quantity=3,
+            target_payment="2026-09-30",
         )
         future_sensor = PurchaseRequestFactory(
             project=sensor_project,
@@ -48,6 +52,7 @@ class TestDashboardView:
             currency="SGD",
             total_price=80,
             ordered_quantity=4,
+            target_payment="2027-03-31",
         )
 
         DeliverySubmissionFactory(
@@ -69,6 +74,7 @@ class TestDashboardView:
             payment_quantity=5,
             total_price=100,
             vendor=completed_general.vendor,
+            target_payment="2026-06-30",
         )
 
         DeliverySubmissionFactory(
@@ -90,6 +96,11 @@ class TestDashboardView:
             payment_quantity=2,
             total_price=50,
             vendor=completed_power.vendor,
+            currency="USD",
+            target_payment="2026-06-30",
+            approved_amount_sgd=100,
+            approval_fx_rate=2,
+            approval_fx_date="2026-06-30",
         )
 
         DeliverySubmissionFactory(
@@ -111,18 +122,37 @@ class TestDashboardView:
             payment_quantity=4,
             total_price=80,
             vendor=future_sensor.vendor,
+            target_payment="2027-03-31",
         )
         PurchaseRequestFactory(
             project=display_project,
             status="pending_pcm",
         )
 
-        completed_general.created_at = completed_general.updated_at = completed_general.created_at.replace(year=2026)
-        completed_general.save(update_fields=["created_at", "updated_at"])
-        completed_power.created_at = completed_power.updated_at = completed_power.created_at.replace(year=2026)
-        completed_power.save(update_fields=["created_at", "updated_at"])
-        future_sensor.created_at = future_sensor.updated_at = future_sensor.created_at.replace(year=2027)
-        future_sensor.save(update_fields=["created_at", "updated_at"])
+        ProjectAnnualBudget.objects.create(
+            project=general_project,
+            fiscal_year=2026,
+            amount_sgd=500,
+            status="published",
+        )
+        ProjectAnnualBudget.objects.create(
+            project=power_project,
+            fiscal_year=2026,
+            amount_sgd=600,
+            status="locked",
+        )
+        ProjectAnnualBudget.objects.create(
+            project=display_project,
+            fiscal_year=2026,
+            amount_sgd=700,
+            status="published",
+        )
+        ProjectAnnualBudget.objects.create(
+            project=sensor_project,
+            fiscal_year=2027,
+            amount_sgd=800,
+            status="published",
+        )
 
         def fake_convert(amount, currency):
             if currency == "USD":
@@ -139,20 +169,25 @@ class TestDashboardView:
         assert stats["total_prs"] == 5
         yearly_rows = stats["approver_yearly_spend_rows"]
         assert yearly_rows[0]["year"] == 2027
-        assert yearly_rows[0]["total_sgd"] == 80
+        assert yearly_rows[0]["total_budget_sgd"] == 800
+        assert yearly_rows[0]["total_actual_sgd"] == 80
+        assert yearly_rows[0]["total_available_sgd"] == 720
         assert yearly_rows[1]["year"] == 2026
-        assert yearly_rows[1]["total_sgd"] == 200
+        assert yearly_rows[1]["total_budget_sgd"] == 1800
+        assert yearly_rows[1]["total_actual_sgd"] == 200
+        assert yearly_rows[1]["total_committed_sgd"] == 300
+        assert yearly_rows[1]["total_available_sgd"] == 1300
         by_mc_2026 = {
-            row["mc_number"]: row["amount_sgd"]
+            row["mc_number"]: row
             for row in yearly_rows[1]["project_rows"]
         }
-        assert by_mc_2026["GENERAL"] == 100
-        assert by_mc_2026["MC004574"] == 100
-        assert by_mc_2026["MC004676"] == 0
-        assert by_mc_2026["MC004680"] == 0
+        assert by_mc_2026["GENERAL"]["actual_sgd"] == 100
+        assert by_mc_2026["MC004574"]["actual_sgd"] == 100
+        assert by_mc_2026["MC004676"]["committed_sgd"] == 300
+        assert by_mc_2026["MC004680"]["actual_sgd"] == 0
 
         content = response.content.decode()
-        assert "Completed Spend by Year" in content
+        assert "Budget by Fiscal Year" in content
         assert "Total Requests" not in content
         assert "Pending My Approval" not in content
         assert "Approved This Month" not in content

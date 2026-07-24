@@ -31,6 +31,58 @@ class Project(models.Model):
         return f"{self.mc_number} - {self.name}"
 
 
+class ProjectAnnualBudget(models.Model):
+    """An SGD budget allocation for one MC-numbered project and fiscal year."""
+
+    STATUS_DRAFT = "draft"
+    STATUS_PUBLISHED = "published"
+    STATUS_LOCKED = "locked"
+    STATUS_CHOICES = [
+        (STATUS_DRAFT, "Draft"),
+        (STATUS_PUBLISHED, "Published"),
+        (STATUS_LOCKED, "Locked"),
+    ]
+
+    project = models.ForeignKey(
+        Project,
+        on_delete=models.CASCADE,
+        related_name="annual_budgets",
+    )
+    fiscal_year = models.PositiveSmallIntegerField()
+    amount_sgd = models.DecimalField(max_digits=14, decimal_places=2)
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_DRAFT,
+    )
+    notes = models.CharField(max_length=255, blank=True)
+    updated_by = models.ForeignKey(
+        User,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="updated_project_budgets",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-fiscal_year", "project__mc_number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "fiscal_year"],
+                name="unique_project_annual_budget",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(amount_sgd__gte=0),
+                name="project_annual_budget_non_negative",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.fiscal_year} - {self.project.mc_number}: SGD {self.amount_sgd}"
+
+
 class ExpenseCategory(models.Model):
     """A category used to classify project expenses (e.g., Prototype, Materials)."""
 

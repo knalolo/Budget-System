@@ -2,7 +2,13 @@
 
 from django.contrib import admin
 
-from .models import ExpenseCategory, Project, PurchaseRequest, PurchaseRequestLineItem
+from .models import (
+    ExpenseCategory,
+    Project,
+    ProjectAnnualBudget,
+    PurchaseRequest,
+    PurchaseRequestLineItem,
+)
 
 
 @admin.register(Project)
@@ -11,6 +17,21 @@ class ProjectAdmin(admin.ModelAdmin):
     list_filter = ["is_active"]
     search_fields = ["mc_number", "name"]
     ordering = ["mc_number"]
+
+
+@admin.register(ProjectAnnualBudget)
+class ProjectAnnualBudgetAdmin(admin.ModelAdmin):
+    list_display = [
+        "fiscal_year",
+        "project",
+        "amount_sgd",
+        "status",
+        "updated_by",
+        "updated_at",
+    ]
+    list_filter = ["fiscal_year", "status"]
+    search_fields = ["project__mc_number", "project__name"]
+    ordering = ["-fiscal_year", "project__mc_number"]
 
 
 @admin.register(ExpenseCategory)

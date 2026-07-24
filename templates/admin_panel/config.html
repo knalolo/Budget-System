@@ -74,6 +74,141 @@
     {% endfor %}
 
     <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
+        <div class="flex flex-wrap items-start justify-between gap-4 mb-5 pb-4 border-b border-gray-100">
+            <div>
+                <h3 class="text-sm font-semibold text-gray-900">Annual Budget</h3>
+                <p class="mt-1 text-xs text-gray-500">
+                    Maintain the SGD budget for each MC number and fiscal year. Published and locked budgets are visible on approver dashboards.
+                </p>
+            </div>
+            <form method="get" class="flex items-end gap-2">
+                <div>
+                    <label for="budget-year" class="block text-xs font-medium text-gray-600 mb-1">Fiscal Year</label>
+                    <select
+                        id="budget-year"
+                        name="budget_year"
+                        class="rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:ring-brand-500"
+                    >
+                        {% for year in budget_year_options %}
+                        <option value="{{ year }}" {% if year == budget_year %}selected{% endif %}>{{ year }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="rounded-md bg-gray-800 px-3 py-2 text-sm font-semibold text-white hover:bg-gray-700">
+                    View
+                </button>
+            </form>
+        </div>
+
+        <form
+            method="post"
+            action="{% url 'admin-panel:admin-budget-copy' %}"
+            class="mb-5 flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4"
+        >
+            {% csrf_token %}
+            <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Copy from</label>
+                <input
+                    type="number"
+                    name="source_year"
+                    min="2000"
+                    max="2100"
+                    value="{{ budget_year|add:'-1' }}"
+                    class="w-28 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+            </div>
+            <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Copy to</label>
+                <input
+                    type="number"
+                    name="target_year"
+                    min="2000"
+                    max="2100"
+                    value="{{ budget_year }}"
+                    class="w-28 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+            </div>
+            <button type="submit" class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-brand-700 ring-1 ring-inset ring-brand-200 hover:bg-brand-50">
+                Copy Missing Budgets as Draft
+            </button>
+        </form>
+
+        <div class="overflow-x-auto rounded-lg border border-gray-200">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gray-50">
+                    <tr>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">MC Number</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Project</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Budget (SGD)</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Notes</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Action</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-100 bg-white">
+                    {% for row in budget_rows %}
+                    <tr>
+                        <td class="px-4 py-3 font-mono text-sm text-gray-900">{{ row.project.mc_number }}</td>
+                        <td class="px-4 py-3 text-sm text-gray-700">{{ row.project.name }}</td>
+                        <td class="px-4 py-3">
+                            <input
+                                form="budget-form-{{ row.project.pk }}"
+                                type="number"
+                                name="amount_sgd"
+                                min="0"
+                                step="0.01"
+                                required
+                                value="{% if row.budget %}{{ row.budget.amount_sgd }}{% else %}0.00{% endif %}"
+                                class="w-36 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            />
+                        </td>
+                        <td class="px-4 py-3">
+                            <select
+                                form="budget-form-{{ row.project.pk }}"
+                                name="status"
+                                class="rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            >
+                                <option value="draft" {% if not row.budget or row.budget.status == 'draft' %}selected{% endif %}>Draft</option>
+                                <option value="published" {% if row.budget.status == 'published' %}selected{% endif %}>Published</option>
+                                <option value="locked" {% if row.budget.status == 'locked' %}selected{% endif %}>Locked</option>
+                            </select>
+                        </td>
+                        <td class="px-4 py-3">
+                            <input
+                                form="budget-form-{{ row.project.pk }}"
+                                type="text"
+                                name="notes"
+                                maxlength="255"
+                                value="{% if row.budget %}{{ row.budget.notes }}{% endif %}"
+                                class="min-w-48 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                            />
+                        </td>
+                        <td class="px-4 py-3">
+                            <form
+                                id="budget-form-{{ row.project.pk }}"
+                                method="post"
+                                action="{% url 'admin-panel:admin-budget-save' %}"
+                            >
+                                {% csrf_token %}
+                                <input type="hidden" name="project_id" value="{{ row.project.pk }}" />
+                                <input type="hidden" name="fiscal_year" value="{{ budget_year }}" />
+                                <button type="submit" class="rounded-md bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-500">
+                                    Save
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="6" class="px-4 py-8 text-center text-sm text-gray-400">Add an MC number before entering budgets.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="rounded-lg border border-gray-200 bg-white shadow-sm p-6">
         <div class="flex items-start justify-between gap-4 mb-5 pb-4 border-b border-gray-100">
             <div>
                 <h3 class="text-sm font-semibold text-gray-900">MC Number Master Data</h3>
