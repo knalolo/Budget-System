@@ -402,8 +402,31 @@ def update_user_role(request: HttpRequest, pk: int) -> HttpResponse:
 
     selected_permissions = _selected_permissions_from_post(request)
     is_active = request.POST.get("is_active") == "on"
-    email = request.POST.get("email", "").strip()
+    username = (
+        request.POST["username"].strip()
+        if "username" in request.POST
+        else target_user.username
+    )
+    email = (
+        request.POST["email"].strip()
+        if "email" in request.POST
+        else target_user.email
+    )
+    display_name = request.POST.get("display_name", "").strip()
     requested_admin = selected_permissions["is_admin"]
+
+    account_errors = _validate_update_user_input(
+        target_user,
+        username,
+        email,
+        require_email="email" in request.POST,
+    )
+    if account_errors:
+        return HttpResponse(
+            f'<span class="text-red-600 text-xs font-medium">{"; ".join(account_errors)}</span>',
+            status=400,
+            content_type="text/html",
+        )
 
     if email:
         try:
@@ -423,8 +446,10 @@ def update_user_role(request: HttpRequest, pk: int) -> HttpResponse:
             for field, value in selected_permissions.items():
                 setattr(profile, field, value)
             target_user.is_active = is_active
+            target_user.username = username
             target_user.email = email
-            target_user.save(update_fields=["is_active", "email"])
+            target_user.save(update_fields=["is_active", "username", "email"])
+            profile.display_name = display_name
             profile.save()
     except ValidationError as exc:
         logger.warning(
@@ -472,6 +497,32 @@ def update_user_role(request: HttpRequest, pk: int) -> HttpResponse:
             headers={"HX-Refresh": "true"},
         )
 
+    return redirect("admin-panel:admin-users")
+
+def reset_user_password(request: HttpRequest, pk: int) -> HttpResponse:
+    """Reset a local user's password from the custom admin panel."""
+    if not request.user.is_authenticated or not _is_admin_user(request.user):
+        return HttpResponseForbidden("Permission denied.")
+
+    if request.method != "POST":
+        return HttpResponse(status=405)
+
+    target_user = get_object_or_404(User, pk=pk)
+    new_password = request.POST.get("new_password", "")
+
+    if not new_password:
+        messages.error(request, "New password is required.")
+        return redirect("admin-panel:admin-users")
+
+    target_user.set_password(new_password)
+    target_user.save(update_fields=["password"])
+
+    logger.info(
+        "Admin %s reset password for user %s",
+        request.user.username,
+        target_user.username,
+    )
+    messages.success(request, f"Password reset for {target_user.username}.")
     return redirect("admin-panel:admin-users")
 
 def create_user(request: HttpRequest) -> HttpResponse:
@@ -561,6 +612,29 @@ def _validate_create_user_input(username: str, email: str, password: str) -> lis
 
     if not password:
         errors.append("Password is required.")
+
+    return errors
+
+def _validate_update_user_input(
+    user: User,
+    username: str,
+    email: str,
+    *,
+    require_email: bool,
+) -> list[str]:
+    errors: list[str] = []
+    if not username:
+        errors.append("Username is required.")
+    elif User.objects.filter(username__iexact=username).exclude(pk=user.pk).exists():
+        errors.append("Username already exists.")
+
+    if require_email and not email:
+        errors.append("Email is required for workflow notifications.")
+    elif email:
+        try:
+            validate_email(email)
+        except ValidationError:
+            errors.append("Enter a valid email address.")
 
     return errors
 

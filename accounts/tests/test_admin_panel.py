@@ -10,6 +10,51 @@ from orders.tests.factories import ProjectFactory, PurchaseRequestFactory
 
 @pytest.mark.django_db
 class TestUpdateUserRole:
+    def test_admin_can_update_username_and_display_name(self, client, admin_user, regular_user):
+        client.force_login(admin_user)
+
+        response = client.post(
+            f"/admin-panel/users/{regular_user.pk}/update-role/",
+            {
+                "username": "updated_requester",
+                "email": "updated_requester@example.test",
+                "display_name": "Updated Requester",
+                "is_active": "on",
+                "is_requester": "on",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 204
+        regular_user.refresh_from_db()
+        regular_user.profile.refresh_from_db()
+        assert regular_user.username == "updated_requester"
+        assert regular_user.profile.display_name == "Updated Requester"
+
+    def test_admin_cannot_update_to_duplicate_username(self, client, admin_user, regular_user):
+        existing_user = User.objects.create_user(
+            username="existing_user",
+            email="existing@example.test",
+            password="pass",
+        )
+        client.force_login(admin_user)
+
+        response = client.post(
+            f"/admin-panel/users/{regular_user.pk}/update-role/",
+            {
+                "username": existing_user.username,
+                "email": regular_user.email,
+                "is_active": "on",
+                "is_requester": "on",
+            },
+            HTTP_HX_REQUEST="true",
+        )
+
+        assert response.status_code == 400
+        assert b"Username already exists." in response.content
+        regular_user.refresh_from_db()
+        assert regular_user.username != existing_user.username
+
     def test_admin_can_update_notification_email(self, client, admin_user, regular_user):
         client.force_login(admin_user)
 
@@ -152,6 +197,42 @@ class TestUpdateUserRole:
         assert "Current unique permission holders" in content
         assert "Final Approver" in content
         assert final_approver.username in content
+
+
+@pytest.mark.django_db
+class TestResetUserPassword:
+    def test_admin_can_reset_user_password(self, client, admin_user, regular_user):
+        regular_user.set_password("old-pass-123")
+        regular_user.save(update_fields=["password"])
+        client.force_login(admin_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-reset-password", args=[regular_user.pk]),
+            {"new_password": "new-pass-456"},
+        )
+
+        assert response.status_code == 302
+        regular_user.refresh_from_db()
+        assert regular_user.check_password("old-pass-123") is False
+        assert regular_user.check_password("new-pass-456") is True
+
+    def test_non_admin_cannot_reset_user_password(self, client, regular_user):
+        target_user = User.objects.create_user(
+            username="target_user",
+            email="target@example.test",
+            password="old-pass-123",
+        )
+        client.force_login(regular_user)
+
+        response = client.post(
+            reverse("admin-panel:admin-reset-password", args=[target_user.pk]),
+            {"new_password": "new-pass-456"},
+        )
+
+        assert response.status_code == 403
+        target_user.refresh_from_db()
+        assert target_user.check_password("old-pass-123") is True
+
 
 @pytest.mark.django_db
 class TestCreateUserFromAdminPanel:
